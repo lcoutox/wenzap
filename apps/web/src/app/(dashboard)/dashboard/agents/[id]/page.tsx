@@ -3,123 +3,79 @@
 import { useAuth } from "@clerk/nextjs";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ChevronRight, Bot } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Agent, AgentStatus, MemberRole } from "@/lib/api";
-import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
-import { AgentFormSection } from "@/components/agents/AgentFormSection";
-import { ModelCardSelector } from "@/components/agents/ModelCardSelector";
+import type { Agent, AgentStatus, AiCatalog, AiModel, MemberRole } from "@/lib/api";
 
-// ── Permissions ───────────────────────────────────────────────────────────────
+import { AgentHeader } from "@/components/agents/workspace/AgentHeader";
+import { AgentWorkspaceTabs } from "@/components/agents/workspace/AgentWorkspaceTabs";
+import type { WorkspaceTab } from "@/components/agents/workspace/AgentWorkspaceTabs";
+import { ConfigTabs } from "@/components/agents/workspace/ConfigTabs";
+import type { ConfigTab } from "@/components/agents/workspace/ConfigTabs";
 
-function canWrite(role: MemberRole | null) {
-  return role === "owner" || role === "admin" || role === "member";
-}
-function canArchive(role: MemberRole | null) {
-  return role === "owner" || role === "admin";
-}
+import { ChatPlaceholder }     from "@/components/agents/workspace/tabs/ChatPlaceholder";
+import { ImplantarPlaceholder } from "@/components/agents/workspace/tabs/ImplantarPlaceholder";
+import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
+import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
+import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
+import { ConfigAvancado }       from "@/components/agents/workspace/tabs/ConfigAvancado";
+import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
+import { ConfigSeguranca }      from "@/components/agents/workspace/tabs/ConfigSeguranca";
+import { ConfigWebhooks }       from "@/components/agents/workspace/tabs/ConfigWebhooks";
 
-// ── Shared field components ───────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const baseInput =
-  "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent";
-const disabledInput =
-  "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-400 bg-gray-50 cursor-not-allowed";
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      {children}
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
-    </div>
-  );
-}
-
-// ── Tab nav ───────────────────────────────────────────────────────────────────
-
-type Tab = "prompt" | "model" | "advanced";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "prompt",   label: "Prompt" },
-  { id: "model",    label: "Modelo" },
-  { id: "advanced", label: "Avançado" },
-];
-
-// ── Action button ─────────────────────────────────────────────────────────────
-
-function ActionBtn({
-  onClick,
-  variant,
-  children,
-}: {
-  onClick: () => void;
-  variant: "primary" | "secondary" | "danger";
-  children: React.ReactNode;
-}) {
-  const cls = {
-    primary:   "bg-indigo-600 text-white hover:bg-indigo-700",
-    secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50",
-    danger:    "bg-white text-red-600 border border-red-200 hover:bg-red-50",
-  }[variant];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${cls}`}
-    >
-      {children}
-    </button>
-  );
+function findActiveModel(catalog: AiCatalog | null, aiModelId: string | null): AiModel | null {
+  if (!catalog || !aiModelId) return null;
+  for (const provider of catalog.providers) {
+    const m = provider.models.find((m) => m.id === aiModelId);
+    if (m) return m;
+  }
+  return null;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function AgentDetailPage() {
+export default function AgentWorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const { getToken } = useAuth();
   const router = useRouter();
 
   // Remote state
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const [role, setRole] = useState<MemberRole | null>(null);
+  const [agent,   setAgent]   = useState<Agent | null>(null);
+  const [catalog, setCatalog] = useState<AiCatalog | null>(null);
+  const [role,    setRole]    = useState<MemberRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Form state (mirrors agent fields)
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  // Form fields
+  const [name,         setName]         = useState("");
+  const [description,  setDescription]  = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [persona, setPersona] = useState("");
-  const [aiModelId, setAiModelId] = useState<string | null>(null);
-  const [temperature, setTemperature] = useState("0.7");
+  const [persona,      setPersona]      = useState("");
+  const [aiModelId,    setAiModelId]    = useState<string | null>(null);
+  const [temperature,  setTemperature]  = useState("0.7");
 
   // UI state
-  const [activeTab, setActiveTab] = useState<Tab>("prompt");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("settings");
+  const [configTab,    setConfigTab]    = useState<ConfigTab>("geral");
+  const [saving,       setSaving]       = useState(false);
+  const [saveError,    setSaveError]    = useState<string | null>(null);
+  const [saveSuccess,  setSaveSuccess]  = useState(false);
+  const [actionError,  setActionError]  = useState<string | null>(null);
 
-  // ── Load ────────────────────────────────────────────────────────────────────
+  // ── Load ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     getToken().then(async (token) => {
       if (!token) return;
       try {
-        const [agentData, me] = await Promise.all([
+        const [agentData, me, catalogData] = await Promise.all([
           api.agents.get(token, id),
           api.me(token),
+          api.aiModels.list(token),
         ]);
         setAgent(agentData);
         setRole(me.role);
+        setCatalog(catalogData);
         setName(agentData.name);
         setDescription(agentData.description ?? "");
         setSystemPrompt(agentData.system_prompt ?? "");
@@ -138,7 +94,7 @@ export default function AgentDetailPage() {
     });
   }, [id, getToken, router]);
 
-  // ── Save ────────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────────
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!agent) return;
@@ -175,7 +131,7 @@ export default function AgentDetailPage() {
     }
   }
 
-  // ── Status actions ───────────────────────────────────────────────────────────
+  // ── Status actions ────────────────────────────────────────────────────────────
   async function changeStatus(newStatus: AgentStatus) {
     if (!agent) return;
     setActionError(null);
@@ -202,13 +158,13 @@ export default function AgentDetailPage() {
     }
   }
 
-  // ── Loading / error states ───────────────────────────────────────────────────
+  // ── Loading / error states ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="space-y-4 animate-pulse max-w-4xl">
-        <div className="h-6 w-48 bg-gray-200 rounded" />
-        <div className="h-10 w-72 bg-gray-200 rounded" />
-        <div className="h-64 bg-gray-100 rounded-xl" />
+      <div className="space-y-4 animate-pulse">
+        <div className="h-32 bg-white rounded-xl border border-gray-200" />
+        <div className="h-10 w-80 bg-gray-200 rounded" />
+        <div className="h-96 bg-white rounded-xl border border-gray-200" />
       </div>
     );
   }
@@ -223,253 +179,106 @@ export default function AgentDetailPage() {
 
   if (!agent) return null;
 
-  const isArchived = agent.status === "archived";
-  const write = canWrite(role);
-  const archive = canArchive(role);
-  const readonly = isArchived || !write;
+  const activeModel = findActiveModel(catalog, aiModelId);
+  const isArchived  = agent.status === "archived";
+  const canWrite    = role === "owner" || role === "admin" || role === "member";
+  const readonly    = isArchived || !canWrite;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // Config tabs that have real save functionality
+  const isSaveable = ["geral", "prompt", "modelo", "avancado"].includes(configTab);
+
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="flex flex-col gap-0 -m-6">
+      {/* Sticky header */}
+      <AgentHeader
+        agent={agent}
+        activeModel={activeModel}
+        role={role}
+        actionError={actionError}
+        onChangeStatus={changeStatus}
+        onArchive={handleArchive}
+      />
 
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm text-gray-400">
-        <Link href="/dashboard/agents" className="hover:text-gray-700 transition-colors">
-          Agentes
-        </Link>
-        <ChevronRight className="w-3.5 h-3.5" />
-        <span className="text-gray-700 font-medium truncate max-w-xs">{agent.name}</span>
-      </nav>
-
-      {/* Agent header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
-            <Bot className="w-5 h-5 text-indigo-500" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 truncate">{agent.name}</h1>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <AgentStatusBadge status={agent.status} />
-              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md font-mono">
-                {agent.model_name}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Status action buttons */}
-        {!isArchived && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {agent.status === "draft" && write && (
-              <ActionBtn variant="primary" onClick={() => changeStatus("active")}>
-                Ativar agente
-              </ActionBtn>
-            )}
-            {agent.status === "active" && write && (
-              <ActionBtn variant="secondary" onClick={() => changeStatus("inactive")}>
-                Desativar
-              </ActionBtn>
-            )}
-            {agent.status === "inactive" && write && (
-              <ActionBtn variant="primary" onClick={() => changeStatus("active")}>
-                Ativar
-              </ActionBtn>
-            )}
-            {archive && (
-              <ActionBtn variant="danger" onClick={handleArchive}>
-                Arquivar
-              </ActionBtn>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Action error */}
-      {actionError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-          {actionError}
-        </div>
-      )}
-
-      {isArchived && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-          Este agente está arquivado e não pode ser editado.
-        </div>
-      )}
-
-      {/* Tab nav */}
-      <div className="border-b border-gray-200">
-        <nav className="flex gap-1 -mb-px">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
-                ${activeTab === tab.id
-                  ? "border-indigo-600 text-indigo-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }
-              `}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      {/* Main workspace tabs */}
+      <AgentWorkspaceTabs active={workspaceTab} onChange={setWorkspaceTab} />
 
       {/* Tab content */}
-      <form onSubmit={handleSave} className="space-y-5">
+      <div className="p-6 flex-1">
 
-        {/* ── Prompt tab ── */}
-        {activeTab === "prompt" && (
-          <>
-            <AgentFormSection
-              title="Identidade"
-              description="Nome e descrição exibidos na plataforma."
-            >
-              <Field label="Nome *">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  maxLength={100}
-                  disabled={readonly}
-                  placeholder="Ex: Agente de Suporte"
-                  className={readonly ? disabledInput : baseInput}
-                />
-              </Field>
-              <Field label="Descrição" hint="Visível na listagem de agentes.">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                  disabled={readonly}
-                  placeholder="Descreva o propósito deste agente"
-                  className={readonly ? disabledInput : baseInput}
-                />
-              </Field>
-            </AgentFormSection>
-
-            <AgentFormSection
-              title="System Prompt"
-              description="Instrução base que define o comportamento do agente. Obrigatório para ativar."
-            >
-              <Field
-                label="Prompt"
-                hint={`${systemPrompt.length} / 8000 caracteres`}
-              >
-                <textarea
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  rows={8}
-                  maxLength={8000}
-                  disabled={readonly}
-                  placeholder={readonly ? "" : "Você é um agente de suporte da empresa Acme..."}
-                  className={readonly ? disabledInput : baseInput}
-                />
-              </Field>
-            </AgentFormSection>
-
-            <AgentFormSection
-              title="Persona e Tom"
-              description="Define a personalidade e o estilo de comunicação do agente."
-            >
-              <Field label="Persona" hint="Máximo de 1000 caracteres.">
-                <textarea
-                  value={persona}
-                  onChange={(e) => setPersona(e.target.value)}
-                  rows={3}
-                  maxLength={1000}
-                  disabled={readonly}
-                  placeholder={readonly ? "" : "Comunicativo, empático, direto ao ponto"}
-                  className={readonly ? disabledInput : baseInput}
-                />
-              </Field>
-            </AgentFormSection>
-          </>
+        {/* ── Chat ── */}
+        {workspaceTab === "chat" && (
+          <ChatPlaceholder agent={agent} activeModel={activeModel} />
         )}
 
-        {/* ── Model tab ── */}
-        {activeTab === "model" && (
-          <AgentFormSection
-            title="Modelo de IA"
-            description="Escolha o modelo que alimenta este agente."
-          >
-            <ModelCardSelector
-              aiModelId={aiModelId}
-              disabled={readonly}
-              onChange={(id) => setAiModelId(id)}
-            />
-          </AgentFormSection>
+        {/* ── Implantar ── */}
+        {workspaceTab === "deploy" && (
+          <ImplantarPlaceholder />
         )}
 
-        {/* ── Advanced tab ── */}
-        {activeTab === "advanced" && (
-          <AgentFormSection
-            title="Configurações avançadas"
-            description="Ajustes de geração de texto e comportamento do modelo."
-          >
-            <Field
-              label="Temperatura"
-              hint="Controla a criatividade das respostas. 0 = mais preciso, 1 = mais criativo."
-            >
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  value={temperature}
-                  onChange={(e) => setTemperature(e.target.value)}
-                  step="0.1"
-                  min="0"
-                  max="1"
-                  disabled={readonly}
-                  className="flex-1 accent-indigo-600"
+        {/* ── Configurações ── */}
+        {workspaceTab === "settings" && (
+          <div className="max-w-3xl space-y-5">
+            <ConfigTabs active={configTab} onChange={setConfigTab} />
+
+            <form onSubmit={isSaveable ? handleSave : (e) => e.preventDefault()}>
+              {configTab === "geral" && (
+                <ConfigGeral
+                  agent={agent}
+                  activeModel={activeModel}
+                  name={name}
+                  description={description}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onNameChange={setName}
+                  onDescriptionChange={setDescription}
                 />
-                <span className="w-10 text-sm font-mono text-center text-gray-700 bg-gray-100 rounded px-2 py-1">
-                  {parseFloat(temperature).toFixed(1)}
-                </span>
-              </div>
-            </Field>
-          </AgentFormSection>
-        )}
+              )}
 
-        {/* ── Save bar ── */}
-        {write && !isArchived && activeTab !== "advanced" && (
-          <div className="flex items-center gap-3">
-            {saveError && (
-              <p className="text-sm text-red-500 flex-1">{saveError}</p>
-            )}
-            {saveSuccess && (
-              <p className="text-sm text-green-600 flex-1">Salvo com sucesso.</p>
-            )}
-            <button
-              type="submit"
-              disabled={saving}
-              className="ml-auto px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {saving ? "Salvando..." : "Salvar alterações"}
-            </button>
+              {configTab === "prompt" && (
+                <ConfigPrompt
+                  systemPrompt={systemPrompt}
+                  persona={persona}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onSystemPromptChange={setSystemPrompt}
+                  onPersonaChange={setPersona}
+                />
+              )}
+
+              {configTab === "modelo" && (
+                <ConfigModelo
+                  aiModelId={aiModelId}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onModelChange={(modelId) => setAiModelId(modelId)}
+                />
+              )}
+
+              {configTab === "avancado" && (
+                <ConfigAvancado
+                  temperature={temperature}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onTemperatureChange={setTemperature}
+                />
+              )}
+
+              {configTab === "ferramentas" && <ConfigFerramentas />}
+              {configTab === "seguranca"   && <ConfigSeguranca />}
+              {configTab === "webhooks"    && <ConfigWebhooks />}
+            </form>
           </div>
         )}
-
-        {/* Save bar also on Advanced tab */}
-        {write && !isArchived && activeTab === "advanced" && (
-          <div className="flex items-center justify-end gap-3">
-            {saveError && <p className="text-sm text-red-500">{saveError}</p>}
-            {saveSuccess && <p className="text-sm text-green-600">Salvo com sucesso.</p>}
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {saving ? "Salvando..." : "Salvar alterações"}
-            </button>
-          </div>
-        )}
-      </form>
+      </div>
     </div>
   );
 }
