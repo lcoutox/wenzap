@@ -34,7 +34,8 @@ def get_current_user(
     external_id: str = claims["sub"]
     user = db.scalar(select(User).where(User.external_id == external_id))
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        from app.services.provision_service import provision_user
+        user = provision_user(external_id, db)
     return user
 
 
