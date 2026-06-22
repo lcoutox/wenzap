@@ -23,6 +23,8 @@ from app.config import settings
 from app.database import Base, get_db
 from app.enums import MemberRole, MemberStatus, WorkspaceStatus
 from app.main import app
+from app.models.ai_model import AiModel
+from app.models.ai_model_provider import AiModelProvider
 from app.models.plan import Plan
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -77,6 +79,41 @@ def _make_workspace(db: Session, owner: User, slug: str, name: str) -> Workspace
     return w
 
 
+def _make_ai_model(
+    db: Session,
+    *,
+    code: str | None = None,
+    min_plan_code: str = "starter",
+    is_default: bool = True,
+) -> AiModel:
+    """Create a minimal AiModelProvider + AiModel for use in tests."""
+    uid = uuid.uuid4().hex[:8]
+    provider = AiModelProvider(
+        id=uuid.uuid4(),
+        code=code or f"test-provider-{uid}",
+        name="Test Provider",
+        is_active=True,
+    )
+    db.add(provider)
+    db.flush()
+    model = AiModel(
+        id=uuid.uuid4(),
+        provider_id=provider.id,
+        code=code or f"test-model-{uid}",
+        display_name="Test Model",
+        model_name=f"test-model-{uid}-v1",
+        credits_per_message=1,
+        min_plan_code=min_plan_code,
+        is_default=is_default,
+        is_active=True,
+        sort_order=1,
+    )
+    db.add(model)
+    db.commit()
+    db.refresh(model)
+    return model
+
+
 def _make_subscription(db: Session, workspace: Workspace, plan: Plan) -> WorkspaceSubscription:
     now = datetime.now(timezone.utc)
     sub = WorkspaceSubscription(
@@ -93,6 +130,11 @@ def _make_subscription(db: Session, workspace: Workspace, plan: Plan) -> Workspa
 
 
 # ── Common fixtures ────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def ai_model(db: Session) -> AiModel:
+    return _make_ai_model(db)
+
 
 @pytest.fixture()
 def plan(db: Session) -> Plan:

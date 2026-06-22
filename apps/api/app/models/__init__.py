@@ -1,4 +1,6 @@
 from app.models.agent import Agent
+from app.models.ai_model import AiModel
+from app.models.ai_model_provider import AiModelProvider
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
@@ -14,4 +16,6 @@ __all__ = [
     "WorkspaceSubscription",
     "UsageCounter",
     "Agent",
+    "AiModelProvider",
+    "AiModel",
 ]

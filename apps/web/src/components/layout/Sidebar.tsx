@@ -106,7 +106,7 @@ export function Sidebar({
   return (
     <aside
       className={`
-        flex flex-col min-h-screen bg-gray-900 border-r border-gray-800 transition-all duration-200
+        flex flex-col h-screen bg-gray-900 border-r border-gray-800 transition-all duration-200 overflow-hidden
         ${collapsed ? "w-14" : "w-56"}
       `}
     >
@@ -129,7 +129,7 @@ export function Sidebar({
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-3 space-y-0.5 px-2">
+      <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
           return (

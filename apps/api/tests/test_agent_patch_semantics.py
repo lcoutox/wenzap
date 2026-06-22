@@ -8,12 +8,19 @@ Rules:
 """
 
 
+import uuid
+
 from app.models.plan import Plan
-from tests.conftest import _make_client, _make_subscription, _make_user, _make_workspace
+from tests.conftest import (
+    _make_ai_model,
+    _make_client,
+    _make_subscription,
+    _make_user,
+    _make_workspace,
+)
 
 
 def _setup(db):
-    import uuid
     user = _make_user(db, f"patch-{uuid.uuid4().hex[:6]}@test.com", "Patch User")
     ws = _make_workspace(db, user, f"patch-ws-{uuid.uuid4().hex[:6]}", "Patch WS")
     p = Plan(
@@ -34,15 +41,17 @@ def _setup(db):
     db.commit()
     db.refresh(p)
     _make_subscription(db, ws, p)
-    return user, ws
+    model = _make_ai_model(db)
+    return user, ws, model
 
 
-def _create(client, **kwargs):
+def _create(client, model_id, **kwargs):
     defaults = {
         "name": "Test Agent",
         "description": "Original description",
         "system_prompt": "Original prompt",
         "persona": "Original persona",
+        "ai_model_id": str(model_id),
     }
     defaults.update(kwargs)
     r = client.post("/agents", json=defaults)
@@ -53,27 +62,27 @@ def _create(client, **kwargs):
 # ── Clearable fields: explicit null clears the value ─────────────────────────
 
 def test_patch_null_clears_description(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         response = client.patch(f"/agents/{agent_id}", json={"description": None})
     assert response.status_code == 200
     assert response.json()["description"] is None
 
 
 def test_patch_null_clears_persona(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         response = client.patch(f"/agents/{agent_id}", json={"persona": None})
     assert response.status_code == 200
     assert response.json()["persona"] is None
 
 
 def test_patch_null_clears_system_prompt(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         response = client.patch(f"/agents/{agent_id}", json={"system_prompt": None})
     assert response.status_code == 200
     assert response.json()["system_prompt"] is None
@@ -82,9 +91,9 @@ def test_patch_null_clears_system_prompt(db):
 # ── Absent fields: omitted fields are preserved ───────────────────────────────
 
 def test_patch_omitted_description_is_preserved(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         # Patch only the name — description should stay
         response = client.patch(f"/agents/{agent_id}", json={"name": "New Name"})
     assert response.status_code == 200
@@ -95,9 +104,9 @@ def test_patch_omitted_description_is_preserved(db):
 
 
 def test_patch_omitted_persona_is_preserved(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         response = client.patch(f"/agents/{agent_id}", json={"description": None})
     assert response.status_code == 200
     # persona was not sent — must be preserved
@@ -105,9 +114,9 @@ def test_patch_omitted_persona_is_preserved(db):
 
 
 def test_patch_omitted_system_prompt_is_preserved(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         response = client.patch(f"/agents/{agent_id}", json={"name": "Updated"})
     assert response.status_code == 200
     assert response.json()["system_prompt"] == "Original prompt"
@@ -117,9 +126,9 @@ def test_patch_omitted_system_prompt_is_preserved(db):
 
 def test_patch_null_name_is_ignored(db):
     """Sending name: null should not clear the name — it should be ignored."""
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        agent_id = _create(client)
+        agent_id = _create(client, model.id)
         response = client.patch(f"/agents/{agent_id}", json={"name": None})
     assert response.status_code == 200
     assert response.json()["name"] == "Test Agent"
@@ -129,14 +138,16 @@ def test_patch_null_name_is_ignored(db):
 
 def test_list_agents_with_active_filter(db):
     """GET /agents?status=active returns only active agents."""
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        # Create one agent and activate it
-        r1 = client.post("/agents", json={"name": "Active One", "system_prompt": "Hello"})
+        r1 = client.post("/agents", json={
+                "name": "Active One",
+                "system_prompt": "Hello",
+                "ai_model_id": str(model.id),
+            })
         client.patch(f"/agents/{r1.json()['id']}/status", json={"status": "active"})
 
-        # Create another agent in draft (default)
-        client.post("/agents", json={"name": "Draft One"})
+        client.post("/agents", json={"name": "Draft One", "ai_model_id": str(model.id)})
 
         response = client.get("/agents?status=active")
     assert response.status_code == 200
@@ -156,12 +167,13 @@ def test_patch_status_of_agent_from_other_workspace_returns_404(
     from app.enums import AgentStatus
     from app.models.agent import Agent
 
+    model_b = _make_ai_model(db)
     agent_b = Agent(
         workspace_id=workspace_b.id,
         name="Agent B",
         system_prompt="Hello",
-        model_provider="anthropic",
-        model_name="claude-sonnet-4-6",
+        ai_model_id=model_b.id,
+        model_name=model_b.model_name,
         temperature=0.7,
         status=AgentStatus.draft.value,
         created_by_user_id=user_b.id,

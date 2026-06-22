@@ -19,9 +19,13 @@ class Agent(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     persona: Mapped[str | None] = mapped_column(Text, nullable=True)
-    model_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="anthropic")
+    # ai_model_id: relational link to catalog (nullable for safe migration)
+    ai_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ai_models.id", ondelete="SET NULL"), nullable=True
+    )
+    # model_name: snapshot of ai_models.model_name at time of selection
     model_name: Mapped[str] = mapped_column(
-        String(100), nullable=False, default="claude-sonnet-4-6"
+        String(200), nullable=False, default="nexbrain-prime"
     )
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.70)
     # Nullable: user may be deleted after creating the agent.

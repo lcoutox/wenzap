@@ -11,19 +11,22 @@ Valid transitions:
     archived -> * (blocked — terminal state)
 """
 
-from app.models.plan import Plan
-from tests.conftest import _make_client, _make_subscription, _make_user, _make_workspace
+import uuid
 
-AGENT_WITH_PROMPT = {"name": "Agent", "system_prompt": "You are a helpful assistant."}
-AGENT_WITHOUT_PROMPT = {"name": "Agent Without Prompt"}
+from app.models.plan import Plan
+from tests.conftest import (
+    _make_ai_model,
+    _make_client,
+    _make_subscription,
+    _make_user,
+    _make_workspace,
+)
 
 
 def _setup(db):
-    """Returns (client context manager, agent factory function)."""
-    user = _make_user(db, f"status-{id(db)}@test.com", "Status User")
-    import uuid
-    slug = f"status-ws-{uuid.uuid4().hex[:6]}"
-    ws = _make_workspace(db, user, slug, "Status WS")
+    """Returns (user, workspace, ai_model)."""
+    user = _make_user(db, f"status-{uuid.uuid4().hex[:6]}@test.com", "Status User")
+    ws = _make_workspace(db, user, f"status-ws-{uuid.uuid4().hex[:6]}", "Status WS")
     p = Plan(
         code=f"status_plan_{uuid.uuid4().hex[:6]}",
         name="Status Plan",
@@ -42,15 +45,28 @@ def _setup(db):
     db.commit()
     db.refresh(p)
     _make_subscription(db, ws, p)
-    return user, ws
+    model = _make_ai_model(db)
+    return user, ws, model
+
+
+def _with_prompt(model_id):
+    return {
+        "name": "Agent",
+        "system_prompt": "You are a helpful assistant.",
+        "ai_model_id": str(model_id),
+    }
+
+
+def _without_prompt(model_id):
+    return {"name": "Agent Without Prompt", "ai_model_id": str(model_id)}
 
 
 # ── draft → active ────────────────────────────────────────────────────────────
 
 def test_draft_to_active_with_system_prompt(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         assert r.json()["status"] == "draft"
 
@@ -60,9 +76,9 @@ def test_draft_to_active_with_system_prompt(db):
 
 
 def test_draft_to_active_without_system_prompt_returns_400(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITHOUT_PROMPT)
+        r = client.post("/agents", json=_without_prompt(model.id))
         agent_id = r.json()["id"]
 
         response = client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
@@ -71,9 +87,11 @@ def test_draft_to_active_without_system_prompt_returns_400(db):
 
 
 def test_draft_to_active_with_empty_system_prompt_returns_400(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json={"name": "Agent", "system_prompt": "   "})
+        r = client.post("/agents", json={
+            "name": "Agent", "system_prompt": "   ", "ai_model_id": str(model.id)
+        })
         agent_id = r.json()["id"]
 
         response = client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
@@ -83,9 +101,9 @@ def test_draft_to_active_with_empty_system_prompt_returns_400(db):
 # ── draft → archived ──────────────────────────────────────────────────────────
 
 def test_draft_to_archived(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITHOUT_PROMPT)
+        r = client.post("/agents", json=_without_prompt(model.id))
         agent_id = r.json()["id"]
 
         response = client.patch(f"/agents/{agent_id}/status", json={"status": "archived"})
@@ -96,9 +114,9 @@ def test_draft_to_archived(db):
 # ── active → inactive ─────────────────────────────────────────────────────────
 
 def test_active_to_inactive(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
 
@@ -110,9 +128,9 @@ def test_active_to_inactive(db):
 # ── active → archived ─────────────────────────────────────────────────────────
 
 def test_active_to_archived(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
 
@@ -124,9 +142,9 @@ def test_active_to_archived(db):
 # ── inactive → active ─────────────────────────────────────────────────────────
 
 def test_inactive_to_active(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
         client.patch(f"/agents/{agent_id}/status", json={"status": "inactive"})
@@ -139,9 +157,9 @@ def test_inactive_to_active(db):
 # ── inactive → archived ───────────────────────────────────────────────────────
 
 def test_inactive_to_archived(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
         client.patch(f"/agents/{agent_id}/status", json={"status": "inactive"})
@@ -154,9 +172,9 @@ def test_inactive_to_archived(db):
 # ── archived → * (terminal) ───────────────────────────────────────────────────
 
 def test_archived_to_active_returns_400(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "archived"})
 
@@ -165,9 +183,9 @@ def test_archived_to_active_returns_400(db):
 
 
 def test_archived_to_inactive_returns_400(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITH_PROMPT)
+        r = client.post("/agents", json=_with_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "archived"})
 
@@ -176,9 +194,9 @@ def test_archived_to_inactive_returns_400(db):
 
 
 def test_archived_to_draft_returns_400(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITHOUT_PROMPT)
+        r = client.post("/agents", json=_without_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "archived"})
 
@@ -189,9 +207,9 @@ def test_archived_to_draft_returns_400(db):
 # ── PATCH on archived agent ───────────────────────────────────────────────────
 
 def test_patch_archived_agent_returns_400(db):
-    user, ws = _setup(db)
+    user, ws, model = _setup(db)
     with _make_client(db, user, ws) as client:
-        r = client.post("/agents", json=AGENT_WITHOUT_PROMPT)
+        r = client.post("/agents", json=_without_prompt(model.id))
         agent_id = r.json()["id"]
         client.patch(f"/agents/{agent_id}/status", json={"status": "archived"})
 

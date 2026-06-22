@@ -62,6 +62,43 @@ export type Usage = {
   period_end: string;
 };
 
+// ── AI Model Catalog ──────────────────────────────────────────────────────────
+
+export type AiModel = {
+  id: string;
+  code: string;
+  display_name: string;
+  description: string | null;
+  model_name: string;
+  credits_per_message: number;
+  min_plan_code: string;
+  context_window_tokens: number | null;
+  is_default: boolean;
+  is_recommended: boolean;
+  is_featured: boolean;
+  available: boolean;
+  supports_vision: boolean;
+  supports_tools: boolean;
+  supports_reasoning: boolean;
+  supports_code: boolean;
+};
+
+export type AiProvider = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  logo_url: string | null;
+  models: AiModel[];
+};
+
+export type AiCatalog = {
+  current_plan: string;
+  providers: AiProvider[];
+};
+
+// ── Agents ────────────────────────────────────────────────────────────────────
+
 export type AgentStatus = "draft" | "active" | "inactive" | "archived";
 
 export type Agent = {
@@ -72,7 +109,7 @@ export type Agent = {
   status: AgentStatus;
   system_prompt: string | null;
   persona: string | null;
-  model_provider: string;
+  ai_model_id: string | null;
   model_name: string;
   temperature: number;
   created_by_user_id: string | null;
@@ -85,18 +122,16 @@ export type AgentCreateInput = {
   description?: string;
   system_prompt?: string;
   persona?: string;
-  model_provider?: string;
-  model_name?: string;
+  ai_model_id: string;
   temperature?: number;
 };
 
 export type AgentUpdateInput = {
   name?: string;
-  description?: string;
-  system_prompt?: string;
-  persona?: string;
-  model_provider?: string;
-  model_name?: string;
+  description?: string | null;
+  system_prompt?: string | null;
+  persona?: string | null;
+  ai_model_id?: string;
   temperature?: number;
 };
 
@@ -119,12 +154,10 @@ async function apiFetch<T>(
   path: string,
   token: string,
   options: RequestInit = {},
-  workspaceId?: string
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
-    ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
     ...(options.headers as Record<string, string>),
   };
 
@@ -163,6 +196,9 @@ export const api = {
     current: (token: string) => apiFetch<Subscription>("/workspaces/current/plan", token),
     usage: (token: string) => apiFetch<Usage>("/workspaces/current/usage", token),
   },
+  aiModels: {
+    list: (token: string) => apiFetch<AiCatalog>("/ai-models", token),
+  },
   agents: {
     list: (token: string, status?: AgentStatus) =>
       apiFetch<Agent[]>(status ? `/agents?status=${status}` : "/agents", token),
@@ -170,7 +206,10 @@ export const api = {
     create: (token: string, data: AgentCreateInput) =>
       apiFetch<Agent>("/agents", token, { method: "POST", body: JSON.stringify(data) }),
     update: (token: string, id: string, data: AgentUpdateInput) =>
-      apiFetch<Agent>(`/agents/${id}`, token, { method: "PATCH", body: JSON.stringify(data) }),
+      apiFetch<Agent>(`/agents/${id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     updateStatus: (token: string, id: string, status: AgentStatus) =>
       apiFetch<Agent>(`/agents/${id}/status`, token, {
         method: "PATCH",

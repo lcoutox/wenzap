@@ -9,17 +9,21 @@ from app.models.agent import Agent
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent import AgentCreate, AgentOut, AgentUpdate
+from app.services.ai_model_service import (
+    _get_workspace_plan_code,
+    get_model_or_404,
+    validate_model_for_plan,
+)
 
 # Fields that can be explicitly cleared to None via PATCH.
-# All other updatable fields are non-nullable and null is treated as "not sent".
 _CLEARABLE_FIELDS = {"description", "persona", "system_prompt"}
 
-# Valid status transitions: maps current status -> allowed next statuses
+# Valid status transitions
 _VALID_TRANSITIONS: dict[AgentStatus, set[AgentStatus]] = {
     AgentStatus.draft:    {AgentStatus.active, AgentStatus.archived},
     AgentStatus.active:   {AgentStatus.inactive, AgentStatus.archived},
     AgentStatus.inactive: {AgentStatus.active, AgentStatus.archived},
-    AgentStatus.archived: set(),  # terminal — no transitions allowed
+    AgentStatus.archived: set(),
 }
 
 
@@ -33,7 +37,7 @@ def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID)
 
 
 def _check_plan_limit(db: Session, workspace_id: uuid.UUID) -> None:
-    """Raises HTTP 402 if workspace has no active subscription or has reached agents_limit."""
+    """Raises HTTP 402 if workspace has reached agents_limit."""
     sub = db.scalar(
         select(WorkspaceSubscription).where(
             WorkspaceSubscription.workspace_id == workspace_id,
@@ -53,7 +57,6 @@ def _check_plan_limit(db: Session, workspace_id: uuid.UUID) -> None:
             detail="Subscription plan not found.",
         )
 
-    # Archived agents do not count toward the limit
     active_count = db.scalar(
         select(func.count(Agent.id)).where(
             Agent.workspace_id == workspace_id,
@@ -81,7 +84,6 @@ def list_agents(
     if status_filter is not None:
         query = query.where(Agent.status == status_filter.value)
     else:
-        # Default: exclude archived agents
         query = query.where(Agent.status != AgentStatus.archived.value)
 
     query = query.order_by(Agent.created_at.desc())
@@ -102,14 +104,18 @@ def create_agent(
 ) -> AgentOut:
     _check_plan_limit(db, workspace_id)
 
+    plan_code = _get_workspace_plan_code(db, workspace_id)
+    model = get_model_or_404(db, data.ai_model_id)
+    validate_model_for_plan(model, plan_code)
+
     agent = Agent(
         workspace_id=workspace_id,
         name=data.name,
         description=data.description,
         system_prompt=data.system_prompt,
         persona=data.persona,
-        model_provider=data.model_provider,
-        model_name=data.model_name,
+        ai_model_id=model.id,
+        model_name=model.model_name,
         temperature=data.temperature,
         status=AgentStatus.draft.value,
         created_by_user_id=user_id,
@@ -134,10 +140,17 @@ def update_agent(
             detail="Archived agents cannot be edited.",
         )
 
-    # exclude_unset=True: only fields explicitly present in the JSON payload are included.
-    # For clearable fields (description, persona, system_prompt): null means clear the field.
-    # For non-clearable fields (name, model_provider, model_name, temperature): null is ignored.
     update_data = data.model_dump(exclude_unset=True)
+
+    # Handle ai_model_id separately — it implies updating model_name snapshot too
+    if "ai_model_id" in update_data and update_data["ai_model_id"] is not None:
+        plan_code = _get_workspace_plan_code(db, workspace_id)
+        model = get_model_or_404(db, update_data["ai_model_id"])
+        validate_model_for_plan(model, plan_code)
+        agent.ai_model_id = model.id
+        agent.model_name = model.model_name
+        del update_data["ai_model_id"]
+
     for field, value in update_data.items():
         if value is None and field not in _CLEARABLE_FIELDS:
             continue
@@ -185,7 +198,6 @@ def archive_agent(
     agent = _get_agent_or_404(db, workspace_id, agent_id)
 
     if agent.status == AgentStatus.archived.value:
-        # Idempotent: already archived, return as-is
         return AgentOut.model_validate(agent)
 
     agent.status = AgentStatus.archived.value

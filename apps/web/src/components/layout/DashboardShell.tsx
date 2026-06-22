@@ -63,15 +63,15 @@ export function DashboardShell({
   const effectiveCollapsed = mounted ? collapsed : false;
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="h-screen overflow-hidden flex bg-gray-50">
       <Sidebar
         collapsed={effectiveCollapsed}
         subscription={subscription}
         usage={usage}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header — h-14 matches sidebar logo area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header — h-14 matches sidebar logo area, never scrolls */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 gap-4 flex-shrink-0">
           <div className="flex items-center gap-3">
             <button
@@ -93,7 +93,8 @@ export function DashboardShell({
           <UserMenuDropdown />
         </header>
 
-        <main className="flex-1 p-6">{children}</main>
+        {/* Only this area scrolls */}
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   );
