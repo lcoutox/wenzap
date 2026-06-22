@@ -95,3 +95,70 @@ query = (
 ```
 
 Option B requires adding `relationship()` declarations to the `Agent` model.
+
+---
+
+## [TD-003] `AgentPromptSettings` stub via `__new__()` em `_get_prompt_settings`
+
+**Status:** Active — introduced in Phase 3  
+**Priority:** Low  
+**Target phase:** Phase 4 (quando o fallback de agentes pré-2.4 for removido junto com TD-001)
+
+### What it is
+
+Em `agent_test_service._get_prompt_settings`, quando não existe registro em `agent_prompt_settings` (agentes criados antes da Phase 2.4), o código cria um objeto-stub usando `AgentPromptSettings.__new__()` para contornar o `__init__` do SQLAlchemy:
+
+```python
+stub = AgentPromptSettings.__new__(AgentPromptSettings)
+stub.system_prompt = system_prompt
+stub.persona = persona
+return stub
+```
+
+### Why it was kept
+
+Evita duplicar lógica de fallback (já existente em `agent_service.py`) e mantém o tipo de retorno uniforme para o chamador. Funciona corretamente em runtime.
+
+### Criteria for removal
+
+Quando TD-001 for resolvido (colunas legacy removidas da tabela `agents`), o fallback inteiro pode ser eliminado. Todos os agentes terão `agent_prompt_settings` criados. Substituir por uma asserção simples ou lançar 400 direto.
+
+### How to fix
+
+```python
+# Após TD-001: sem fallback necessário
+ps = db.scalar(select(AgentPromptSettings).where(...))
+if ps is None or not (ps.system_prompt or "").strip():
+    raise HTTPException(400, "A system_prompt is required to test this agent.")
+return ps
+```
+
+---
+
+## [TD-004] Phase 3 ANTHROPIC_EXECUTABLE_MODELS duplicada no frontend e backend
+
+**Status:** Active — introduced in Phase 3  
+**Priority:** Low  
+**Target phase:** Phase 4 (provider registry)
+
+### What it is
+
+A whitelist de `model_name` executáveis via Anthropic está definida em dois lugares:
+
+- Backend: `app/services/agent_test_service.ANTHROPIC_EXECUTABLE_MODELS`
+- Frontend: `apps/web/src/app/(dashboard)/dashboard/agents/[id]/page.tsx` → `EXECUTABLE_MODEL_NAMES`
+
+### Why it was kept
+
+O frontend usa a lista para bloqueio visual (UX antecipado), enquanto o backend a usa como validação real. A duplicação é intencional nesta fase.
+
+### Criteria for removal
+
+Quando o catálogo de modelos (`/ai-models`) retornar um campo `is_executable: boolean` por modelo, o frontend pode usar esse campo em vez da lista hardcoded. O backend mantém a validação independentemente.
+
+### How to fix
+
+1. Adicionar campo `is_executable: bool` ao model `AiModel` e popular via migration/seed.
+2. Expor o campo em `AiModelOut` e no catálogo.
+3. Remover `EXECUTABLE_MODEL_NAMES` do `page.tsx` e usar `activeModel.is_executable`.
+4. O backend pode manter a whitelist como check de segurança adicional ou removê-la também.

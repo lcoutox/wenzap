@@ -32,13 +32,6 @@ type BlockReason =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Phase 3: only these model_name values are executable via Anthropic
-const EXECUTABLE_MODELS = new Set([
-  "claude-haiku-4-5",
-  "claude-sonnet-4-6",
-  "claude-opus-4-8",
-]);
-
 function getBlockReason(
   agent: Agent,
   activeModel: AiModel | null,
@@ -156,9 +149,8 @@ export function AgentChat({
     }
   }
 
-  const creditsUsed    = usage?.ai_credits_used ?? null;
-  const creditsLimit   = null; // not directly on Usage; shown in side panel if known
-  const creditsPerMsg  = activeModel?.credits_per_message ?? null;
+  const creditsUsed   = usage?.ai_credits_used ?? null;
+  const creditsPerMsg = activeModel?.credits_per_message ?? null;
 
   return (
     <div className="flex gap-4 h-[calc(100vh-280px)] min-h-[520px]">

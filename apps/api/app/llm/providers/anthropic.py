@@ -29,12 +29,11 @@ def complete(request: LLMRequest) -> LLMResponse:
             "Anthropic API key not configured. Set ANTHROPIC_API_KEY in the environment."
         )
 
-    client = anthropic.Anthropic(api_key=api_key)
-
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     start_ms = time.monotonic()
     try:
+        client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=request.model_name,
             system=request.system,

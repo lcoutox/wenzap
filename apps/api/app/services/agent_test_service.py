@@ -59,15 +59,17 @@ def run_agent_test(
     data: AgentTestRequest,
 ) -> AgentTestResponse:
     agent = _get_agent_or_404(db, workspace_id, agent_id)
-    _validate_agent_testable(db, agent)
+    _validate_agent_testable(agent)
     model_settings = _get_model_settings_or_400(db, agent)
     model, provider = _get_model_and_provider(db, model_settings)
     _validate_model_active(model, provider)
-    _validate_plan(db, workspace_id, model)
+    # Resolve plan once; pass to both validations to avoid duplicate DB round-trips.
+    plan_code = _get_workspace_plan_code(db, workspace_id)
+    _validate_plan(plan_code, model)
     _validate_runtime_support(model, provider)
     credits_needed = model.credits_per_message
     counter = _get_usage_counter_or_402(db, workspace_id)
-    _validate_credits(counter, credits_needed, db, workspace_id, model)
+    _validate_credits(counter, credits_needed, plan_code, db)
     prompt_settings = _get_prompt_settings(db, agent)
     system = build_system_prompt(
         agent_name=agent.name,
@@ -149,7 +151,7 @@ def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID)
     return agent
 
 
-def _validate_agent_testable(db: Session, agent: Agent) -> None:
+def _validate_agent_testable(agent: Agent) -> None:
     if agent.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -229,8 +231,7 @@ def _validate_model_active(model: AiModel, provider: AiModelProvider) -> None:
         )
 
 
-def _validate_plan(db: Session, workspace_id: uuid.UUID, model: AiModel) -> None:
-    plan_code = _get_workspace_plan_code(db, workspace_id)
+def _validate_plan(plan_code: str, model: AiModel) -> None:
     workspace_tier = PLAN_TIER.get(plan_code, 1)
     model_tier = PLAN_TIER.get(model.min_plan_code, 1)
     if workspace_tier < model_tier:
@@ -289,11 +290,9 @@ def _get_usage_counter_or_402(db: Session, workspace_id: uuid.UUID) -> UsageCoun
 def _validate_credits(
     counter: UsageCounter,
     credits_needed: int,
+    plan_code: str,
     db: Session,
-    workspace_id: uuid.UUID,
-    model: AiModel,
 ) -> None:
-    plan_code = _get_workspace_plan_code(db, workspace_id)
     plan = _get_plan_by_code(db, plan_code)
     monthly_limit = plan.monthly_ai_credits if plan else 0
     if counter.ai_credits_used + credits_needed > monthly_limit:
