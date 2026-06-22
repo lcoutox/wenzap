@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.enums import AgentStatus, SubscriptionStatus
 from app.models.agent import Agent
+from app.models.agent_model_settings import AgentModelSettings
+from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent import AgentCreate, AgentOut, AgentUpdate
@@ -15,7 +17,13 @@ from app.services.ai_model_service import (
     validate_model_for_plan,
 )
 
-# Fields that can be explicitly cleared to None via PATCH.
+# Fields routed to agent_prompt_settings
+_PROMPT_FIELDS = {"system_prompt", "persona"}
+
+# Fields routed to agent_model_settings (handled explicitly, not via generic loop)
+_MODEL_FIELDS = {"ai_model_id", "temperature"}
+
+# Fields that can be explicitly cleared to None via PATCH
 _CLEARABLE_FIELDS = {"description", "persona", "system_prompt"}
 
 # Valid status transitions
@@ -27,6 +35,8 @@ _VALID_TRANSITIONS: dict[AgentStatus, set[AgentStatus]] = {
 }
 
 
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
 def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
     agent = db.scalar(
         select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id)
@@ -34,6 +44,77 @@ def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID)
     if agent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
     return agent
+
+
+def _get_prompt_settings(db: Session, agent_id: uuid.UUID) -> AgentPromptSettings | None:
+    return db.scalar(
+        select(AgentPromptSettings).where(AgentPromptSettings.agent_id == agent_id)
+    )
+
+
+def _get_model_settings(db: Session, agent_id: uuid.UUID) -> AgentModelSettings | None:
+    return db.scalar(
+        select(AgentModelSettings).where(AgentModelSettings.agent_id == agent_id)
+    )
+
+
+def _get_or_create_prompt_settings(
+    db: Session, agent: Agent
+) -> AgentPromptSettings:
+    """Return existing prompt settings or create from agent fields (transition fallback)."""
+    ps = _get_prompt_settings(db, agent.id)
+    if ps is None:
+        ps = AgentPromptSettings(
+            agent_id=agent.id,
+            system_prompt=agent.system_prompt,
+            persona=agent.persona,
+        )
+        db.add(ps)
+        db.flush()
+    return ps
+
+
+def _get_or_create_model_settings(
+    db: Session, agent: Agent
+) -> AgentModelSettings | None:
+    """Return existing model settings or create from agent fields (transition fallback).
+
+    Returns None if agent.ai_model_id is not set — cannot create without a model FK.
+    """
+    ms = _get_model_settings(db, agent.id)
+    if ms is None and agent.ai_model_id is not None:
+        ms = AgentModelSettings(
+            agent_id=agent.id,
+            ai_model_id=agent.ai_model_id,
+            model_name=agent.model_name,
+            temperature=float(agent.temperature),
+        )
+        db.add(ms)
+        db.flush()
+    return ms
+
+
+def _build_agent_out(
+    agent: Agent,
+    prompt: AgentPromptSettings | None,
+    model_cfg: AgentModelSettings | None,
+) -> AgentOut:
+    """Compose AgentOut from agent + satellite settings, falling back to agent fields."""
+    return AgentOut(
+        id=agent.id,
+        workspace_id=agent.workspace_id,
+        name=agent.name,
+        description=agent.description,
+        status=AgentStatus(agent.status),
+        system_prompt=prompt.system_prompt if prompt else agent.system_prompt,
+        persona=prompt.persona if prompt else agent.persona,
+        ai_model_id=model_cfg.ai_model_id if model_cfg else agent.ai_model_id,
+        model_name=model_cfg.model_name if model_cfg else agent.model_name,
+        temperature=float(model_cfg.temperature) if model_cfg else float(agent.temperature),
+        created_by_user_id=agent.created_by_user_id,
+        created_at=agent.created_at,
+        updated_at=agent.updated_at,
+    )
 
 
 def _check_plan_limit(db: Session, workspace_id: uuid.UUID) -> None:
@@ -74,6 +155,8 @@ def _check_plan_limit(db: Session, workspace_id: uuid.UUID) -> None:
         )
 
 
+# ── Public service functions ──────────────────────────────────────────────────
+
 def list_agents(
     db: Session,
     workspace_id: uuid.UUID,
@@ -88,12 +171,20 @@ def list_agents(
 
     query = query.order_by(Agent.created_at.desc())
     agents = db.scalars(query).all()
-    return [AgentOut.model_validate(a) for a in agents]
+
+    result = []
+    for agent in agents:
+        prompt = _get_prompt_settings(db, agent.id)
+        model_cfg = _get_model_settings(db, agent.id)
+        result.append(_build_agent_out(agent, prompt, model_cfg))
+    return result
 
 
 def get_agent(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID) -> AgentOut:
     agent = _get_agent_or_404(db, workspace_id, agent_id)
-    return AgentOut.model_validate(agent)
+    prompt = _get_prompt_settings(db, agent.id)
+    model_cfg = _get_model_settings(db, agent.id)
+    return _build_agent_out(agent, prompt, model_cfg)
 
 
 def create_agent(
@@ -108,22 +199,44 @@ def create_agent(
     model = get_model_or_404(db, data.ai_model_id)
     validate_model_for_plan(model, plan_code)
 
+    # Create core agent record (legacy fields kept for transition compatibility)
     agent = Agent(
         workspace_id=workspace_id,
         name=data.name,
         description=data.description,
-        system_prompt=data.system_prompt,
-        persona=data.persona,
-        ai_model_id=model.id,
-        model_name=model.model_name,
-        temperature=data.temperature,
+        system_prompt=data.system_prompt,   # transition: kept in agents
+        persona=data.persona,               # transition: kept in agents
+        ai_model_id=model.id,               # transition: kept in agents
+        model_name=model.model_name,        # transition: kept in agents
+        temperature=data.temperature,       # transition: kept in agents
         status=AgentStatus.draft.value,
         created_by_user_id=user_id,
     )
     db.add(agent)
+    db.flush()  # get agent.id without committing
+
+    # Create satellite settings in the same transaction
+    prompt = AgentPromptSettings(
+        agent_id=agent.id,
+        system_prompt=data.system_prompt,
+        persona=data.persona,
+    )
+    db.add(prompt)
+
+    model_cfg = AgentModelSettings(
+        agent_id=agent.id,
+        ai_model_id=model.id,
+        model_name=model.model_name,
+        temperature=data.temperature,
+    )
+    db.add(model_cfg)
+
     db.commit()
     db.refresh(agent)
-    return AgentOut.model_validate(agent)
+    db.refresh(prompt)
+    db.refresh(model_cfg)
+
+    return _build_agent_out(agent, prompt, model_cfg)
 
 
 def update_agent(
@@ -142,15 +255,45 @@ def update_agent(
 
     update_data = data.model_dump(exclude_unset=True)
 
-    # Handle ai_model_id separately — it implies updating model_name snapshot too
+    prompt = _get_or_create_prompt_settings(db, agent)
+    model_cfg = _get_or_create_model_settings(db, agent)
+
+    # ── Handle ai_model_id (implies model_name snapshot update) ──────────────
     if "ai_model_id" in update_data and update_data["ai_model_id"] is not None:
         plan_code = _get_workspace_plan_code(db, workspace_id)
         model = get_model_or_404(db, update_data["ai_model_id"])
         validate_model_for_plan(model, plan_code)
+
+        # Write to satellite (primary source)
+        if model_cfg is not None:
+            model_cfg.ai_model_id = model.id
+            model_cfg.model_name = model.model_name
+        # Transition: keep agents in sync
         agent.ai_model_id = model.id
         agent.model_name = model.model_name
+
         del update_data["ai_model_id"]
 
+    # ── Handle temperature ────────────────────────────────────────────────────
+    if "temperature" in update_data and update_data["temperature"] is not None:
+        temp_val = update_data.pop("temperature")
+        if model_cfg is not None:
+            model_cfg.temperature = temp_val
+        agent.temperature = temp_val  # transition: keep agents in sync
+
+    # ── Handle prompt fields ──────────────────────────────────────────────────
+    for field in ("system_prompt", "persona"):
+        if field not in update_data:
+            continue
+        value = update_data.pop(field)
+        if value is None and field not in _CLEARABLE_FIELDS:
+            continue
+        # Write to satellite (primary source)
+        setattr(prompt, field, value)
+        # Transition: keep agents in sync
+        setattr(agent, field, value)
+
+    # ── Handle remaining agent fields (name, description) ────────────────────
     for field, value in update_data.items():
         if value is None and field not in _CLEARABLE_FIELDS:
             continue
@@ -158,7 +301,12 @@ def update_agent(
 
     db.commit()
     db.refresh(agent)
-    return AgentOut.model_validate(agent)
+    if prompt:
+        db.refresh(prompt)
+    if model_cfg:
+        db.refresh(model_cfg)
+
+    return _build_agent_out(agent, prompt, model_cfg)
 
 
 def update_agent_status(
@@ -178,7 +326,10 @@ def update_agent_status(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
     if new_status == AgentStatus.active:
-        if not agent.system_prompt or not agent.system_prompt.strip():
+        # Read system_prompt from satellite settings (primary), fall back to agent field
+        prompt = _get_prompt_settings(db, agent.id)
+        system_prompt = prompt.system_prompt if prompt else agent.system_prompt
+        if not system_prompt or not system_prompt.strip():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="system_prompt is required to activate an agent.",
@@ -187,7 +338,10 @@ def update_agent_status(
     agent.status = new_status.value
     db.commit()
     db.refresh(agent)
-    return AgentOut.model_validate(agent)
+
+    prompt = _get_prompt_settings(db, agent.id)
+    model_cfg = _get_model_settings(db, agent.id)
+    return _build_agent_out(agent, prompt, model_cfg)
 
 
 def archive_agent(
@@ -198,9 +352,14 @@ def archive_agent(
     agent = _get_agent_or_404(db, workspace_id, agent_id)
 
     if agent.status == AgentStatus.archived.value:
-        return AgentOut.model_validate(agent)
+        prompt = _get_prompt_settings(db, agent.id)
+        model_cfg = _get_model_settings(db, agent.id)
+        return _build_agent_out(agent, prompt, model_cfg)
 
     agent.status = AgentStatus.archived.value
     db.commit()
     db.refresh(agent)
-    return AgentOut.model_validate(agent)
+
+    prompt = _get_prompt_settings(db, agent.id)
+    model_cfg = _get_model_settings(db, agent.id)
+    return _build_agent_out(agent, prompt, model_cfg)

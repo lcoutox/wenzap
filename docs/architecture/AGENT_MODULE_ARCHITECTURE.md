@@ -1,7 +1,7 @@
 # Agent Module Architecture
 
-**Status:** Proposal — awaiting approval before any implementation  
-**Phase context:** After Phase 2.2 (AI Model Catalog). Before Phase 3 (Playground).  
+**Status:** Phase 2.4 implemented — satellite tables live in production  
+**Phase context:** After Phase 2.4 (Agent Architecture Preparation). Before Phase 3 (Playground).  
 **Last updated:** 2026-06-22
 
 ---
@@ -490,3 +490,91 @@ Mover para `agent_prompt_settings` na Phase 2.4. Enquanto isso, manter em `agent
 Criar `agent_prompt_settings` e `agent_model_settings` com backfill. Atualizar o service para compor dados das três tabelas. Manter o contrato de API idêntico. Zero breaking change para o frontend. `agents` fica com: `id, workspace_id, name, description, status, created_by_user_id, created_at, updated_at`.
 
 Esse é o núcleo estável da entidade Agent — e deve permanecer assim.
+
+---
+
+## Phase 2.4 Implementation Notes
+
+**Implementado em:** 2026-06-22  
+**Migration:** `016_create_agent_settings.py`
+
+### Tabelas criadas
+
+**`agent_prompt_settings`**
+```
+id              UUID PK
+agent_id        UUID FK → agents ON DELETE CASCADE UNIQUE
+system_prompt   TEXT nullable
+persona         TEXT nullable
+response_style  VARCHAR(50) nullable
+language_mode   VARCHAR(20) nullable
+created_at      TIMESTAMPTZ
+updated_at      TIMESTAMPTZ
+```
+
+**`agent_model_settings`**
+```
+id                      UUID PK
+agent_id                UUID FK → agents ON DELETE CASCADE UNIQUE
+ai_model_id             UUID FK → ai_models ON DELETE RESTRICT NOT NULL
+model_name              VARCHAR(200) NOT NULL  -- snapshot técnico do provider
+temperature             NUMERIC(3,2) NOT NULL default 0.70
+context_window_tier     VARCHAR(20) nullable
+context_window_tokens   INTEGER nullable
+created_at              TIMESTAMPTZ
+updated_at              TIMESTAMPTZ
+```
+
+Nota: `ON DELETE RESTRICT` em `ai_model_id` é intencional. Modelos do catálogo devem ser desativados (`is_active = false`), nunca deletados fisicamente.
+
+### Campos migrados logicamente
+
+Os campos `system_prompt`, `persona`, `ai_model_id`, `model_name` e `temperature` foram migrados logicamente de `agents` para as tabelas satélites. Os campos físicos em `agents` **permanecem nesta fase** para garantir compatibilidade durante a transição.
+
+### Estratégia de backfill
+
+Realizado na própria migration 016, imediatamente após a criação das tabelas:
+
+```sql
+INSERT INTO agent_prompt_settings (id, agent_id, system_prompt, persona)
+SELECT gen_random_uuid(), id, system_prompt, persona FROM agents;
+
+INSERT INTO agent_model_settings (id, agent_id, ai_model_id, model_name, temperature)
+SELECT gen_random_uuid(), id, ai_model_id, model_name, temperature
+FROM agents WHERE ai_model_id IS NOT NULL;
+```
+
+Agentes sem `ai_model_id` (inválidos) ficam sem `agent_model_settings`.
+
+### Estratégia de compatibilidade
+
+O service (`agent_service.py`) segue o padrão de **escrita dupla durante transição**:
+
+- **Leitura:** `_build_agent_out` prioriza as tabelas satélites; cai para `agents.*` se não houver settings (fallback para agentes pré-migração).
+- **Escrita:** `create_agent` e `update_agent` escrevem simultaneamente nas tabelas satélites e nos campos legados de `agents`, garantindo que um rollback de service (sem rollback de migration) não quebre nada.
+- **On-demand creation:** `_get_or_create_prompt_settings` e `_get_or_create_model_settings` criam os registros satélite sob demanda caso um agente antigo ainda não tenha os registros (protection against pre-migration agents accessed post-migration).
+
+### Por que manter campos antigos em `agents`
+
+1. **Rollback safety:** se o service precisar ser revertido sem reverter a migration, `agents.*` continua como fonte de dados válida.
+2. **Drift protection:** nenhum código externo ao service lê `agents.*` diretamente, mas a migration downgrade pode depender dos campos existindo.
+3. **Estabilização:** esperar um ciclo de produção antes de fazer DROP é prática padrão para migrações de separação de tabelas.
+
+### Plano futuro para remover campos legados
+
+Remover em uma Phase futura (3.x ou 4.x) quando:
+
+1. `agent_prompt_settings` e `agent_model_settings` estiverem em produção com múltiplos deployments.
+2. Escrita dupla validada: nenhuma inconsistência detectada entre campos legados e satélites.
+3. Nenhum código lê diretamente `agents.system_prompt`, `agents.persona`, `agents.ai_model_id`, `agents.model_name` ou `agents.temperature` fora de `agent_service.py`.
+4. Testes cobrem todos os fluxos com dados exclusivamente nos satélites.
+
+A migration de remoção fará: `ALTER TABLE agents DROP COLUMN system_prompt, persona, ai_model_id, model_name, temperature`.
+
+### Riscos conhecidos
+
+| Risco | Probabilidade | Mitigação |
+|---|---|---|
+| N+1 queries em `list_agents` (2 queries extras por agente) | Certeza em volume alto | Resolver com JOIN ou `selectinload` antes da Phase 3 com dados reais |
+| Race condition em `_get_or_create_*` para agentes pré-migração | Muito baixa | UNIQUE constraint detecta e falha; agentes novos nunca passam por esse path |
+| Drift entre campos de `agents` e satélites | Baixa (escrita dupla) | Service mantém escrita sincronizada; testes cobrem parallelism |
