@@ -139,6 +139,21 @@ export type AgentStatusUpdateInput = {
   status: AgentStatus;
 };
 
+export type AgentTestModelInfo = {
+  display_name: string;
+  provider: string;
+  model_name: string;
+};
+
+export type AgentTestResponse = {
+  reply: string;
+  credits_used: number;
+  input_tokens: number;
+  output_tokens: number;
+  duration_ms: number;
+  model: AgentTestModelInfo;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -217,5 +232,10 @@ export const api = {
       }),
     archive: (token: string, id: string) =>
       apiFetch<Agent>(`/agents/${id}`, token, { method: "DELETE" }),
+    test: (token: string, id: string, message: string) =>
+      apiFetch<AgentTestResponse>(`/agents/${id}/test`, token, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      }),
   },
 };

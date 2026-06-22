@@ -10,7 +10,8 @@ from app.enums import AgentStatus, MemberRole
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.agent import AgentCreate, AgentOut, AgentStatusUpdate, AgentUpdate
-from app.services import agent_service
+from app.schemas.agent_test import AgentTestRequest, AgentTestResponse
+from app.services import agent_service, agent_test_service
 from app.services.workspace_service import get_current_member_role
 
 router = APIRouter(prefix="/agents")
@@ -102,3 +103,21 @@ def archive_agent(
 ) -> AgentOut:
     _require_role(_ARCHIVE_ROLES, db, current_workspace, current_user)
     return agent_service.archive_agent(db, current_workspace.id, agent_id)
+
+
+@router.post("/{agent_id}/test", response_model=AgentTestResponse)
+def test_agent(
+    agent_id: uuid.UUID,
+    data: AgentTestRequest,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentTestResponse:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_test_service.run_agent_test(
+        db,
+        workspace_id=current_workspace.id,
+        agent_id=agent_id,
+        user_id=current_user.id,
+        data=data,
+    )

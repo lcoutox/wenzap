@@ -12,7 +12,7 @@ import type { WorkspaceTab } from "@/components/agents/workspace/AgentWorkspaceT
 import { ConfigTabs } from "@/components/agents/workspace/ConfigTabs";
 import type { ConfigTab } from "@/components/agents/workspace/ConfigTabs";
 
-import { ChatPlaceholder }     from "@/components/agents/workspace/tabs/ChatPlaceholder";
+import { AgentChat }           from "@/components/agents/workspace/tabs/AgentChat";
 import { ImplantarPlaceholder } from "@/components/agents/workspace/tabs/ImplantarPlaceholder";
 import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
 import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
@@ -31,6 +31,27 @@ function findActiveModel(catalog: AiCatalog | null, aiModelId: string | null): A
     if (m) return m;
   }
   return null;
+}
+
+// Phase 3: models executable via Anthropic SDK
+const EXECUTABLE_MODEL_NAMES = new Set([
+  "claude-haiku-4-5",
+  "claude-sonnet-4-6",
+  "claude-opus-4-8",
+]);
+
+function isModelExecutable(catalog: AiCatalog | null, activeModel: AiModel | null): boolean {
+  if (!catalog || !activeModel) return false;
+  for (const provider of catalog.providers) {
+    const found = provider.models.find((m) => m.id === activeModel.id);
+    if (found) {
+      return (
+        (provider.code === "anthropic" || provider.code === "nexbrain") &&
+        EXECUTABLE_MODEL_NAMES.has(activeModel.model_name)
+      );
+    }
+  }
+  return false;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -179,8 +200,9 @@ export default function AgentWorkspacePage() {
 
   if (!agent) return null;
 
-  const activeModel = findActiveModel(catalog, aiModelId);
-  const isArchived  = agent.status === "archived";
+  const activeModel     = findActiveModel(catalog, aiModelId);
+  const modelExecutable = isModelExecutable(catalog, activeModel);
+  const isArchived      = agent.status === "archived";
   const canWrite    = role === "owner" || role === "admin" || role === "member";
   const readonly    = isArchived || !canWrite;
 
@@ -208,7 +230,13 @@ export default function AgentWorkspacePage() {
 
         {/* ── Chat ── */}
         {workspaceTab === "chat" && (
-          <ChatPlaceholder agent={agent} activeModel={activeModel} />
+          <AgentChat
+            agent={agent}
+            activeModel={activeModel}
+            modelExecutable={modelExecutable}
+            role={role}
+            getToken={getToken}
+          />
         )}
 
         {/* ── Implantar ── */}

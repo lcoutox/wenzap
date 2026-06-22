@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     # If set, every JWT must carry a matching azp claim.
     clerk_expected_azp: str = ""
 
+    anthropic_api_key: str = ""
+
     # Comma-separated list of allowed CORS origins.
     # Example: "http://localhost:3000,https://app.nexbrain.com"
     cors_origins: str = "http://localhost:3000"
