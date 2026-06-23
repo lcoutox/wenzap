@@ -79,8 +79,18 @@ def run_agent_test(
     counter = _get_usage_counter_or_402(db, workspace_id)
     _validate_credits(counter, credits_needed, plan_code, db)
 
-    # Validate session ownership before any writes — bad session_id must never
-    # cause partial state (session created without messages).
+    # Validate system_prompt before session creation so a missing prompt never
+    # results in a session being created without messages.
+    prompt_settings = _get_prompt_settings(db, agent)
+    system = build_system_prompt(
+        agent_name=agent.name,
+        agent_description=agent.description,
+        system_prompt=prompt_settings.system_prompt,
+        persona=prompt_settings.persona,
+    )
+
+    # Validate session ownership before any writes — a bad session_id must
+    # never cause partial state (session created without messages).
     if data.session_id is not None:
         playground_service.get_session_or_404(db, workspace_id, agent_id, data.session_id)
 
@@ -104,15 +114,6 @@ def run_agent_test(
 
     # Flush so pending objects get PKs; LLM call happens outside the transaction.
     db.flush()
-
-    # ── Build prompt & call LLM ───────────────────────────────────────────────
-    prompt_settings = _get_prompt_settings(db, agent)
-    system = build_system_prompt(
-        agent_name=agent.name,
-        agent_description=agent.description,
-        system_prompt=prompt_settings.system_prompt,
-        persona=prompt_settings.persona,
-    )
 
     request = LLMRequest(
         model_name=model.model_name,

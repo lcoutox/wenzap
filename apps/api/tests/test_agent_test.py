@@ -268,8 +268,27 @@ def _full_setup(
     return user, ws, agent, model, provider, counter
 
 
-def _post_test(client, agent_id, *, message: str = _VALID_MESSAGE):
-    return client.post(f"/agents/{agent_id}/test", json={"message": message})
+def _post_test(client, agent_id, *, message: str = _VALID_MESSAGE, session_id=None):
+    body: dict = {"message": message}
+    if session_id is not None:
+        body["session_id"] = str(session_id)
+    return client.post(f"/agents/{agent_id}/test", json=body)
+
+
+def _get_sessions(db: Session, agent_id: uuid.UUID):
+    from app.models.agent_playground_session import AgentPlaygroundSession
+    return list(db.scalars(
+        select(AgentPlaygroundSession).where(AgentPlaygroundSession.agent_id == agent_id)
+    ))
+
+
+def _get_messages(db: Session, session_id: uuid.UUID):
+    from app.models.agent_playground_message import AgentPlaygroundMessage
+    return list(db.scalars(
+        select(AgentPlaygroundMessage)
+        .where(AgentPlaygroundMessage.session_id == session_id)
+        .order_by(AgentPlaygroundMessage.created_at.asc())
+    ))
 
 
 def _count_runs(db: Session, agent_id: uuid.UUID) -> int:
@@ -993,3 +1012,349 @@ def test_success_response_shape(db):
     assert body["model"]["display_name"] == model.display_name
     assert body["model"]["provider"] == provider.code
     assert body["model"]["model_name"] == model.model_name
+    assert "session_id" in body
+    assert uuid.UUID(body["session_id"])  # parseable UUID
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. Sessions & Messages
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Auto-create ───────────────────────────────────────────────────────────────
+
+def test_no_session_id_creates_new_session(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id)
+
+    assert r.status_code == 200
+    sessions = _get_sessions(db, agent.id)
+    assert len(sessions) == 1
+
+
+def test_response_includes_session_id(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id)
+
+    body = r.json()
+    assert "session_id" in body
+    assert uuid.UUID(body["session_id"])
+
+
+def test_session_id_in_response_matches_db(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    sessions = _get_sessions(db, agent.id)
+    assert any(s.id == session_id for s in sessions)
+
+
+def test_session_title_set_from_first_message(db):
+    user, ws, agent, *_ = _full_setup(db)
+    message = "Tell me about yourself"
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id, message=message)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    sessions = _get_sessions(db, agent.id)
+    session = next(s for s in sessions if s.id == session_id)
+    assert session.title == message
+
+
+def test_session_title_is_trimmed(db):
+    user, ws, agent, *_ = _full_setup(db)
+    message = "  spaced message  "
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id, message=message)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    sessions = _get_sessions(db, agent.id)
+    session = next(s for s in sessions if s.id == session_id)
+    # After strip (validator strips before service sees it) and service strip:
+    # validator strips the message before reaching service → title = "spaced message"
+    assert session.title == message.strip()
+
+
+def test_session_title_truncated_at_80_chars(db):
+    user, ws, agent, *_ = _full_setup(db)
+    long_msg = "A" * 120
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id, message=long_msg)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    sessions = _get_sessions(db, agent.id)
+    session = next(s for s in sessions if s.id == session_id)
+    assert session.title == "A" * 80
+    assert len(session.title) == 80
+
+
+# ── Session reuse ─────────────────────────────────────────────────────────────
+
+def test_send_with_session_id_reuses_session(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r1 = _post_test(client, agent.id)
+
+    session_id = r1.json()["session_id"]
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r2 = _post_test(client, agent.id, session_id=session_id)
+
+    assert r2.json()["session_id"] == session_id
+    assert len(_get_sessions(db, agent.id)) == 1
+
+
+def test_second_message_does_not_overwrite_title(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r1 = _post_test(client, agent.id, message="First question")
+
+    session_id = uuid.UUID(r1.json()["session_id"])
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id, message="Second question", session_id=session_id)
+
+    db.expire_all()
+    sessions = _get_sessions(db, agent.id)
+    session = next(s for s in sessions if s.id == session_id)
+    assert session.title == "First question"
+
+
+def test_session_id_from_other_workspace_returns_404(db):
+    user_a, ws_a, agent_a, *_ = _full_setup(db)
+    user_b, ws_b, agent_b, *_ = _full_setup(db)
+
+    from app.models.agent_playground_session import AgentPlaygroundSession
+    session_b = AgentPlaygroundSession(
+        id=uuid.uuid4(),
+        workspace_id=ws_b.id,
+        agent_id=agent_b.id,
+        user_id=user_b.id,
+        title="Nova conversa",
+    )
+    db.add(session_b)
+    db.commit()
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user_a, ws_a) as client:
+            r = _post_test(client, agent_a.id, session_id=session_b.id)
+
+    assert r.status_code == 404
+
+
+def test_session_id_from_other_agent_returns_404(db):
+    user_a, ws_a, agent_a, *_ = _full_setup(db)
+    user_b, ws_b, agent_b, *_ = _full_setup(db)
+
+    from app.models.agent_playground_session import AgentPlaygroundSession
+    session_b = AgentPlaygroundSession(
+        id=uuid.uuid4(),
+        workspace_id=ws_b.id,
+        agent_id=agent_b.id,
+        user_id=user_b.id,
+        title="Nova conversa",
+    )
+    db.add(session_b)
+    db.commit()
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user_a, ws_a) as client:
+            # agent_a belongs to ws_a; session_b belongs to ws_b/agent_b → 404
+            r = _post_test(client, agent_a.id, session_id=session_b.id)
+
+    assert r.status_code == 404
+
+
+# ── Message persistence ───────────────────────────────────────────────────────
+
+def test_success_saves_two_messages(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    messages = _get_messages(db, session_id)
+    assert len(messages) == 2
+
+
+def test_user_message_role_and_content(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id, message="What is AI?")
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    messages = _get_messages(db, session_id)
+    user_msg = next(m for m in messages if m.role == "user")
+    assert user_msg.content == "What is AI?"
+    assert user_msg.agent_test_run_id is None
+
+
+def test_assistant_message_role_content_and_run_id(db):
+    user, ws, agent, *_ = _full_setup(db)
+    llm_resp = _mock_llm_response("I am an AI assistant.")
+
+    with patch("app.llm.client.complete", return_value=llm_resp):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    messages = _get_messages(db, session_id)
+    asst_msg = next(m for m in messages if m.role == "assistant")
+    assert asst_msg.content == "I am an AI assistant."
+    assert asst_msg.agent_test_run_id is not None
+
+    runs = _get_runs(db, agent.id)
+    assert asst_msg.agent_test_run_id == runs[0].id
+
+
+def test_user_message_has_no_run_id(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id)
+
+    session_id = uuid.UUID(r.json()["session_id"])
+    messages = _get_messages(db, session_id)
+    user_msgs = [m for m in messages if m.role == "user"]
+    assert all(m.agent_test_run_id is None for m in user_msgs)
+
+
+def test_messages_follow_user_assistant_pattern(db):
+    """Two sequential sends produce user/assistant/user/assistant pattern."""
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response("R1")):
+        with _make_client(db, user, ws) as client:
+            r1 = _post_test(client, agent.id, message="Q1")
+
+    session_id = uuid.UUID(r1.json()["session_id"])
+
+    with patch("app.llm.client.complete", return_value=_mock_llm_response("R2")):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id, message="Q2", session_id=session_id)
+
+    messages = _get_messages(db, session_id)
+    assert len(messages) == 4
+    roles = [m.role for m in messages]
+    assert roles[0] == "user"
+    assert roles[1] == "assistant"
+    assert roles[2] == "user"
+    assert roles[3] == "assistant"
+    contents = [m.content for m in messages]
+    assert "Q1" in contents
+    assert "R1" in contents
+    assert "Q2" in contents
+    assert "R2" in contents
+
+
+# ── Provider error ────────────────────────────────────────────────────────────
+
+def test_provider_error_saves_user_message(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", side_effect=LLMProviderError("timeout")):
+        with _make_client(db, user, ws) as client:
+            r = _post_test(client, agent.id, message="My question")
+
+    assert r.status_code == 503
+    sessions = _get_sessions(db, agent.id)
+    assert len(sessions) == 1
+    messages = _get_messages(db, sessions[0].id)
+    assert len(messages) == 1
+    assert messages[0].role == "user"
+    assert messages[0].content == "My question"
+
+
+def test_provider_error_does_not_save_assistant_message(db):
+    user, ws, agent, *_ = _full_setup(db)
+
+    with patch("app.llm.client.complete", side_effect=LLMProviderError("fail")):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id)
+
+    sessions = _get_sessions(db, agent.id)
+    messages = _get_messages(db, sessions[0].id)
+    assert not any(m.role == "assistant" for m in messages)
+
+
+# ── Pre-LLM failures: no session or message created ──────────────────────────
+
+def test_archived_agent_does_not_create_session(db):
+    user, ws, agent, *_ = _full_setup(db, agent_status="archived")
+
+    with patch("app.llm.client.complete"):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id)
+
+    assert len(_get_sessions(db, agent.id)) == 0
+
+
+def test_missing_system_prompt_does_not_create_session(db):
+    user, ws, agent, *_ = _full_setup(db, system_prompt=None)
+
+    with patch("app.llm.client.complete"):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id)
+
+    assert len(_get_sessions(db, agent.id)) == 0
+
+
+def test_insufficient_credits_does_not_create_session(db):
+    user, ws, agent, *_ = _full_setup(
+        db, monthly_ai_credits=1, ai_credits_used=1, credits_per_message=1
+    )
+
+    with patch("app.llm.client.complete"):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id)
+
+    assert len(_get_sessions(db, agent.id)) == 0
+
+
+def test_insufficient_credits_does_not_create_user_message(db):
+    user, ws, agent, *_ = _full_setup(
+        db, monthly_ai_credits=1, ai_credits_used=1, credits_per_message=1
+    )
+
+    with patch("app.llm.client.complete"):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id)
+
+    # No sessions → no messages to check
+    assert len(_get_sessions(db, agent.id)) == 0
+
+
+def test_unsupported_model_does_not_create_session(db):
+    user, ws, agent, *_ = _full_setup(db, provider_code="openai", model_name="gpt-4o")
+
+    with patch("app.llm.client.complete"):
+        with _make_client(db, user, ws) as client:
+            _post_test(client, agent.id)
+
+    assert len(_get_sessions(db, agent.id)) == 0
