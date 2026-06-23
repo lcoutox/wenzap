@@ -47,6 +47,7 @@ from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent_test import AgentTestModelInfo, AgentTestRequest, AgentTestResponse
 from app.services import playground_service
 from app.services.agent_context_builder import build_system_prompt
+from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
 from app.services.ai_model_service import PLAN_TIER
 
 # Phase 3: only these Anthropic model_name values can be executed.
@@ -111,6 +112,30 @@ def run_agent_test(
 
     # Flush so pending objects get PKs; LLM call happens outside the transaction.
     db.flush()
+
+    # ── Prompt injection detection (Phase 3.2) ────────────────────────────────
+    # Checked after session + user message are already flushed so the attempt
+    # is visible in Playground history. No LLM call, no credits consumed, no run.
+    if detect_prompt_injection(data.message):
+        refusal = get_safe_refusal_message()
+        playground_service.save_assistant_message(
+            db, session.id, refusal, agent_test_run_id=None
+        )
+        playground_service.touch_session(db, session)
+        db.commit()
+        return AgentTestResponse(
+            reply=refusal,
+            credits_used=0,
+            input_tokens=0,
+            output_tokens=0,
+            duration_ms=0,
+            model=AgentTestModelInfo(
+                display_name=model.display_name,
+                provider=provider.code,
+                model_name=model.model_name,
+            ),
+            session_id=session.id,
+        )
 
     request = LLMRequest(
         model_name=model.model_name,
