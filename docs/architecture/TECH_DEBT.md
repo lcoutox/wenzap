@@ -162,3 +162,129 @@ Quando o catálogo de modelos (`/ai-models`) retornar um campo `is_executable: b
 2. Expor o campo em `AiModelOut` e no catálogo.
 3. Remover `EXECUTABLE_MODEL_NAMES` do `page.tsx` e usar `activeModel.is_executable`.
 4. O backend pode manter a whitelist como check de segurança adicional ou removê-la também.
+
+---
+
+## [TD-005] `PlaygroundMessageOut` não retorna run metadata
+
+**Status:** Active — introduced in Phase 3.1
+**Priority:** Medium
+**Target phase:** Phase 3.2 ou 4.x
+
+### What it is
+
+`PlaygroundMessageOut` retorna os campos básicos da mensagem (`id`, `session_id`, `role`, `content`, `agent_test_run_id`, `created_at`), mas não os metadados do run associado (`credits_used`, `input_tokens`, `output_tokens`, `duration_ms`, `model`).
+
+No frontend, esses metadados são exibidos apenas para a mensagem recém-enviada (via `AgentTestResponse`), e desaparecem ao recarregar a página ou trocar de sessão.
+
+### Why it was kept
+
+Evitar um JOIN extra entre `agent_playground_messages` e `agent_test_runs` em cada chamada ao GET session. Mantém a schema simples na Phase 3.1.
+
+### How to fix
+
+Adicionar campos opcionais em `PlaygroundMessageOut`:
+
+```python
+class PlaygroundMessageOut(BaseModel):
+    ...
+    run_credits_used: int | None = None
+    run_input_tokens: int | None = None
+    run_output_tokens: int | None = None
+    run_duration_ms: int | None = None
+    run_model_display_name: str | None = None
+```
+
+Em `playground_service.get_session_with_messages`, usar um JOIN:
+
+```python
+select(AgentPlaygroundMessage, AgentTestRun)
+.outerjoin(AgentTestRun, AgentTestRun.id == AgentPlaygroundMessage.agent_test_run_id)
+.where(AgentPlaygroundMessage.session_id == session_id)
+.order_by(AgentPlaygroundMessage.created_at.asc())
+```
+
+---
+
+## [TD-006] Sem paginação de sessões de playground
+
+**Status:** Active — introduced in Phase 3.1
+**Priority:** Low (aceitável no MVP com poucos workspaces)
+**Target phase:** Antes do GA
+
+### What it is
+
+`GET /agents/{agent_id}/playground/sessions` retorna todas as sessões em uma única resposta, sem paginação.
+
+### How to fix
+
+Adicionar `?page=1&page_size=20` ou cursor-based pagination. O índice `(workspace_id, agent_id, updated_at DESC)` já existe e suporta a query de paginação.
+
+---
+
+## [TD-007] Sem paginação de mensagens de playground
+
+**Status:** Active — introduced in Phase 3.1
+**Priority:** Low
+**Target phase:** Antes do GA
+
+### What it is
+
+`GET /agents/{agent_id}/playground/sessions/{session_id}` retorna todas as mensagens da sessão sem limite. Sessões longas (dezenas de trocas) retornam tudo de uma vez.
+
+### How to fix
+
+Adicionar `?before=message_id` (cursor) ou `?page=1&page_size=50`. O índice `(session_id, created_at)` suporta ambas as abordagens.
+
+---
+
+## [TD-008] Sem edição manual de título de sessão
+
+**Status:** Active — introduced in Phase 3.1
+**Priority:** Low
+**Target phase:** Phase 3.2
+
+### What it is
+
+O título de uma sessão de playground é definido automaticamente como os primeiros 80 chars da primeira mensagem do usuário. Não é possível renomear manualmente.
+
+### How to fix
+
+Adicionar `PATCH /agents/{agent_id}/playground/sessions/{session_id}` com body `{ "title": "..." }`. Validar comprimento máximo de 200 chars (limite da coluna).
+
+---
+
+## [TD-009] Sem limite de sessões por agente/workspace
+
+**Status:** Active — introduced in Phase 3.1
+**Priority:** Medium (risco de crescimento não controlado em produção)
+**Target phase:** Antes do GA
+
+### What it is
+
+Não há limite de quantas sessões de playground um usuário pode criar para um agente. Em teoria, um workspace pode acumular milhares de sessões e mensagens sem controle.
+
+### How to fix
+
+Opções:
+1. Limitar por plano (ex: starter = 50 sessões/agente, pro = ilimitado).
+2. Auto-deletar sessões mais antigas que N dias sem atividade.
+3. Impor um hard limit no `create_session` service.
+
+Recomendado: combinar (1) e (2).
+
+---
+
+## [TD-010] Sem busca em histórico de playground
+
+**Status:** Active — introduced in Phase 3.1
+**Priority:** Low
+**Target phase:** Phase 4.x
+
+### What it is
+
+Não há endpoint para buscar sessões ou mensagens de playground por conteúdo. Útil quando o usuário quer reencontrar uma resposta específica de teste.
+
+### How to fix
+
+Adicionar `GET /agents/{agent_id}/playground/sessions?q=termo` com `ILIKE '%termo%'` no título. Para busca em conteúdo de mensagens, considerar `tsvector` ou extensão de full-text search no PostgreSQL.

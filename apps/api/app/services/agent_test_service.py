@@ -89,12 +89,9 @@ def run_agent_test(
         persona=prompt_settings.persona,
     )
 
-    # Validate session ownership before any writes — a bad session_id must
-    # never cause partial state (session created without messages).
-    if data.session_id is not None:
-        playground_service.get_session_or_404(db, workspace_id, agent_id, data.session_id)
-
     # ── Resolve or create session (all validations passed) ────────────────────
+    # If session_id was supplied, validate ownership and resolve in a single
+    # SELECT — a bad or cross-tenant session_id returns 404 before any writes.
     if data.session_id is not None:
         session = playground_service.get_session_or_404(
             db, workspace_id, agent_id, data.session_id

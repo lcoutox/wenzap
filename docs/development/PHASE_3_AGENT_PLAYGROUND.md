@@ -154,7 +154,11 @@ Sem RAG. Sem knowledge base context. Sem tool descriptions. Isso será adicionad
 
 ## Histórico de mensagens (frontend)
 
-O histórico de chat é armazenado **apenas em memória local** (`useState`) no componente `AgentChat`. Ao navegar para outra aba ou recarregar a página, o histórico é limpo. Nenhuma mensagem é persistida no banco de dados.
+> **⚠️ Atualizado na Phase 3.1.** O histórico passou a ser persistido no banco de dados. Veja `docs/development/PHASE_3_1_PLAYGROUND_SESSIONS.md`.
+
+~~O histórico de chat é armazenado apenas em memória local (`useState`) no componente `AgentChat`. Ao navegar para outra aba ou recarregar a página, o histórico é limpo. Nenhuma mensagem é persistida no banco de dados.~~
+
+A partir da Phase 3.1, cada sessão de playground é persistida em `agent_playground_sessions` e suas mensagens em `agent_playground_messages`. O componente `AgentChat` agora carrega, lista e alterna entre sessões persistentes.
 
 ---
 

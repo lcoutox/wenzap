@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -22,7 +22,7 @@ class AgentPlaygroundMessage(Base):
     )
 
     # 'user' | 'assistant'
-    role: Mapped[str] = mapped_column(nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
