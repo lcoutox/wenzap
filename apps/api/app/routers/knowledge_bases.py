@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
@@ -12,6 +12,7 @@ from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseOut, Kn
 from app.schemas.knowledge_chunk import KnowledgeChunkOut
 from app.schemas.knowledge_source import KnowledgeSourceCreate, KnowledgeSourceOut
 from app.services import knowledge_base_service, knowledge_source_service
+from app.services.upload_source_service import upload_knowledge_source
 from app.services.workspace_service import get_current_member_role
 
 router = APIRouter(prefix="/knowledge-bases")
@@ -123,6 +124,35 @@ def create_source(
     _require_role(_WRITE_ROLES, db, current_workspace, current_user)
     return knowledge_source_service.create_source(
         db, current_workspace.id, kb_id, current_user.id, data
+    )
+
+
+@router.post(
+    "/{kb_id}/sources/upload",
+    response_model=KnowledgeSourceOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_source(
+    kb_id: uuid.UUID,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    source_category: str | None = Form(default=None),
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> KnowledgeSourceOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    file_data = await file.read()
+    return upload_knowledge_source(
+        db=db,
+        workspace_id=current_workspace.id,
+        kb_id=kb_id,
+        user_id=current_user.id,
+        file_data=file_data,
+        filename=file.filename or "upload",
+        content_type=file.content_type,
+        title=title,
+        source_category=source_category,
     )
 
 

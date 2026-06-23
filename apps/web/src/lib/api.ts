@@ -208,7 +208,13 @@ export type KnowledgeBaseUpdateInput = {
 };
 
 export type KnowledgeSourceStatus = "pending" | "processing" | "ready" | "failed" | "archived";
-export type KnowledgeSourceType = "manual_text" | "faq_qa";
+export type KnowledgeSourceType =
+  | "manual_text"
+  | "faq_qa"
+  | "txt"
+  | "markdown"
+  | "pdf_simple"
+  | "csv_simple";
 
 export type KnowledgeSource = {
   id: string;
@@ -224,6 +230,13 @@ export type KnowledgeSource = {
   processed_at: string | null;
   created_at: string;
   updated_at: string;
+  // File upload fields (null for manual_text / faq_qa sources)
+  original_filename: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  storage_provider: string | null;
+  storage_key: string | null;
+  content_hash: string | null;
 };
 
 export type QaPair = {
@@ -411,6 +424,29 @@ export const api = {
           token,
           { method: "POST" },
         ),
+      upload: async (
+        token: string,
+        kbId: string,
+        file: File,
+        data?: { title?: string; source_category?: string },
+      ): Promise<KnowledgeSource> => {
+        const form = new FormData();
+        form.append("file", file);
+        if (data?.title?.trim()) form.append("title", data.title.trim());
+        if (data?.source_category?.trim())
+          form.append("source_category", data.source_category.trim());
+        // Do NOT set Content-Type — browser must set the multipart boundary automatically.
+        const res = await fetch(`${API_URL}/knowledge-bases/${kbId}/sources/upload`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new ApiError(res.status, err.detail ?? "API error");
+        }
+        return res.json() as Promise<KnowledgeSource>;
+      },
     },
   },
 };

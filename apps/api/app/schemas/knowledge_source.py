@@ -57,5 +57,12 @@ class KnowledgeSourceOut(BaseModel):
     processed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # File upload fields (Phase 4.4) — None for manual_text / faq_qa sources
+    original_filename: str | None = None
+    mime_type: str | None = None
+    file_size_bytes: int | None = None
+    storage_provider: str | None = None
+    storage_key: str | None = None
+    content_hash: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

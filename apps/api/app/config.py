@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_max_context_chars: int = 8000
 
+    # ── Storage settings ──────────────────────────────────────────────────────
+    # storage_provider: "local" for dev/test/MVP; "s3" for production (not yet implemented).
+    storage_provider: str = "local"
+    storage_local_root: str = "./storage"
+    storage_bucket: str = ""
+    storage_region: str = ""
+    storage_endpoint_url: str = ""
+    storage_access_key_id: str = ""
+    storage_secret_access_key: str = ""
+
+    # ── Upload settings ───────────────────────────────────────────────────────
+    # Global fallback when the workspace plan has no max_file_size_bytes set.
+    max_file_size_bytes: int = 10_485_760  # 10 MB
+
     # Comma-separated list of allowed CORS origins.
     # Example: "http://localhost:3000,https://app.nexbrain.com"
     cors_origins: str = "http://localhost:3000"

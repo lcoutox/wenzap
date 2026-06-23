@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -25,6 +25,7 @@ class Plan(Base):
     integrations_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     monthly_ai_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
     monthly_conversations: Mapped[int] = mapped_column(Integer, nullable=False, default=500)
+    max_file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

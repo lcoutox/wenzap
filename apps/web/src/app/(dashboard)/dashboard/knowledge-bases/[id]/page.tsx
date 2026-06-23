@@ -9,6 +9,7 @@ import {
   Calendar,
   Check,
   ChevronDown,
+  File,
   FileText,
   HelpCircle,
   Loader2,
@@ -38,7 +39,11 @@ function canArchive(role: MemberRole | null) {
 
 const SOURCE_TYPE_LABELS: Record<string, string> = {
   manual_text: "Texto manual",
-  faq_qa: "FAQ / Perguntas e respostas",
+  faq_qa: "FAQ",
+  txt: "TXT",
+  markdown: "Markdown",
+  pdf_simple: "PDF",
+  csv_simple: "CSV",
 };
 
 const SOURCE_CATEGORIES = [
@@ -54,6 +59,12 @@ const SOURCE_CATEGORIES = [
   "Institucional",
   "Operações",
 ];
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 // ── Status badges ─────────────────────────────────────────────────────────────
 
@@ -280,7 +291,15 @@ function ArchiveSourceModal({
 
 // ── Add Source Modal ──────────────────────────────────────────────────────────
 
-type SourceTypeTab = "manual_text" | "faq_qa";
+type SourceTypeTab = "manual_text" | "faq_qa" | "file";
+
+const UPLOAD_ERROR_MAP: Record<number, string> = {
+  400: "Arquivo inválido ou tipo não suportado.",
+  402: "Limite de fontes atingido para esta base no seu plano.",
+  403: "Você não tem permissão para enviar arquivos.",
+  404: "Base de conhecimento não encontrada.",
+  413: "Arquivo acima do limite permitido para o seu plano.",
+};
 
 function AddSourceModal({
   kbId,
@@ -297,8 +316,10 @@ function AddSourceModal({
   const [category, setCategory] = useState("");
   const [contentText, setContentText] = useState("");
   const [pairs, setPairs] = useState<QaPair[]>([{ question: "", answer: "" }]);
+  const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const MAX_CHARS = 50_000;
 
@@ -314,9 +335,38 @@ function AddSourceModal({
     setPairs((p) => p.map((pair, idx) => (idx === i ? { ...pair, [field]: value } : pair)));
   }
 
+  function handleTabChange(next: SourceTypeTab) {
+    setTab(next);
+    setError(null);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    const token = await getToken();
+    if (!token) { setError("Sessão expirada."); return; }
+
+    if (tab === "file") {
+      if (!file) { setError("Selecione um arquivo."); return; }
+      setSaving(true);
+      try {
+        const source = await api.knowledgeBases.sources.upload(token, kbId, file, {
+          title: title.trim() || undefined,
+          source_category: category.trim() || undefined,
+        });
+        onCreated(source);
+      } catch (e) {
+        if (e instanceof ApiError) {
+          setError(UPLOAD_ERROR_MAP[e.status] ?? e.message ?? "Não foi possível enviar o arquivo. Tente novamente.");
+        } else {
+          setError("Não foi possível enviar o arquivo. Tente novamente.");
+        }
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     if (!title.trim()) { setError("Título é obrigatório."); return; }
 
@@ -332,9 +382,6 @@ function AddSourceModal({
 
     setSaving(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-
       let payload: KnowledgeSourceCreateInput;
 
       if (tab === "manual_text") {
@@ -375,6 +422,12 @@ function AddSourceModal({
     }
   }
 
+  const tabs = [
+    { id: "manual_text" as SourceTypeTab, label: "Texto manual",               icon: FileText },
+    { id: "faq_qa"      as SourceTypeTab, label: "FAQ / Perguntas e respostas", icon: HelpCircle },
+    { id: "file"        as SourceTypeTab, label: "Arquivo",                     icon: File },
+  ] as const;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
@@ -387,16 +440,13 @@ function AddSourceModal({
         </div>
 
         {/* Type tabs */}
-        <div className="flex border-b border-gray-100 flex-shrink-0">
-          {([
-            { id: "manual_text" as SourceTypeTab, label: "Texto manual",              icon: FileText },
-            { id: "faq_qa"      as SourceTypeTab, label: "FAQ / Perguntas e respostas", icon: HelpCircle },
-          ] as const).map(({ id, label, icon: Icon }) => (
+        <div className="flex border-b border-gray-100 flex-shrink-0 overflow-x-auto">
+          {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
-              onClick={() => setTab(id)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              onClick={() => handleTabChange(id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 tab === id
                   ? "border-indigo-600 text-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
@@ -410,40 +460,118 @@ function AddSourceModal({
 
         {/* Form */}
         <form id="add-source-form" onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
-          {/* Title */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Título <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={300}
-              placeholder="Ex: Política de devolução"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
 
-          {/* Category */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Categoria <span className="text-gray-400">(opcional)</span>
-            </label>
-            <div className="relative">
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-8"
-              >
-                <option value="">Selecione uma categoria</option>
-                {SOURCE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
+          {/* File upload tab */}
+          {tab === "file" && (
+            <>
+              {/* File picker */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Arquivo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.md,.markdown,.pdf,.csv"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="w-full text-sm text-gray-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-xs file:font-medium file:text-gray-700 file:bg-white hover:file:bg-gray-50 cursor-pointer"
+                />
+                {file && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    {file.name} · {formatBytes(file.size)}
+                  </p>
+                )}
+              </div>
+
+              {/* Title (optional for file) */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Título <span className="text-gray-400">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={300}
+                  placeholder="Opcional — se vazio, usaremos o nome do arquivo"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Categoria <span className="text-gray-400">(opcional)</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-8"
+                  >
+                    <option value="">Selecione uma categoria</option>
+                    {SOURCE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Help text */}
+              <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5 space-y-1">
+                <p className="text-xs text-gray-600">
+                  Tipos aceitos: TXT, Markdown, PDF com texto selecionável e CSV com cabeçalho.
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDFs escaneados sem texto não são suportados nesta fase.
+                </p>
+                <p className="text-xs text-gray-500">
+                  O tamanho máximo depende do seu plano.
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Text / FAQ tabs share title + category */}
+          {tab !== "file" && (
+            <>
+              {/* Title */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Título <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={300}
+                  placeholder="Ex: Política de devolução"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Categoria <span className="text-gray-400">(opcional)</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full appearance-none border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pr-8"
+                  >
+                    <option value="">Selecione uma categoria</option>
+                    {SOURCE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Manual text */}
           {tab === "manual_text" && (
@@ -534,7 +662,9 @@ function AddSourceModal({
             disabled={saving}
             className="flex-1 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors"
           >
-            {saving ? "Adicionando..." : "Adicionar fonte"}
+            {saving
+              ? tab === "file" ? "Enviando..." : "Adicionando..."
+              : tab === "file" ? "Enviar arquivo" : "Adicionar fonte"}
           </button>
         </div>
       </div>
@@ -572,6 +702,8 @@ function SourceCard({
           <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
         ) : source.source_type === "faq_qa" ? (
           <HelpCircle className="w-4 h-4 text-indigo-400" />
+        ) : source.original_filename ? (
+          <File className="w-4 h-4 text-gray-400" />
         ) : (
           <FileText className="w-4 h-4 text-gray-400" />
         )}
@@ -587,7 +719,9 @@ function SourceCard({
         </div>
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
           <span className="text-xs text-gray-400">
-            {SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type}
+            {source.original_filename
+              ? `${SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type} · ${source.original_filename}${source.file_size_bytes ? ` · ${formatBytes(source.file_size_bytes)}` : ""}`
+              : (SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type)}
           </span>
           {category && (
             <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
