@@ -24,15 +24,44 @@ def create_session(
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> AgentPlaygroundSession:
+    """Create and commit a new session. Used by the CRUD endpoint."""
+    session = _build_session(db, workspace_id, agent_id, user_id)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def create_session_pending(
+    db: Session,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> AgentPlaygroundSession:
+    """Add a new session to the current unit-of-work without committing.
+
+    The caller is responsible for flushing (to get the PK) and committing.
+    Used by agent_test_service so that session creation, message saves and
+    credit increment all land in a single atomic transaction.
+    """
+    return _build_session(db, workspace_id, agent_id, user_id)
+
+
+def _build_session(
+    db: Session,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> AgentPlaygroundSession:
+    # Generate UUID explicitly so session.id is available before flush,
+    # allowing callers to use it as a FK in the same unit of work.
     session = AgentPlaygroundSession(
+        id=uuid.uuid4(),
         workspace_id=workspace_id,
         agent_id=agent_id,
         user_id=user_id,
         title=_DEFAULT_TITLE,
     )
     db.add(session)
-    db.commit()
-    db.refresh(session)
     return session
 
 

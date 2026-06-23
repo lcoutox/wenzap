@@ -3,17 +3,24 @@ Agent Playground — test execution service.
 
 Orchestrates the full flow for POST /agents/{agent_id}/test.
 
+Session policy (Phase 3.1):
+  Every test run is associated with a playground session.
+  If session_id is provided, the existing session is used (after ownership
+  validation). Otherwise a new session is created automatically.
+  Session and message persistence are part of the same DB transaction as
+  credit increment and agent_test_run insert.
+
 Log policy (Phase 3):
   Only executions that actually reached the LLM provider are recorded in
-  agent_test_runs. Executions blocked before the LLM call (wrong agent status,
-  missing system_prompt, missing model settings, inactive model, inactive
-  provider, plan limit, insufficient credits) are NOT logged. This keeps the
-  table as a clean audit of provider interactions, not validation failures.
+  agent_test_runs. Executions blocked before the LLM call (insufficient
+  credits, unsupported model, wrong agent status, plan limit) are NOT logged.
+  This keeps the table as a clean audit of provider interactions, not
+  validation failures.
 
 Credit policy:
   Credits are checked before the LLM call. Increments happen ONLY on success,
-  in the same DB transaction as the agent_test_runs INSERT to prevent partial
-  accounting (credits consumed without a corresponding log entry).
+  in the same DB transaction as the agent_test_runs INSERT and the assistant
+  message to prevent partial accounting.
 
   The increment uses an atomic UPDATE (no read-before-write) to avoid race
   conditions when multiple requests run concurrently.
@@ -38,6 +45,7 @@ from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent_test import AgentTestModelInfo, AgentTestRequest, AgentTestResponse
+from app.services import playground_service
 from app.services.agent_context_builder import build_system_prompt
 from app.services.ai_model_service import PLAN_TIER
 
@@ -58,18 +66,46 @@ def run_agent_test(
     user_id: uuid.UUID,
     data: AgentTestRequest,
 ) -> AgentTestResponse:
+    # ── Pre-LLM validations (no DB writes) ───────────────────────────────────
     agent = _get_agent_or_404(db, workspace_id, agent_id)
     _validate_agent_testable(agent)
     model_settings = _get_model_settings_or_400(db, agent)
     model, provider = _get_model_and_provider(db, model_settings)
     _validate_model_active(model, provider)
-    # Resolve plan once; pass to both validations to avoid duplicate DB round-trips.
     plan_code = _get_workspace_plan_code(db, workspace_id)
     _validate_plan(plan_code, model)
     _validate_runtime_support(model, provider)
     credits_needed = model.credits_per_message
     counter = _get_usage_counter_or_402(db, workspace_id)
     _validate_credits(counter, credits_needed, plan_code, db)
+
+    # Validate session ownership before any writes — bad session_id must never
+    # cause partial state (session created without messages).
+    if data.session_id is not None:
+        playground_service.get_session_or_404(db, workspace_id, agent_id, data.session_id)
+
+    # ── Resolve or create session (all validations passed) ────────────────────
+    if data.session_id is not None:
+        session = playground_service.get_session_or_404(
+            db, workspace_id, agent_id, data.session_id
+        )
+    else:
+        session = playground_service.create_session_pending(
+            db, workspace_id, agent_id, user_id
+        )
+        # Flush the new session row so its PK exists in the DB before the
+        # message FK is checked on the next autoflush.
+        db.flush()
+
+    # ── Persist user message & update session metadata ────────────────────────
+    playground_service.save_user_message(db, session.id, data.message)
+    playground_service.update_session_title_from_first_message(db, session, data.message)
+    playground_service.touch_session(db, session)
+
+    # Flush so pending objects get PKs; LLM call happens outside the transaction.
+    db.flush()
+
+    # ── Build prompt & call LLM ───────────────────────────────────────────────
     prompt_settings = _get_prompt_settings(db, agent)
     system = build_system_prompt(
         agent_name=agent.name,
@@ -88,6 +124,7 @@ def run_agent_test(
     try:
         llm_response = llm_client.complete(request)
     except LLMProviderError as exc:
+        # Error path — user message + run error committed together, no credits consumed.
         _log_run(
             db,
             workspace_id=workspace_id,
@@ -102,15 +139,16 @@ def run_agent_test(
             output_tokens=None,
             duration_ms=None,
         )
+        playground_service.touch_session(db, session)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Error connecting to the model. Please try again.",
         )
 
-    # Success path — increment credits and log in a single transaction.
+    # ── Success: credits + run + assistant message in one transaction ─────────
     _increment_credits(db, workspace_id, credits_needed)
-    _log_run(
+    run = _log_run(
         db,
         workspace_id=workspace_id,
         agent_id=agent_id,
@@ -124,6 +162,11 @@ def run_agent_test(
         output_tokens=llm_response.output_tokens,
         duration_ms=llm_response.duration_ms,
     )
+    db.flush()  # get run.id before using it as FK in the assistant message
+    playground_service.save_assistant_message(
+        db, session.id, llm_response.content, run.id
+    )
+    playground_service.touch_session(db, session)
     db.commit()
 
     return AgentTestResponse(
@@ -137,6 +180,7 @@ def run_agent_test(
             provider=provider.code,
             model_name=model.model_name,
         ),
+        session_id=session.id,
     )
 
 
@@ -178,8 +222,6 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
             detail="A system_prompt is required to test this agent.",
         )
 
-    # Return a lightweight object with the resolved values.
-    # We use AgentPromptSettings as-is when available, otherwise build a stub.
     if ps is not None:
         return ps
 
@@ -330,7 +372,7 @@ def _log_run(
     input_tokens: int | None,
     output_tokens: int | None,
     duration_ms: int | None,
-) -> None:
+) -> AgentTestRun:
     run = AgentTestRun(
         workspace_id=workspace_id,
         agent_id=agent_id,
@@ -347,6 +389,7 @@ def _log_run(
         error_message=error_message,
     )
     db.add(run)
+    return run
 
 
 # ── Plan helpers (local — avoids coupling to plan_service internals) ──────────

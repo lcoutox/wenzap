@@ -1,8 +1,11 @@
+import uuid
+
 from pydantic import BaseModel, field_validator
 
 
 class AgentTestRequest(BaseModel):
     message: str
+    session_id: uuid.UUID | None = None
 
     @field_validator("message", mode="before")
     @classmethod
@@ -32,3 +35,4 @@ class AgentTestResponse(BaseModel):
     output_tokens: int
     duration_ms: int
     model: AgentTestModelInfo
+    session_id: uuid.UUID
