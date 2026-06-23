@@ -6,10 +6,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_source import KnowledgeSource
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.knowledge_source import KnowledgeSourceCreate
+from app.services.embedding_providers.base import EmbeddingProvider
+from app.services.indexing_service import IndexingError, index_source
 
 
 def list_sources(
@@ -58,21 +61,20 @@ def create_source(
     db.add(source)
     db.flush()
 
-    # Phase 4.1: no async processing — mark ready immediately.
-    # Phase 4.2 will replace this with actual chunking + embedding.
-    try:
-        source.status = "ready"
-        source.processed_at = datetime.now(timezone.utc)
-        source.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(source)
-    except Exception as exc:
-        source.status = "failed"
-        source.error_message = str(exc)[:500]
-        source.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(source)
+    # Mark as processing before starting the indexing pipeline.
+    source.status = "processing"
+    source.updated_at = datetime.now(timezone.utc)
+    db.flush()
 
+    try:
+        index_source(db, source)
+        db.commit()
+    except IndexingError:
+        # source.status is already "failed" and error_message is set by index_source.
+        # Commit the failed state so the UI can show the error and allow reprocess later.
+        db.commit()
+
+    db.refresh(source)
     return source
 
 
@@ -111,6 +113,58 @@ def archive_source(
     db.commit()
     db.refresh(source)
     return source
+
+
+def reprocess_source(
+    db: Session,
+    workspace_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    source_id: uuid.UUID,
+    provider: EmbeddingProvider | None = None,
+) -> KnowledgeSource:
+    """
+    Re-run the indexing pipeline for an existing source.
+
+    Returns the source with its new status (ready or failed).
+    Returns 409 if the source is currently being processed (race-condition guard).
+    """
+    source = get_source_or_404(db, workspace_id, kb_id, source_id)
+
+    if source.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Source is currently being processed. Try again shortly.",
+        )
+
+    source.status = "processing"
+    source.updated_at = datetime.now(timezone.utc)
+    db.flush()
+
+    try:
+        index_source(db, source, provider=provider)
+        db.commit()
+    except IndexingError:
+        db.commit()
+
+    db.refresh(source)
+    return source
+
+
+def list_source_chunks(
+    db: Session,
+    workspace_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    source_id: uuid.UUID,
+) -> list[KnowledgeChunk]:
+    """Return all chunks for a source, ordered by chunk_index ASC."""
+    get_source_or_404(db, workspace_id, kb_id, source_id)
+    return list(
+        db.scalars(
+            select(KnowledgeChunk)
+            .where(KnowledgeChunk.source_id == source_id)
+            .order_by(KnowledgeChunk.chunk_index.asc())
+        ).all()
+    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

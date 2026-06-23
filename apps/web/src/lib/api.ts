@@ -205,7 +205,7 @@ export type KnowledgeBaseUpdateInput = {
   description?: string | null;
 };
 
-export type KnowledgeSourceStatus = "pending" | "ready" | "failed" | "archived";
+export type KnowledgeSourceStatus = "pending" | "processing" | "ready" | "failed" | "archived";
 export type KnowledgeSourceType = "manual_text" | "faq_qa";
 
 export type KnowledgeSource = {
@@ -403,6 +403,12 @@ export const api = {
         apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`, token, {
           method: "DELETE",
         }),
+      reprocess: (token: string, kbId: string, sourceId: string) =>
+        apiFetch<KnowledgeSource>(
+          `/knowledge-bases/${kbId}/sources/${sourceId}/reprocess`,
+          token,
+          { method: "POST" },
+        ),
     },
   },
 };

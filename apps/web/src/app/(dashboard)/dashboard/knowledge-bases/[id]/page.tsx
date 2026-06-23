@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Loader2,
   Plus,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -72,10 +73,11 @@ function KbStatusBadge({ status }: { status: string }) {
 
 function SourceStatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    ready:   { label: "Pronta",     cls: "bg-green-50 text-green-700 border-green-200" },
-    pending: { label: "Pendente",   cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    failed:  { label: "Erro",       cls: "bg-red-50 text-red-600 border-red-200" },
-    archived: { label: "Arquivada", cls: "bg-gray-50 text-gray-400 border-gray-200" },
+    ready:      { label: "Pronta",         cls: "bg-green-50 text-green-700 border-green-200" },
+    pending:    { label: "Pendente",       cls: "bg-amber-50 text-amber-700 border-amber-200" },
+    processing: { label: "Processando…",  cls: "bg-blue-50 text-blue-700 border-blue-200" },
+    failed:     { label: "Erro",          cls: "bg-red-50 text-red-600 border-red-200" },
+    archived:   { label: "Arquivada",     cls: "bg-gray-50 text-gray-400 border-gray-200" },
   };
   const s = map[status] ?? { label: status, cls: "bg-gray-50 text-gray-500 border-gray-200" };
   return (
@@ -545,19 +547,30 @@ function AddSourceModal({
 function SourceCard({
   source,
   onArchive,
+  onReprocess,
   canArchive: archive,
+  canReprocess,
+  reprocessing,
 }: {
   source: KnowledgeSource;
   onArchive: (source: KnowledgeSource) => void;
+  onReprocess: (source: KnowledgeSource) => void;
   canArchive: boolean;
+  canReprocess: boolean;
+  reprocessing: boolean;
 }) {
   const category = (source.metadata_json as Record<string, unknown> | null)
     ?.source_category as string | undefined;
 
+  const showReprocess =
+    canReprocess && (source.status === "ready" || source.status === "failed");
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-start gap-3">
       <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0">
-        {source.source_type === "faq_qa" ? (
+        {source.status === "processing" ? (
+          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+        ) : source.source_type === "faq_qa" ? (
           <HelpCircle className="w-4 h-4 text-indigo-400" />
         ) : (
           <FileText className="w-4 h-4 text-gray-400" />
@@ -591,16 +604,29 @@ function SourceCard({
         )}
       </div>
 
-      {archive && (
-        <button
-          type="button"
-          onClick={() => onArchive(source)}
-          title="Arquivar fonte"
-          className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {showReprocess && (
+          <button
+            type="button"
+            onClick={() => onReprocess(source)}
+            disabled={reprocessing}
+            title="Reprocessar fonte"
+            className="p-1.5 text-gray-400 hover:text-indigo-500 disabled:opacity-40 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${reprocessing ? "animate-spin" : ""}`} />
+          </button>
+        )}
+        {archive && (
+          <button
+            type="button"
+            onClick={() => onArchive(source)}
+            title="Arquivar fonte"
+            className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -626,6 +652,7 @@ export default function KnowledgeBaseDetailPage() {
   const [showAddSource, setShowAddSource] = useState(false);
   const [sourceToArchive, setSourceToArchive] = useState<KnowledgeSource | null>(null);
   const [archivingSource, setArchivingSource] = useState(false);
+  const [reprocessingSourceId, setReprocessingSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     getToken().then(async (token) => {
@@ -664,6 +691,21 @@ export default function KnowledgeBaseDetailPage() {
       setArchiveKbError(e instanceof Error ? e.message : "Erro ao arquivar base.");
       setArchivingKb(false);
       setShowArchiveKb(false);
+    }
+  }
+
+  async function handleReprocess(source: KnowledgeSource) {
+    if (!kb || reprocessingSourceId) return;
+    setReprocessingSourceId(source.id);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Sessão expirada.");
+      const updated = await api.knowledgeBases.sources.reprocess(token, kb.id, source.id);
+      setSources((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch {
+      // Silently ignore; UI will reflect latest state on next refresh
+    } finally {
+      setReprocessingSourceId(null);
     }
   }
 
@@ -844,7 +886,10 @@ export default function KnowledgeBaseDetailPage() {
                 key={source.id}
                 source={source}
                 canArchive={archive}
+                canReprocess={write}
+                reprocessing={reprocessingSourceId === source.id}
                 onArchive={setSourceToArchive}
+                onReprocess={handleReprocess}
               />
             ))}
           </div>

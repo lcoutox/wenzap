@@ -12,13 +12,17 @@ Covers:
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.enums import MemberRole, MemberStatus, SubscriptionStatus
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
+from app.services.embedding_providers.base import EmbeddingError, EmbeddingProvider, EmbeddingResult
 from tests.conftest import _make_client, _make_user, _make_workspace
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -580,3 +584,115 @@ def test_get_source_on_archived_kb_returns_404(db):
         client.delete(f"/knowledge-bases/{kb_id}")
         r = client.get(f"/knowledge-bases/{kb_id}/sources/{src_id}")
     assert r.status_code == 404
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. Indexing pipeline — chunks created on source creation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _chunk_count(db: Session, source_id: str) -> int:
+    return len(list(db.scalars(
+        select(KnowledgeChunk).where(KnowledgeChunk.source_id == uuid.UUID(source_id))
+    ).all()))
+
+
+def test_create_manual_text_creates_chunks(db):
+    owner, ws, kb_id = _setup(db)
+    with _make_client(db, owner, ws) as client:
+        r = _post_manual(client, kb_id, content="Hello world this is some test content.")
+    assert r.status_code == 201
+    assert _chunk_count(db, r.json()["id"]) >= 1
+
+
+def test_create_manual_text_large_content_creates_multiple_chunks(db):
+    owner, ws, kb_id = _setup(db, max_source_chars=50000)
+    # 6 000 chars → more than one 3 000-char chunk
+    content = "word " * 1200
+    with _make_client(db, owner, ws) as client:
+        r = _post_manual(client, kb_id, content=content)
+    assert r.status_code == 201
+    assert _chunk_count(db, r.json()["id"]) > 1
+
+
+def test_create_faq_qa_creates_one_chunk_per_pair(db):
+    owner, ws, kb_id = _setup(db)
+    pairs = [
+        {"question": "Q1?", "answer": "A1."},
+        {"question": "Q2?", "answer": "A2."},
+        {"question": "Q3?", "answer": "A3."},
+    ]
+    with _make_client(db, owner, ws) as client:
+        r = _post_faq(client, kb_id, qa_pairs=pairs)
+    assert r.status_code == 201
+    assert _chunk_count(db, r.json()["id"]) == 3
+
+
+def test_create_faq_qa_short_pair_generates_chunk(db):
+    """Regression: a valid but short FAQ pair like 'Pix?'/'Sim.' must produce a chunk."""
+    owner, ws, kb_id = _setup(db)
+    with _make_client(db, owner, ws) as client:
+        r = _post_faq(
+            client, kb_id,
+            qa_pairs=[{"question": "Pix?", "answer": "Sim."}],
+        )
+    assert r.status_code == 201
+    assert r.json()["status"] == "ready"
+    assert _chunk_count(db, r.json()["id"]) == 1
+
+
+def test_create_faq_qa_preserves_qa_pairs_in_metadata(db):
+    owner, ws, kb_id = _setup(db)
+    pairs = [{"question": "How?", "answer": "Like this."}]
+    with _make_client(db, owner, ws) as client:
+        r = _post_faq(client, kb_id, qa_pairs=pairs)
+    meta = r.json()["metadata_json"]
+    assert meta["qa_pairs"][0]["question"] == "How?"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8. Indexing pipeline — embedding failure returns 201 with status=failed
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class _FailingEmbeddingProvider(EmbeddingProvider):
+    provider_name = "failing"
+    model = "failing-model"
+    dimension = 1536
+
+    def embed(self, texts: list[str]) -> EmbeddingResult:
+        raise EmbeddingError("Simulated provider failure")
+
+
+def test_embedding_failure_returns_201_with_failed_status(db):
+    owner, ws, kb_id = _setup(db)
+    with patch(
+        "app.services.indexing_service.embed_texts",
+        side_effect=EmbeddingError("provider down"),
+    ):
+        with _make_client(db, owner, ws) as client:
+            r = _post_manual(client, kb_id, content="Some valid content here.")
+    assert r.status_code == 201
+    assert r.json()["status"] == "failed"
+    assert r.json()["error_message"] is not None
+
+
+def test_embedding_failure_leaves_no_partial_chunks(db):
+    owner, ws, kb_id = _setup(db)
+    with patch(
+        "app.services.indexing_service.embed_texts",
+        side_effect=EmbeddingError("provider down"),
+    ):
+        with _make_client(db, owner, ws) as client:
+            r = _post_manual(client, kb_id, content="Some valid content here.")
+    assert _chunk_count(db, r.json()["id"]) == 0
+
+
+def test_embedding_failure_error_message_is_set(db):
+    owner, ws, kb_id = _setup(db)
+    with patch(
+        "app.services.indexing_service.embed_texts",
+        side_effect=EmbeddingError("provider down"),
+    ):
+        with _make_client(db, owner, ws) as client:
+            r = _post_manual(client, kb_id, content="Some valid content here.")
+    assert "Embedding failed" in r.json()["error_message"]

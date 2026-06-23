@@ -9,6 +9,7 @@ from app.enums import MemberRole
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseOut, KnowledgeBaseUpdate
+from app.schemas.knowledge_chunk import KnowledgeChunkOut
 from app.schemas.knowledge_source import KnowledgeSourceCreate, KnowledgeSourceOut
 from app.services import knowledge_base_service, knowledge_source_service
 from app.services.workspace_service import get_current_member_role
@@ -149,5 +150,36 @@ def archive_source(
 ) -> KnowledgeSourceOut:
     _require_role(_ARCHIVE_ROLES, db, current_workspace, current_user)
     return knowledge_source_service.archive_source(
+        db, current_workspace.id, kb_id, source_id
+    )
+
+
+@router.post("/{kb_id}/sources/{source_id}/reprocess", response_model=KnowledgeSourceOut)
+def reprocess_source(
+    kb_id: uuid.UUID,
+    source_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> KnowledgeSourceOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return knowledge_source_service.reprocess_source(
+        db, current_workspace.id, kb_id, source_id
+    )
+
+
+@router.get(
+    "/{kb_id}/sources/{source_id}/chunks",
+    response_model=list[KnowledgeChunkOut],
+)
+def list_source_chunks(
+    kb_id: uuid.UUID,
+    source_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> list[KnowledgeChunkOut]:
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    return knowledge_source_service.list_source_chunks(
         db, current_workspace.id, kb_id, source_id
     )

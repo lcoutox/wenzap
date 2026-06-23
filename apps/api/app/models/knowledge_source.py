@@ -23,7 +23,7 @@ class KnowledgeSource(Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     # raw content for manual_text / faq_qa; NULL for file-based sources (Phase 4.4)
     content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # pending | ready | failed | archived
+    # pending | processing | ready | failed | archived
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     # stores source_category; for faq_qa also stores original qa_pairs list
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

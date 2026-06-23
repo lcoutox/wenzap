@@ -8,6 +8,7 @@ from app.models.agent_test_run import AgentTestRun
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_source import KnowledgeSource
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
@@ -32,6 +33,7 @@ __all__ = [
     "AiModelProvider",
     "AiModel",
     "KnowledgeBase",
+    "KnowledgeChunk",
     "KnowledgeSource",
     "AgentKnowledgeBase",
 ]

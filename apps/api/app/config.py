@@ -16,6 +16,14 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
+    # ── Embedding settings ────────────────────────────────────────────────────
+    # Defaults to "mock" so dev/test environments never hit external APIs.
+    # Production must set EMBEDDING_PROVIDER=openai (or another supported value).
+    embedding_provider: str = "mock"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimension: int = 1536
+    openai_api_key: str = ""
+
     # Comma-separated list of allowed CORS origins.
     # Example: "http://localhost:3000,https://app.nexbrain.com"
     cors_origins: str = "http://localhost:3000"
