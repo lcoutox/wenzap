@@ -1,5 +1,7 @@
 from app.models.agent import Agent
 from app.models.agent_model_settings import AgentModelSettings
+from app.models.agent_playground_message import AgentPlaygroundMessage
+from app.models.agent_playground_session import AgentPlaygroundSession
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_test_run import AgentTestRun
 from app.models.ai_model import AiModel
@@ -22,6 +24,8 @@ __all__ = [
     "AgentPromptSettings",
     "AgentModelSettings",
     "AgentTestRun",
+    "AgentPlaygroundSession",
+    "AgentPlaygroundMessage",
     "AiModelProvider",
     "AiModel",
 ]
