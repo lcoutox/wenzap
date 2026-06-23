@@ -152,6 +152,32 @@ export type AgentTestResponse = {
   output_tokens: number;
   duration_ms: number;
   model: AgentTestModelInfo;
+  session_id: string;
+};
+
+// ── Playground Sessions ───────────────────────────────────────────────────────
+
+export type PlaygroundMessage = {
+  id: string;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  agent_test_run_id: string | null;
+  created_at: string;
+};
+
+export type PlaygroundSession = {
+  id: string;
+  workspace_id: string;
+  agent_id: string;
+  user_id: string | null;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlaygroundSessionWithMessages = PlaygroundSession & {
+  messages: PlaygroundMessage[];
 };
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -183,7 +209,9 @@ async function apiFetch<T>(
     throw new ApiError(res.status, error.detail ?? "API error");
   }
 
-  return res.json() as Promise<T>;
+  // Handle 204 No Content (e.g. DELETE responses)
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // ── API client ────────────────────────────────────────────────────────────────
@@ -232,10 +260,28 @@ export const api = {
       }),
     archive: (token: string, id: string) =>
       apiFetch<Agent>(`/agents/${id}`, token, { method: "DELETE" }),
-    test: (token: string, id: string, message: string) =>
+    test: (token: string, id: string, message: string, sessionId?: string) =>
       apiFetch<AgentTestResponse>(`/agents/${id}/test`, token, {
         method: "POST",
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, ...(sessionId ? { session_id: sessionId } : {}) }),
       }),
+    playground: {
+      listSessions: (token: string, agentId: string) =>
+        apiFetch<PlaygroundSession[]>(`/agents/${agentId}/playground/sessions`, token),
+      createSession: (token: string, agentId: string) =>
+        apiFetch<PlaygroundSession>(`/agents/${agentId}/playground/sessions`, token, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+      getSession: (token: string, agentId: string, sessionId: string) =>
+        apiFetch<PlaygroundSessionWithMessages>(
+          `/agents/${agentId}/playground/sessions/${sessionId}`,
+          token,
+        ),
+      deleteSession: (token: string, agentId: string, sessionId: string) =>
+        apiFetch<void>(`/agents/${agentId}/playground/sessions/${sessionId}`, token, {
+          method: "DELETE",
+        }),
+    },
   },
 };
