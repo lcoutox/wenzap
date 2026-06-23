@@ -21,6 +21,7 @@ import { ConfigAvancado }       from "@/components/agents/workspace/tabs/ConfigA
 import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
 import { ConfigSeguranca }      from "@/components/agents/workspace/tabs/ConfigSeguranca";
 import { ConfigWebhooks }       from "@/components/agents/workspace/tabs/ConfigWebhooks";
+import { ConfigConhecimento }   from "@/components/agents/workspace/tabs/ConfigConhecimento";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +243,13 @@ export default function AgentWorkspacePage() {
         {/* ── Implantar ── */}
         {workspaceTab === "deploy" && (
           <ImplantarPlaceholder />
+        )}
+
+        {/* ── Conhecimento ── */}
+        {workspaceTab === "knowledge" && (
+          <div className="max-w-3xl">
+            <ConfigConhecimento agentId={id} role={role} getToken={getToken} />
+          </div>
         )}
 
         {/* ── Configurações ── */}

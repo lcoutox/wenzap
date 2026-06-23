@@ -1,11 +1,12 @@
-import { MessageSquare, Radio, Settings } from "lucide-react";
+import { BookOpen, MessageSquare, Radio, Settings } from "lucide-react";
 
-export type WorkspaceTab = "chat" | "deploy" | "settings";
+export type WorkspaceTab = "chat" | "deploy" | "settings" | "knowledge";
 
 const TABS: { id: WorkspaceTab; label: string; icon: React.ElementType }[] = [
-  { id: "chat",     label: "Chat",          icon: MessageSquare },
-  { id: "deploy",   label: "Implantar",     icon: Radio },
-  { id: "settings", label: "Configurações", icon: Settings },
+  { id: "chat",      label: "Chat",          icon: MessageSquare },
+  { id: "deploy",    label: "Implantar",     icon: Radio },
+  { id: "settings",  label: "Configurações", icon: Settings },
+  { id: "knowledge", label: "Conhecimento",  icon: BookOpen },
 ];
 
 export function AgentWorkspaceTabs({

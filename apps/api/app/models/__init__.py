@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_knowledge_base import AgentKnowledgeBase
 from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_playground_message import AgentPlaygroundMessage
 from app.models.agent_playground_session import AgentPlaygroundSession
@@ -6,6 +7,8 @@ from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_test_run import AgentTestRun
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
+from app.models.knowledge_base import KnowledgeBase
+from app.models.knowledge_source import KnowledgeSource
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
@@ -28,4 +31,7 @@ __all__ = [
     "AgentPlaygroundMessage",
     "AiModelProvider",
     "AiModel",
+    "KnowledgeBase",
+    "KnowledgeSource",
+    "AgentKnowledgeBase",
 ]

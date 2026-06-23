@@ -10,13 +10,23 @@ from app.enums import AgentStatus, MemberRole
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.agent import AgentCreate, AgentOut, AgentStatusUpdate, AgentUpdate
+from app.schemas.agent_knowledge_base import (
+    AgentKnowledgeBaseCreate,
+    AgentKnowledgeBaseOut,
+    AgentKnowledgeBaseUpdate,
+)
 from app.schemas.agent_test import AgentTestRequest, AgentTestResponse
 from app.schemas.playground import (
     PlaygroundSessionCreate,
     PlaygroundSessionOut,
     PlaygroundSessionWithMessages,
 )
-from app.services import agent_service, agent_test_service, playground_service
+from app.services import (
+    agent_knowledge_base_service,
+    agent_service,
+    agent_test_service,
+    playground_service,
+)
 from app.services.workspace_service import get_current_member_role
 
 router = APIRouter(prefix="/agents")
@@ -180,6 +190,68 @@ def delete_playground_session(
 ) -> None:
     _require_role(_WRITE_ROLES, db, current_workspace, current_user)
     playground_service.delete_session(db, current_workspace.id, agent_id, session_id)
+
+
+# ── Agent ↔ Knowledge Base connection ────────────────────────────────────────
+
+@router.get("/{agent_id}/knowledge-bases", response_model=list[AgentKnowledgeBaseOut])
+def list_agent_knowledge_bases(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> list[AgentKnowledgeBaseOut]:
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    return agent_knowledge_base_service.list_agent_knowledge_bases(
+        db, current_workspace.id, agent_id
+    )
+
+
+@router.post("/{agent_id}/knowledge-bases")
+def connect_knowledge_base(
+    agent_id: uuid.UUID,
+    data: AgentKnowledgeBaseCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentKnowledgeBaseOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    out, created = agent_knowledge_base_service.connect_knowledge_base(
+        db, current_workspace.id, agent_id, data.knowledge_base_id
+    )
+    from fastapi.responses import JSONResponse
+
+    http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return JSONResponse(content=out.model_dump(mode="json"), status_code=http_status)
+
+
+@router.patch("/{agent_id}/knowledge-bases/{kb_id}", response_model=AgentKnowledgeBaseOut)
+def update_agent_knowledge_base(
+    agent_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    data: AgentKnowledgeBaseUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentKnowledgeBaseOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_knowledge_base_service.update_agent_knowledge_base(
+        db, current_workspace.id, agent_id, kb_id, data
+    )
+
+
+@router.delete("/{agent_id}/knowledge-bases/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+def disconnect_knowledge_base(
+    agent_id: uuid.UUID,
+    kb_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_knowledge_base_service.disconnect_knowledge_base(
+        db, current_workspace.id, agent_id, kb_id
+    )
 
 
 # ── Test endpoint ──────────────────────────────────────────────────────────────

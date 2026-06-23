@@ -10,15 +10,17 @@ import {
   CreditCard,
   TrendingUp,
   Zap,
+  BookOpen,
 } from "lucide-react";
 import type { Subscription, Usage } from "@/lib/api";
 
 const nav = [
-  { href: "/dashboard",          label: "Dashboard",      icon: LayoutDashboard },
-  { href: "/dashboard/agents",   label: "Agentes",        icon: Bot },
-  { href: "/dashboard/members",  label: "Membros",        icon: Users },
-  { href: "/dashboard/settings", label: "Configurações",  icon: Settings },
-  { href: "/dashboard/plan",     label: "Plano e uso",    icon: CreditCard },
+  { href: "/dashboard",                      label: "Dashboard",       icon: LayoutDashboard },
+  { href: "/dashboard/agents",               label: "Agentes",         icon: Bot },
+  { href: "/dashboard/knowledge-bases",      label: "Conhecimento",    icon: BookOpen },
+  { href: "/dashboard/members",              label: "Membros",         icon: Users },
+  { href: "/dashboard/settings",             label: "Configurações",   icon: Settings },
+  { href: "/dashboard/plan",                 label: "Plano e uso",     icon: CreditCard },
 ];
 
 // ── Plan card ────────────────────────────────────────────────────────────────

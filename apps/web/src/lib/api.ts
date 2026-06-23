@@ -180,6 +180,77 @@ export type PlaygroundSessionWithMessages = PlaygroundSession & {
   messages: PlaygroundMessage[];
 };
 
+// ── Knowledge Bases ───────────────────────────────────────────────────────────
+
+export type KnowledgeBaseStatus = "active" | "inactive" | "archived";
+
+export type KnowledgeBase = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  status: KnowledgeBaseStatus;
+  created_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KnowledgeBaseCreateInput = {
+  name: string;
+  description?: string;
+};
+
+export type KnowledgeBaseUpdateInput = {
+  name?: string;
+  description?: string | null;
+};
+
+export type KnowledgeSourceStatus = "pending" | "ready" | "failed" | "archived";
+export type KnowledgeSourceType = "manual_text" | "faq_qa";
+
+export type KnowledgeSource = {
+  id: string;
+  workspace_id: string;
+  knowledge_base_id: string;
+  source_type: KnowledgeSourceType;
+  title: string;
+  content_text: string | null;
+  status: KnowledgeSourceStatus;
+  metadata_json: Record<string, unknown> | null;
+  error_message: string | null;
+  created_by_user_id: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type QaPair = {
+  question: string;
+  answer: string;
+};
+
+export type KnowledgeSourceCreateInput = {
+  source_type: KnowledgeSourceType;
+  title: string;
+  content_text?: string;
+  metadata?: {
+    source_category?: string;
+    qa_pairs?: QaPair[];
+  };
+};
+
+export type AgentKnowledgeBase = {
+  id: string;
+  workspace_id: string;
+  agent_id: string;
+  knowledge_base_id: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  knowledge_base_name: string;
+  knowledge_base_status: string;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -265,6 +336,24 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ message, ...(sessionId ? { session_id: sessionId } : {}) }),
       }),
+    knowledgeBases: {
+      list: (token: string, agentId: string) =>
+        apiFetch<AgentKnowledgeBase[]>(`/agents/${agentId}/knowledge-bases`, token),
+      connect: (token: string, agentId: string, kbId: string) =>
+        apiFetch<AgentKnowledgeBase>(`/agents/${agentId}/knowledge-bases`, token, {
+          method: "POST",
+          body: JSON.stringify({ knowledge_base_id: kbId }),
+        }),
+      update: (token: string, agentId: string, kbId: string, data: { is_active: boolean }) =>
+        apiFetch<AgentKnowledgeBase>(`/agents/${agentId}/knowledge-bases/${kbId}`, token, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      disconnect: (token: string, agentId: string, kbId: string) =>
+        apiFetch<void>(`/agents/${agentId}/knowledge-bases/${kbId}`, token, {
+          method: "DELETE",
+        }),
+    },
     playground: {
       listSessions: (token: string, agentId: string) =>
         apiFetch<PlaygroundSession[]>(`/agents/${agentId}/playground/sessions`, token),
@@ -280,6 +369,38 @@ export const api = {
         ),
       deleteSession: (token: string, agentId: string, sessionId: string) =>
         apiFetch<void>(`/agents/${agentId}/playground/sessions/${sessionId}`, token, {
+          method: "DELETE",
+        }),
+    },
+  },
+  knowledgeBases: {
+    list: (token: string) => apiFetch<KnowledgeBase[]>("/knowledge-bases", token),
+    create: (token: string, data: KnowledgeBaseCreateInput) =>
+      apiFetch<KnowledgeBase>("/knowledge-bases", token, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    get: (token: string, kbId: string) =>
+      apiFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, token),
+    update: (token: string, kbId: string, data: KnowledgeBaseUpdateInput) =>
+      apiFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    archive: (token: string, kbId: string) =>
+      apiFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, token, { method: "DELETE" }),
+    sources: {
+      list: (token: string, kbId: string) =>
+        apiFetch<KnowledgeSource[]>(`/knowledge-bases/${kbId}/sources`, token),
+      create: (token: string, kbId: string, data: KnowledgeSourceCreateInput) =>
+        apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources`, token, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      get: (token: string, kbId: string, sourceId: string) =>
+        apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`, token),
+      archive: (token: string, kbId: string, sourceId: string) =>
+        apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`, token, {
           method: "DELETE",
         }),
     },
