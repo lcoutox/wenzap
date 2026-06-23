@@ -11,7 +11,12 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.agent import AgentCreate, AgentOut, AgentStatusUpdate, AgentUpdate
 from app.schemas.agent_test import AgentTestRequest, AgentTestResponse
-from app.services import agent_service, agent_test_service
+from app.schemas.playground import (
+    PlaygroundSessionCreate,
+    PlaygroundSessionOut,
+    PlaygroundSessionWithMessages,
+)
+from app.services import agent_service, agent_test_service, playground_service
 from app.services.workspace_service import get_current_member_role
 
 router = APIRouter(prefix="/agents")
@@ -104,6 +109,80 @@ def archive_agent(
     _require_role(_ARCHIVE_ROLES, db, current_workspace, current_user)
     return agent_service.archive_agent(db, current_workspace.id, agent_id)
 
+
+# ── Playground Sessions ────────────────────────────────────────────────────────
+
+@router.get(
+    "/{agent_id}/playground/sessions",
+    response_model=list[PlaygroundSessionOut],
+)
+def list_playground_sessions(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> list[PlaygroundSessionOut]:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_service.get_agent(db, current_workspace.id, agent_id)  # validates ownership
+    return playground_service.list_sessions(db, current_workspace.id, agent_id)
+
+
+@router.post(
+    "/{agent_id}/playground/sessions",
+    response_model=PlaygroundSessionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_playground_session(
+    agent_id: uuid.UUID,
+    _data: PlaygroundSessionCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> PlaygroundSessionOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_service.get_agent(db, current_workspace.id, agent_id)  # validates ownership
+    return playground_service.create_session(
+        db, current_workspace.id, agent_id, current_user.id
+    )
+
+
+@router.get(
+    "/{agent_id}/playground/sessions/{session_id}",
+    response_model=PlaygroundSessionWithMessages,
+)
+def get_playground_session(
+    agent_id: uuid.UUID,
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> PlaygroundSessionWithMessages:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    session, messages = playground_service.get_session_with_messages(
+        db, current_workspace.id, agent_id, session_id
+    )
+    return PlaygroundSessionWithMessages(
+        **PlaygroundSessionOut.model_validate(session).model_dump(),
+        messages=messages,
+    )
+
+
+@router.delete(
+    "/{agent_id}/playground/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_playground_session(
+    agent_id: uuid.UUID,
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    playground_service.delete_session(db, current_workspace.id, agent_id, session_id)
+
+
+# ── Test endpoint ──────────────────────────────────────────────────────────────
 
 @router.post("/{agent_id}/test", response_model=AgentTestResponse)
 def test_agent(
