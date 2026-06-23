@@ -5,6 +5,7 @@ from app.models.agent_playground_message import AgentPlaygroundMessage
 from app.models.agent_playground_session import AgentPlaygroundSession
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_test_run import AgentTestRun
+from app.models.agent_test_run_retrieved_chunk import AgentTestRunRetrievedChunk
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.knowledge_base import KnowledgeBase
@@ -28,6 +29,7 @@ __all__ = [
     "AgentPromptSettings",
     "AgentModelSettings",
     "AgentTestRun",
+    "AgentTestRunRetrievedChunk",
     "AgentPlaygroundSession",
     "AgentPlaygroundMessage",
     "AiModelProvider",

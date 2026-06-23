@@ -153,6 +153,8 @@ export type AgentTestResponse = {
   duration_ms: number;
   model: AgentTestModelInfo;
   session_id: string;
+  rag_used: boolean;
+  retrieved_chunks_count: number;
 };
 
 // ── Playground Sessions ───────────────────────────────────────────────────────

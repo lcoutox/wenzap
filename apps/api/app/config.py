@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     embedding_dimension: int = 1536
     openai_api_key: str = ""
 
+    # ── RAG settings ──────────────────────────────────────────────────────────
+    # rag_top_k: number of chunks retrieved per query.
+    # rag_max_context_chars: hard cap on total characters injected into the prompt
+    #   (chunks are dropped by rank, never split mid-text).
+    rag_top_k: int = 5
+    rag_max_context_chars: int = 8000
+
     # Comma-separated list of allowed CORS origins.
     # Example: "http://localhost:3000,https://app.nexbrain.com"
     cors_origins: str = "http://localhost:3000"

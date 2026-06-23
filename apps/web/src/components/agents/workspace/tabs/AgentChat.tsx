@@ -414,13 +414,25 @@ export function AgentChat({
 
                   {/* Run metadata — only for the last assistant message in the current turn */}
                   {msg.role === "assistant" && i === lastAssistantIdx && lastRunMeta && (
-                    <p className="text-[11px] text-gray-400 px-1">
-                      {lastRunMeta.credits_used} crédito{lastRunMeta.credits_used !== 1 ? "s" : ""}
-                      {" · "}
-                      {formatDuration(lastRunMeta.duration_ms)}
-                      {" · "}
-                      {lastRunMeta.model.display_name}
-                    </p>
+                    <div className="flex flex-col gap-0.5 px-1">
+                      <p className="text-[11px] text-gray-400">
+                        {lastRunMeta.credits_used} crédito{lastRunMeta.credits_used !== 1 ? "s" : ""}
+                        {" · "}
+                        {formatDuration(lastRunMeta.duration_ms)}
+                        {" · "}
+                        {lastRunMeta.model.display_name}
+                      </p>
+                      {lastRunMeta.rag_used && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600">
+                          <Database className="w-3 h-3" />
+                          Conhecimento usado
+                          {" · "}
+                          {lastRunMeta.retrieved_chunks_count === 1
+                            ? "1 trecho"
+                            : `${lastRunMeta.retrieved_chunks_count} trechos`}
+                        </span>
+                      )}
+                    </div>
                   )}
 
                   {/* Timestamp for history messages */}
@@ -564,17 +576,13 @@ export function AgentChat({
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
           <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Ferramentas</h4>
           <div className="flex items-start gap-2">
-            <Database className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-gray-400">Base de conhecimento ainda não conectada.</p>
-              <p className="text-[11px] text-gray-300 mt-0.5 italic">Sem RAG nesta fase.</p>
-            </div>
+            <Database className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-gray-500">Bases de conhecimento conectadas ao agente são usadas automaticamente.</p>
           </div>
           <div className="flex items-start gap-2">
             <MessageSquare className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-gray-400">Nenhuma ferramenta configurada.</p>
           </div>
-          <p className="text-[11px] text-gray-300 italic">Disponível na Phase 4</p>
         </div>
       </div>
     </div>

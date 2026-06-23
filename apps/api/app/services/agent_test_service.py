@@ -24,6 +24,20 @@ Credit policy:
 
   The increment uses an atomic UPDATE (no read-before-write) to avoid race
   conditions when multiple requests run concurrently.
+
+RAG policy (Phase 4.3):
+  If the agent has active Knowledge Base connections, chunks are retrieved
+  AFTER prompt injection detection of the user's message. A blocked message
+  never triggers retrieval, embedding, or LLM calls.
+
+  RAG failures (embedding error, provider down) degrade gracefully: the LLM
+  is still called without RAG context; the error is recorded in agent_test_runs.
+
+  Chunks that contain prompt injection patterns are excluded from the prompt
+  (recorded in agent_test_run_retrieved_chunks with injected_into_prompt=False).
+
+  Context is capped at settings.rag_max_context_chars; chunks are dropped by
+  rank (lowest similarity first) — never cut mid-text.
 """
 
 import uuid
@@ -33,12 +47,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.config import settings as app_settings
 from app.llm import client as llm_client
 from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest
 from app.models.agent import Agent
 from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_test_run import AgentTestRun
+from app.models.agent_test_run_retrieved_chunk import AgentTestRunRetrievedChunk
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.plan import Plan
@@ -46,9 +62,10 @@ from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent_test import AgentTestModelInfo, AgentTestRequest, AgentTestResponse
 from app.services import playground_service
-from app.services.agent_context_builder import build_system_prompt
+from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
 from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
 from app.services.ai_model_service import PLAN_TIER
+from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
 
 # Phase 3: only these Anthropic model_name values can be executed.
 # Both provider=anthropic and provider=nexbrain models are allowed
@@ -80,19 +97,12 @@ def run_agent_test(
     counter = _get_usage_counter_or_402(db, workspace_id)
     _validate_credits(counter, credits_needed, plan_code, db)
 
-    # Validate system_prompt before session creation so a missing prompt never
-    # results in a session being created without messages.
+    # Validate prompt settings early so a missing prompt never causes a session
+    # to be created. The actual build_system_prompt() call is deferred until
+    # after RAG retrieval so the rag_context can be included.
     prompt_settings = _get_prompt_settings(db, agent)
-    system = build_system_prompt(
-        agent_name=agent.name,
-        agent_description=agent.description,
-        system_prompt=prompt_settings.system_prompt,
-        persona=prompt_settings.persona,
-    )
 
     # ── Resolve or create session (all validations passed) ────────────────────
-    # If session_id was supplied, validate ownership and resolve in a single
-    # SELECT — a bad or cross-tenant session_id returns 404 before any writes.
     if data.session_id is not None:
         session = playground_service.get_session_or_404(
             db, workspace_id, agent_id, data.session_id
@@ -101,21 +111,17 @@ def run_agent_test(
         session = playground_service.create_session_pending(
             db, workspace_id, agent_id, user_id
         )
-        # Flush the new session row so its PK exists in the DB before the
-        # message FK is checked on the next autoflush.
         db.flush()
 
     # ── Persist user message & update session metadata ────────────────────────
     playground_service.save_user_message(db, session.id, data.message)
     playground_service.update_session_title_from_first_message(db, session, data.message)
     playground_service.touch_session(db, session)
-
-    # Flush so pending objects get PKs; LLM call happens outside the transaction.
     db.flush()
 
-    # ── Prompt injection detection (Phase 3.2) ────────────────────────────────
-    # Checked after session + user message are already flushed so the attempt
-    # is visible in Playground history. No LLM call, no credits consumed, no run.
+    # ── Prompt injection detection ────────────────────────────────────────────
+    # Checked after session + user message are flushed so the attempt is visible
+    # in Playground history. No retrieval, no LLM call, no credits consumed.
     if detect_prompt_injection(data.message):
         refusal = get_safe_refusal_message()
         playground_service.save_assistant_message(
@@ -135,7 +141,48 @@ def run_agent_test(
                 model_name=model.model_name,
             ),
             session_id=session.id,
+            rag_used=False,
+            retrieved_chunks_count=0,
         )
+
+    # ── RAG retrieval ─────────────────────────────────────────────────────────
+    # Runs only when the user message is clean. Provider=None means the service
+    # reads from settings (MockEmbeddingProvider in dev/test, OpenAI in prod).
+    retrieval_result = retrieve_context_for_agent(
+        db,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        query=data.message,
+    )
+
+    # Filter chunks that contain prompt injection patterns before injecting into prompt.
+    chunks_safe = _filter_chunks_injection(retrieval_result.chunks)
+
+    # Apply context size limit — drop lowest-ranked chunks that would overflow.
+    chunks_final = _truncate_chunks_to_limit(chunks_safe, app_settings.rag_max_context_chars)
+
+    chunk_contents = [c.content for c in chunks_final]
+    rag_context = build_rag_context_block(chunk_contents) if chunks_final else None
+
+    # Python object IDs of chunks that enter the prompt (for audit logging).
+    # Using id() instead of chunk_id supports chunks with chunk_id=None (e.g. in tests).
+    injected_obj_ids: set[int] = {id(c) for c in chunks_final}
+
+    # Pre-compute RAG summary fields for _log_run.
+    rag_used_flag = len(chunks_final) > 0
+    injected_count = len(chunks_final)
+    retrieved_count_for_run = injected_count if retrieval_result.retrieval_attempted else None
+    score_max = max(c.score for c in chunks_final) if chunks_final else None
+    score_min = min(c.score for c in chunks_final) if chunks_final else None
+
+    # ── Build system prompt (deferred until after retrieval) ──────────────────
+    system = build_system_prompt(
+        agent_name=agent.name,
+        agent_description=agent.description,
+        system_prompt=prompt_settings.system_prompt,
+        persona=prompt_settings.persona,
+        rag_context=rag_context,
+    )
 
     request = LLMRequest(
         model_name=model.model_name,
@@ -147,7 +194,7 @@ def run_agent_test(
     try:
         llm_response = llm_client.complete(request)
     except LLMProviderError as exc:
-        # Error path — user message + run error committed together, no credits consumed.
+        # Error path — user message + run error committed together, no credits.
         _log_run(
             db,
             workspace_id=workspace_id,
@@ -161,6 +208,13 @@ def run_agent_test(
             input_tokens=None,
             output_tokens=None,
             duration_ms=None,
+            rag_used=rag_used_flag,
+            retrieval_attempted=retrieval_result.retrieval_attempted,
+            retrieved_chunks_count=retrieved_count_for_run,
+            retrieval_duration_ms=retrieval_result.retrieval_duration_ms,
+            retrieval_score_max=score_max,
+            retrieval_score_min=score_min,
+            retrieval_error_message=retrieval_result.error_message,
         )
         playground_service.touch_session(db, session)
         db.commit()
@@ -184,8 +238,20 @@ def run_agent_test(
         input_tokens=llm_response.input_tokens,
         output_tokens=llm_response.output_tokens,
         duration_ms=llm_response.duration_ms,
+        rag_used=rag_used_flag,
+        retrieval_attempted=retrieval_result.retrieval_attempted,
+        retrieved_chunks_count=retrieved_count_for_run,
+        retrieval_duration_ms=retrieval_result.retrieval_duration_ms,
+        retrieval_score_max=score_max,
+        retrieval_score_min=score_min,
+        retrieval_error_message=retrieval_result.error_message,
     )
-    db.flush()  # get run.id before using it as FK in the assistant message
+    db.flush()  # get run.id before using it as FK
+
+    # Persist all retrieved chunks (injected and filtered) for audit.
+    if retrieval_result.chunks:
+        _persist_retrieved_chunks(db, run.id, retrieval_result.chunks, injected_obj_ids)
+
     playground_service.save_assistant_message(
         db, session.id, llm_response.content, run.id
     )
@@ -204,10 +270,68 @@ def run_agent_test(
             model_name=model.model_name,
         ),
         session_id=session.id,
+        rag_used=rag_used_flag,
+        retrieved_chunks_count=injected_count,
     )
 
 
-# ── Internal helpers ─────────────────────────────────────────────────────────
+# ── RAG helpers ───────────────────────────────────────────────────────────────
+
+def _filter_chunks_injection(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Return only chunks whose content does not trigger injection detection."""
+    return [c for c in chunks if not detect_prompt_injection(c.content)]
+
+
+def _truncate_chunks_to_limit(
+    chunks: list[RetrievedChunk],
+    max_chars: int,
+) -> list[RetrievedChunk]:
+    """
+    Return a prefix of *chunks* whose total character count fits within *max_chars*.
+
+    Rules:
+    - Chunks are already ordered by rank (highest similarity first).
+    - A single chunk that exceeds max_chars by itself is skipped.
+    - Iteration stops as soon as adding the next chunk would overflow.
+    """
+    result: list[RetrievedChunk] = []
+    total = 0
+    for chunk in chunks:
+        chunk_len = len(chunk.content)
+        if chunk_len > max_chars:
+            continue  # single chunk too big — skip, not break
+        if total + chunk_len > max_chars:
+            break
+        result.append(chunk)
+        total += chunk_len
+    return result
+
+
+def _persist_retrieved_chunks(
+    db: Session,
+    run_id: uuid.UUID,
+    retrieved_chunks: list[RetrievedChunk],
+    injected_obj_ids: set[int],
+) -> None:
+    """
+    Persist audit rows for every chunk that was a candidate in this retrieval.
+
+    injected_obj_ids contains Python id() of chunks that entered the LLM prompt.
+    Using object identity (not chunk_id) correctly handles chunks with chunk_id=None.
+    """
+    for chunk in retrieved_chunks:
+        db.add(AgentTestRunRetrievedChunk(
+            agent_test_run_id=run_id,
+            knowledge_chunk_id=chunk.chunk_id,
+            knowledge_base_id=chunk.knowledge_base_id,
+            source_id=chunk.source_id,
+            score=chunk.score,
+            rank=chunk.rank,
+            injected_into_prompt=id(chunk) in injected_obj_ids,
+        ))
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
     agent = db.scalar(
@@ -395,6 +519,14 @@ def _log_run(
     input_tokens: int | None,
     output_tokens: int | None,
     duration_ms: int | None,
+    # RAG metadata (Phase 4.3) — all defaulted so callers don't need to know about RAG.
+    rag_used: bool = False,
+    retrieval_attempted: bool = False,
+    retrieved_chunks_count: int | None = None,
+    retrieval_duration_ms: int | None = None,
+    retrieval_score_max: float | None = None,
+    retrieval_score_min: float | None = None,
+    retrieval_error_message: str | None = None,
 ) -> AgentTestRun:
     run = AgentTestRun(
         workspace_id=workspace_id,
@@ -410,6 +542,13 @@ def _log_run(
         duration_ms=duration_ms,
         status=status,
         error_message=error_message,
+        rag_used=rag_used,
+        retrieval_attempted=retrieval_attempted,
+        retrieved_chunks_count=retrieved_chunks_count,
+        retrieval_duration_ms=retrieval_duration_ms,
+        retrieval_score_max=retrieval_score_max,
+        retrieval_score_min=retrieval_score_min,
+        retrieval_error_message=retrieval_error_message,
     )
     db.add(run)
     return run

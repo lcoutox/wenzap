@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -49,6 +49,15 @@ class AgentTestRun(Base):
 
     # Sanitized error message from the provider (no stacktrace, no keys, no prompts)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # RAG metadata (Phase 4.3) — all nullable/defaulted so existing runs are unaffected
+    rag_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    retrieval_attempted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    retrieved_chunks_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retrieval_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retrieval_score_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    retrieval_score_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    retrieval_error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

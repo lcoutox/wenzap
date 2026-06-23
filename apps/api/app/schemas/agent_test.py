@@ -36,3 +36,7 @@ class AgentTestResponse(BaseModel):
     duration_ms: int
     model: AgentTestModelInfo
     session_id: uuid.UUID
+    # RAG metadata (Phase 4.3) — optional fields with safe defaults so existing
+    # clients that ignore unknown fields continue to work without changes.
+    rag_used: bool = False
+    retrieved_chunks_count: int = 0
