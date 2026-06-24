@@ -58,3 +58,27 @@ Médio. Se a extração original falhou (`status=failed`) e o usuário quer re-t
 Em `reprocess_source` (ou numa versão futura do serviço): detectar que a source tem `storage_key` e `status=failed` + `content_text=None`; buscar o arquivo do storage provider; re-extrair com o extractor correspondente ao `source_type`; atualizar `content_text`; re-indexar.
 
 Campos necessários já existem: `storage_key`, `storage_provider`, `source_type`. A factory de extractors e o `get_storage_provider()` estão prontos. O trabalho é conectar os pontos em `reprocess_source`.
+
+---
+
+## TD — Evitar contato órfão em criação de conversa inline
+
+**Status:** aberto  
+**Fase de origem:** Phase 5.1 — Conversation Core  
+**Data de registro:** 2026-06-23
+
+### Comportamento atual
+
+`create_conversation` com `contact_name` chama `create_contact` (em `contact_service.py`), que executa `db.commit()` antes de a conversa ser criada. Se a criação da conversa falhar após esse ponto (ex.: violação de constraint na tabela `conversations`), o contato será persistido sem nenhuma conversa associada — um contato órfão.
+
+### Impacto
+
+Baixo no MVP, porque ainda não há UI nem canal externo usando esse fluxo em produção. Em uso normal a conversa sempre é criada com sucesso após o contato. O contato órfão não causa erros visíveis, apenas dado desnecessário no banco.
+
+### Solução futura
+
+Refatorar `create_contact` para aceitar um modo transacional onde executa apenas `db.flush()` (sem `db.commit()`), deixando o commit para o caller. Opções:
+
+1. Adicionar parâmetro `commit: bool = True` em `create_contact` — simples mas expõe detalhe transacional.
+2. Criar helper interno `_create_contact_in_transaction(db, workspace_id, data) -> Contact` que só faz `flush()`, usado por `create_conversation`; o `create_contact` público continua fazendo `commit()`.
+3. Usar `savepoint` para rollback parcial se a conversa falhar — mais robusto mas mais complexo.
