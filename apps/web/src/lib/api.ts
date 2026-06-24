@@ -470,6 +470,14 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    takeOver: (token: string, conversationId: string) =>
+      apiFetch<Conversation>(`/conversations/${conversationId}/take-over`, token, {
+        method: "POST",
+      }),
+    returnToAI: (token: string, conversationId: string) =>
+      apiFetch<Conversation>(`/conversations/${conversationId}/return-to-ai`, token, {
+        method: "POST",
+      }),
     messages: {
       list: (
         token: string,

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_max_context_chars: int = 8000
 
+    # ── Conversation settings ─────────────────────────────────────────────────
+    # Maximum number of recent messages included in the conversation history
+    # block sent to the LLM when the agent replies automatically in the Inbox.
+    conversation_history_limit: int = 20
+
     # ── Storage settings ──────────────────────────────────────────────────────
     # storage_provider: "local" for dev/test/MVP; "s3" for production (not yet implemented).
     storage_provider: str = "local"

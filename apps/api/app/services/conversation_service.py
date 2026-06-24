@@ -190,6 +190,65 @@ def get_conversation_detail(
     return _conv_to_dict(conv, contact_name)
 
 
+_TAKE_OVER_ALLOWED_STATUSES = {"open", "pending", "resolved"}
+
+
+def take_over_conversation(
+    db: Session,
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict:
+    """Assign current user and disable AI. Idempotent if already owned by same user."""
+    conv = get_conversation_or_404(db, workspace_id, conversation_id)
+
+    if conv.status not in _TAKE_OVER_ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot take over an archived conversation.",
+        )
+
+    # Validate that the user is an active member of the workspace.
+    _require_active_member(db, workspace_id, user_id)
+
+    conv.assigned_user_id = user_id
+    conv.ai_enabled = False
+    conv.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(conv)
+
+    contact_name: str | None = None
+    if conv.contact_id is not None:
+        contact_name = db.scalar(select(Contact.name).where(Contact.id == conv.contact_id))
+    return _conv_to_dict(conv, contact_name)
+
+
+def return_to_ai(
+    db: Session,
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> dict:
+    """Remove assigned user and re-enable AI. Idempotent if already in AI mode."""
+    conv = get_conversation_or_404(db, workspace_id, conversation_id)
+
+    if conv.status not in _TAKE_OVER_ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot return an archived conversation to AI.",
+        )
+
+    conv.assigned_user_id = None
+    conv.ai_enabled = True
+    conv.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(conv)
+
+    contact_name: str | None = None
+    if conv.contact_id is not None:
+        contact_name = db.scalar(select(Contact.name).where(Contact.id == conv.contact_id))
+    return _conv_to_dict(conv, contact_name)
+
+
 def update_conversation(
     db: Session,
     workspace_id: uuid.UUID,

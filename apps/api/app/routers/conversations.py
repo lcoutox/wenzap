@@ -102,6 +102,32 @@ def list_messages(
     )
 
 
+@router.post("/{conversation_id}/take-over", response_model=ConversationOut)
+def take_over_conversation(
+    conversation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ConversationOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return conversation_service.take_over_conversation(
+        db, current_workspace.id, conversation_id, current_user.id
+    )
+
+
+@router.post("/{conversation_id}/return-to-ai", response_model=ConversationOut)
+def return_conversation_to_ai(
+    conversation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ConversationOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return conversation_service.return_to_ai(
+        db, current_workspace.id, conversation_id
+    )
+
+
 @router.post(
     "/{conversation_id}/messages",
     response_model=ConversationMessageOut,

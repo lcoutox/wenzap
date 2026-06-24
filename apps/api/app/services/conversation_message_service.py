@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -13,7 +14,37 @@ from app.models.workspace_member import WorkspaceMember
 from app.schemas.conversation_message import ConversationMessageCreate
 from app.services.conversation_service import get_conversation_or_404
 
+logger = logging.getLogger(__name__)
+
 _MAX_LIMIT = 200
+_AUTO_REPLY_ALLOWED_STATUSES = {"open", "pending"}
+
+
+def should_auto_reply_to_message(
+    conversation: Conversation,
+    message: ConversationMessage,
+) -> tuple[bool, str | None]:
+    """
+    Pure eligibility check: should the auto-reply service be called for *message*?
+
+    Returns (True, None) when the service should be invoked.
+    Returns (False, reason_code) when it should be skipped.
+
+    This check mirrors the early-exit conditions inside
+    generate_conversation_agent_reply, but runs before any DB query so that
+    obviously ineligible messages never touch the reply service at all.
+    """
+    if message.direction != "inbound" or message.sender_type != "customer":
+        return False, "not_customer_inbound"
+    if not conversation.ai_enabled:
+        return False, "ai_disabled"
+    if conversation.agent_id is None:
+        return False, "no_agent"
+    if conversation.status not in _AUTO_REPLY_ALLOWED_STATUSES:
+        return False, "status_not_allowed"
+    if conversation.assigned_user_id is not None:
+        return False, "human_assigned"
+    return True, None
 
 
 def list_messages(
@@ -142,6 +173,27 @@ def create_message(
     conv.last_message_at = msg.created_at or now
     conv.updated_at = now
 
+    # Commit the customer message before triggering auto-reply so that it is
+    # always persisted even if the reply service fails.
     db.commit()
     db.refresh(msg)
+
+    # ── Auto-reply trigger ────────────────────────────────────────────────────
+    # Reload conv to pick up the committed state (last_message_at etc.).
+    db.refresh(conv)
+    eligible, _reason = should_auto_reply_to_message(conv, msg)
+    if eligible:
+        try:
+            from app.services.conversation_agent_reply_service import (  # noqa: PLC0415
+                generate_conversation_agent_reply,
+            )
+            generate_conversation_agent_reply(db, workspace_id, conv, msg)
+        except Exception:
+            # Reply service must never crash the message creation endpoint.
+            logger.exception(
+                "Auto-reply failed for conversation %s message %s",
+                conv.id,
+                msg.id,
+            )
+
     return msg

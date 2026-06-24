@@ -10,6 +10,7 @@ from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.contact import Contact
 from app.models.conversation import Conversation
+from app.models.conversation_agent_run import ConversationAgentRun
 from app.models.conversation_message import ConversationMessage
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_chunk import KnowledgeChunk
@@ -43,5 +44,6 @@ __all__ = [
     "AgentKnowledgeBase",
     "Contact",
     "Conversation",
+    "ConversationAgentRun",
     "ConversationMessage",
 ]
