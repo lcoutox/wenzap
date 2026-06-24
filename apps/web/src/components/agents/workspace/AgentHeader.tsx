@@ -1,7 +1,17 @@
 import Link from "next/link";
-import { Bot, ChevronRight, Coins, Wifi, WifiOff } from "lucide-react";
+import { Bot, ChevronRight, Coins, WifiOff } from "lucide-react";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
 import type { Agent, AiModel, MemberRole, AgentStatus } from "@/lib/api";
+
+// ── Shared input style ────────────────────────────────────────────────────────
+
+export const inputCls =
+  "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
+
+export const disabledInputCls =
+  "w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-muted cursor-not-allowed";
+
+// ── Action button ─────────────────────────────────────────────────────────────
 
 function ActionButton({
   onClick,
@@ -13,20 +23,22 @@ function ActionButton({
   children: React.ReactNode;
 }) {
   const cls = {
-    primary:   "bg-indigo-600 text-white hover:bg-indigo-700 border-transparent",
-    secondary: "bg-white text-gray-700 border-gray-300 hover:bg-gray-50",
-    danger:    "bg-white text-red-600 border-red-200 hover:bg-red-50",
+    primary:   "bg-nb-primary text-white hover:bg-nb-primary-strong border-transparent",
+    secondary: "bg-nb-elevated text-nb-secondary border-nb-border hover:bg-nb-soft hover:text-nb-text",
+    danger:    "bg-nb-danger/10 text-nb-danger border-nb-danger/20 hover:bg-nb-danger/20",
   }[variant];
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${cls}`}
+      className={`px-3 py-1.5 text-sm font-medium rounded-xl border transition-colors ${cls}`}
     >
       {children}
     </button>
   );
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function AgentHeader({
   agent,
@@ -48,56 +60,55 @@ export function AgentHeader({
   const canArchive = role === "owner" || role === "admin";
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-5 space-y-4">
+    <div className="bg-nb-surface border-b border-nb-border px-6 py-5 space-y-4">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm text-gray-400">
-        <Link href="/dashboard/agents" className="hover:text-gray-700 transition-colors">
+      <nav className="flex items-center gap-1 text-sm text-nb-muted">
+        <Link href="/dashboard/agents" className="hover:text-nb-secondary transition-colors">
           Agentes
         </Link>
-        <ChevronRight className="w-3.5 h-3.5" />
-        <span className="text-gray-700 font-medium truncate max-w-xs">{agent.name}</span>
+        <ChevronRight className="w-3.5 h-3.5 text-nb-border-strong" />
+        <span className="text-nb-secondary font-medium truncate max-w-xs">{agent.name}</span>
       </nav>
 
       {/* Agent identity row */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-4 min-w-0">
           {/* Avatar */}
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
-            <Bot className="w-6 h-6 text-indigo-500" />
+          <div className="w-12 h-12 rounded-2xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+            <Bot className="w-6 h-6 text-nb-primary-strong" />
           </div>
 
           {/* Name + meta */}
           <div className="min-w-0">
-            <h1 className="text-lg font-bold text-gray-900 leading-tight truncate">
+            <h1 className="text-lg font-bold text-nb-text leading-tight truncate">
               {agent.name}
             </h1>
             {agent.description && (
-              <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{agent.description}</p>
+              <p className="text-sm text-nb-muted mt-0.5 line-clamp-1">{agent.description}</p>
             )}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <AgentStatusBadge status={agent.status} />
 
               {activeModel ? (
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-md bg-gray-100 text-gray-600 border border-gray-200">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-lg bg-nb-elevated text-nb-secondary border border-nb-border">
                   <span>{activeModel.display_name}</span>
                   {activeModel.credits_per_message > 0 && (
                     <>
-                      <span className="text-gray-300">·</span>
-                      <Coins className="w-3 h-3 text-amber-500" />
-                      <span className="text-amber-600">{activeModel.credits_per_message} crédito{activeModel.credits_per_message !== 1 ? "s" : ""}</span>
+                      <span className="text-nb-border-strong">·</span>
+                      <Coins className="w-3 h-3 text-nb-warning" />
+                      <span className="text-nb-warning">{activeModel.credits_per_message} cr.</span>
                     </>
                   )}
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono rounded-md bg-gray-100 text-gray-500 border border-gray-200">
+                <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono rounded-lg bg-nb-elevated text-nb-muted border border-nb-border">
                   {agent.model_name}
                 </span>
               )}
 
-              {/* Deploy status placeholder */}
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-md bg-yellow-50 text-yellow-600 border border-yellow-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-nb-warning/10 text-nb-warning border border-nb-warning/20">
                 <WifiOff className="w-3 h-3" />
-                Sem canal conectado
+                Sem canal
               </span>
             </div>
           </div>
@@ -132,12 +143,12 @@ export function AgentHeader({
 
       {/* Alerts */}
       {actionError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+        <div className="p-3 bg-nb-danger/10 border border-nb-danger/20 rounded-xl text-sm text-nb-danger">
           {actionError}
         </div>
       )}
       {isArchived && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+        <div className="p-3 bg-nb-warning/10 border border-nb-warning/20 rounded-xl text-sm text-nb-warning">
           Este agente está arquivado e não pode ser editado.
         </div>
       )}

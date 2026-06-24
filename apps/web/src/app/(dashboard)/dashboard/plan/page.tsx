@@ -26,17 +26,20 @@ export default function PlanPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Plano e uso</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-nb-text">Plano e uso</h1>
+        <p className="text-sm text-nb-muted mt-0.5">Seu plano atual e consumo do período.</p>
+      </div>
 
       {plan && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+        <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900">{plan.name}</h2>
-            <span className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded font-medium uppercase">
+            <h2 className="text-base font-semibold text-nb-text">{plan.name}</h2>
+            <span className="text-[10px] font-semibold px-2 py-1 bg-nb-primary-bg text-nb-primary-strong rounded-lg border border-nb-primary/20 uppercase tracking-widest">
               {sub?.status}
             </span>
           </div>
-          <p className="text-sm text-gray-500 mb-4">{plan.description}</p>
+          <p className="text-sm text-nb-muted mb-4">{plan.description}</p>
 
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -49,8 +52,8 @@ export default function PlanPage() {
               ["Conversas/mês", plan.monthly_conversations],
             ].map(([label, value]) => (
               <div key={String(label)} className="text-sm">
-                <span className="text-gray-500">{label}: </span>
-                <span className="font-medium text-gray-900">{fmt(Number(value))}</span>
+                <span className="text-nb-muted">{label}: </span>
+                <span className="font-medium text-nb-text">{fmt(Number(value))}</span>
               </div>
             ))}
           </div>
@@ -58,26 +61,22 @@ export default function PlanPage() {
       )}
 
       {usage && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Uso no período atual</h2>
+        <div className="bg-nb-panel rounded-2xl border border-nb-border p-5">
+          <h2 className="text-sm font-semibold text-nb-text mb-4">Uso no período atual</h2>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-xs text-gray-500 mb-1">Créditos de IA usados</p>
-              <p className="text-2xl font-bold text-gray-900">{fmt(usage.ai_credits_used)}</p>
-              {plan && (
-                <p className="text-xs text-gray-400">de {fmt(plan.monthly_ai_credits)}</p>
-              )}
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Créditos IA</p>
+              <p className="text-2xl font-bold text-nb-text">{fmt(usage.ai_credits_used)}</p>
+              {plan && <p className="text-xs text-nb-muted">de {fmt(plan.monthly_ai_credits)}</p>}
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Conversas</p>
-              <p className="text-2xl font-bold text-gray-900">{fmt(usage.conversations_count)}</p>
-              {plan && (
-                <p className="text-xs text-gray-400">de {fmt(plan.monthly_conversations)}</p>
-              )}
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Conversas</p>
+              <p className="text-2xl font-bold text-nb-text">{fmt(usage.conversations_count)}</p>
+              {plan && <p className="text-xs text-nb-muted">de {fmt(plan.monthly_conversations)}</p>}
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Mensagens</p>
-              <p className="text-2xl font-bold text-gray-900">{fmt(usage.messages_count)}</p>
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Mensagens</p>
+              <p className="text-2xl font-bold text-nb-text">{fmt(usage.messages_count)}</p>
             </div>
           </div>
         </div>

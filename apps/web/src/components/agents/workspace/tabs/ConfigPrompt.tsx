@@ -2,9 +2,9 @@ import { AgentFormSection } from "@/components/agents/AgentFormSection";
 import { SaveBar } from "@/components/agents/workspace/SaveBar";
 
 const baseInput =
-  "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent";
+  "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
 const disabledInput =
-  "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-400 bg-gray-50 cursor-not-allowed";
+  "w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-muted cursor-not-allowed";
 
 function Field({
   label,
@@ -17,9 +17,9 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-nb-secondary">{label}</label>
       {children}
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+      {hint && <p className="text-xs text-nb-muted">{hint}</p>}
     </div>
   );
 }
@@ -56,9 +56,7 @@ export function ConfigPrompt({
             rows={10}
             maxLength={8000}
             disabled={readonly}
-            placeholder={
-              readonly ? "" : "Você é um agente de suporte da empresa Acme. Seu objetivo é ajudar clientes a resolver problemas com nossos produtos de forma rápida e amigável..."
-            }
+            placeholder={readonly ? "" : "Você é um agente de suporte da empresa Acme. Seu objetivo é ajudar clientes a resolver problemas com nossos produtos de forma rápida e amigável..."}
             className={readonly ? disabledInput : baseInput}
           />
         </Field>

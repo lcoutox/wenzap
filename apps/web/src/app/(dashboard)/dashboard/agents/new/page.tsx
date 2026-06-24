@@ -10,22 +10,14 @@ import { AgentFormSection } from "@/components/agents/AgentFormSection";
 import { ModelCardSelector } from "@/components/agents/ModelCardSelector";
 
 const baseInput =
-  "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent";
+  "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-nb-secondary">{label}</label>
       {children}
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+      {hint && <p className="text-xs text-nb-muted">{hint}</p>}
     </div>
   );
 }
@@ -34,14 +26,14 @@ export default function NewAgentPage() {
   const { getToken } = useAuth();
   const router = useRouter();
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [name,         setName]         = useState("");
+  const [description,  setDescription]  = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [persona, setPersona] = useState("");
-  const [aiModelId, setAiModelId] = useState<string | null>(null);
-  const [temperature, setTemperature] = useState("0.7");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [persona,      setPersona]      = useState("");
+  const [aiModelId,    setAiModelId]    = useState<string | null>(null);
+  const [temperature,  setTemperature]  = useState("0.7");
+  const [error,        setError]        = useState<string | null>(null);
+  const [saving,       setSaving]       = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,33 +71,28 @@ export default function NewAgentPage() {
     <div className="max-w-4xl space-y-6">
 
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm text-gray-400">
-        <Link href="/dashboard/agents" className="hover:text-gray-700 transition-colors">
+      <nav className="flex items-center gap-1 text-sm text-nb-muted">
+        <Link href="/dashboard/agents" className="hover:text-nb-secondary transition-colors">
           Agentes
         </Link>
-        <ChevronRight className="w-3.5 h-3.5" />
-        <span className="text-gray-700 font-medium">Novo agente</span>
+        <ChevronRight className="w-3.5 h-3.5 text-nb-border-strong" />
+        <span className="text-nb-secondary font-medium">Novo agente</span>
       </nav>
 
       {/* Page header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-          <Bot className="w-5 h-5 text-indigo-500" />
+        <div className="w-10 h-10 rounded-xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center">
+          <Bot className="w-5 h-5 text-nb-primary-strong" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Novo agente</h1>
-          <p className="text-sm text-gray-500">Configure a identidade, o prompt e o modelo do agente.</p>
+          <h1 className="text-xl font-bold text-nb-text">Novo agente</h1>
+          <p className="text-sm text-nb-muted">Configure a identidade, o prompt e o modelo do agente.</p>
         </div>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* Section 1 — Identity */}
-        <AgentFormSection
-          title="Informações básicas"
-          description="Nome e descrição exibidos na plataforma."
-        >
+        <AgentFormSection title="Informações básicas" description="Nome e descrição exibidos na plataforma.">
           <Field label="Nome *">
             <input
               type="text"
@@ -128,15 +115,8 @@ export default function NewAgentPage() {
           </Field>
         </AgentFormSection>
 
-        {/* Section 2 — Prompt */}
-        <AgentFormSection
-          title="Prompt inicial"
-          description="Instrução base e persona do agente."
-        >
-          <Field
-            label="System prompt"
-            hint={`${systemPrompt.length} / 8000 caracteres — obrigatório para ativar o agente.`}
-          >
+        <AgentFormSection title="Prompt inicial" description="Instrução base e persona do agente.">
+          <Field label="System prompt" hint={`${systemPrompt.length} / 8000 caracteres — obrigatório para ativar o agente.`}>
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
@@ -156,10 +136,7 @@ export default function NewAgentPage() {
               className={baseInput}
             />
           </Field>
-          <Field
-            label="Temperatura"
-            hint="Controla a criatividade. 0 = mais preciso, 1 = mais criativo."
-          >
+          <Field label="Temperatura" hint="Controla a criatividade. 0 = mais preciso, 1 = mais criativo.">
             <div className="flex items-center gap-4">
               <input
                 type="range"
@@ -168,42 +145,37 @@ export default function NewAgentPage() {
                 step="0.1"
                 min="0"
                 max="1"
-                className="flex-1 accent-indigo-600"
+                className="flex-1 accent-nb-primary"
               />
-              <span className="w-10 text-sm font-mono text-center text-gray-700 bg-gray-100 rounded px-2 py-1">
+              <span className="w-10 text-sm font-mono text-center text-nb-secondary bg-nb-elevated border border-nb-border rounded-lg px-2 py-1">
                 {parseFloat(temperature).toFixed(1)}
               </span>
             </div>
           </Field>
         </AgentFormSection>
 
-        {/* Section 3 — Model */}
-        <AgentFormSection
-          title="Modelo do agente"
-          description="Escolha o modelo de IA que alimentará este agente."
-        >
+        <AgentFormSection title="Modelo do agente" description="Escolha o modelo de IA que alimentará este agente.">
           <ModelCardSelector
             aiModelId={aiModelId}
             onChange={(id) => setAiModelId(id)}
           />
         </AgentFormSection>
 
-        {/* Actions */}
         {error && (
-          <p className="text-sm text-red-500">{error}</p>
+          <p className="text-sm text-nb-danger">{error}</p>
         )}
         <div className="flex items-center gap-3">
           <button
             type="submit"
             disabled={saving || !aiModelId}
-            className="px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="px-5 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong disabled:opacity-40 transition-colors"
           >
             {saving ? "Criando..." : "Criar agente"}
           </button>
           <button
             type="button"
             onClick={() => router.push("/dashboard/agents")}
-            className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors"
           >
             Cancelar
           </button>

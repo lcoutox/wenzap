@@ -34,26 +34,24 @@ export function ConfigSeguranca() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Segurança e acesso</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-base font-semibold text-nb-text">Segurança e acesso</h2>
+        <p className="text-sm text-nb-muted mt-1">
           Controles de privacidade, moderação e limites de uso. Disponíveis na Phase 5.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+      <div className="bg-nb-panel rounded-2xl border border-nb-border divide-y divide-nb-border">
         {ITEMS.map(({ label, description }) => (
           <div key={label} className="flex items-center justify-between gap-4 px-5 py-4">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-600">{label}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+              <p className="text-sm font-medium text-nb-secondary">{label}</p>
+              <p className="text-xs text-nb-muted mt-0.5">{description}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-gray-100 text-gray-400 border border-gray-200 leading-none">
+              <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-nb-elevated text-nb-muted border border-nb-border leading-none">
                 EM BREVE
               </span>
-              <div className="relative w-9 h-5 flex-shrink-0">
-                <div className="w-9 h-5 rounded-full bg-gray-200 opacity-50 cursor-not-allowed" />
-              </div>
+              <div className="w-9 h-5 rounded-full bg-nb-border opacity-50 cursor-not-allowed" />
             </div>
           </div>
         ))}

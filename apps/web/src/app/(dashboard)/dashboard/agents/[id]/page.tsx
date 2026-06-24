@@ -184,16 +184,16 @@ export default function AgentWorkspacePage() {
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
-        <div className="h-32 bg-white rounded-xl border border-gray-200" />
-        <div className="h-10 w-80 bg-gray-200 rounded" />
-        <div className="h-96 bg-white rounded-xl border border-gray-200" />
+        <div className="h-32 bg-nb-panel rounded-2xl border border-nb-border" />
+        <div className="h-10 w-80 bg-nb-panel rounded-xl" />
+        <div className="h-96 bg-nb-panel rounded-2xl border border-nb-border" />
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+      <div className="p-4 bg-nb-danger/10 border border-nb-danger/20 rounded-xl text-sm text-nb-danger">
         {loadError}
       </div>
     );

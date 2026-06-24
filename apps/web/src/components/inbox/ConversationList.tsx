@@ -6,8 +6,6 @@ import { api } from "@/lib/api";
 import type { Conversation } from "@/lib/api";
 import { ConversationItem } from "./ConversationItem";
 
-// ── Filter config ─────────────────────────────────────────────────────────────
-
 type Filter = "all" | "open" | "pending" | "resolved" | "archived";
 
 const FILTERS: { value: Filter; label: string; emptyLabel: string }[] = [
@@ -18,28 +16,24 @@ const FILTERS: { value: Filter; label: string; emptyLabel: string }[] = [
   { value: "archived", label: "Arquivadas",emptyLabel: "Nenhuma conversa arquivada."   },
 ];
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
-
 function Skeleton() {
   return (
     <div className="space-y-0">
       {[...Array(5)].map((_, i) => (
-        <div key={i} className="px-3 py-3 border-b border-gray-800/60 animate-pulse">
+        <div key={i} className="px-3 py-3 border-b border-nb-border/60 animate-pulse">
           <div className="flex justify-between mb-2">
-            <div className="h-3 bg-gray-700 rounded w-2/3" />
-            <div className="h-3 bg-gray-700 rounded w-8" />
+            <div className="h-3 bg-nb-elevated rounded w-2/3" />
+            <div className="h-3 bg-nb-elevated rounded w-8" />
           </div>
           <div className="flex gap-1.5">
-            <div className="h-3 bg-gray-700 rounded w-12" />
-            <div className="h-3 bg-gray-700 rounded w-14" />
+            <div className="h-3 bg-nb-elevated rounded w-12" />
+            <div className="h-3 bg-nb-elevated rounded w-14" />
           </div>
         </div>
       ))}
     </div>
   );
 }
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function ConversationList({
   selectedId,
@@ -81,67 +75,57 @@ export function ConversationList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFilter, refreshKey]);
 
-  const handleFilter = (f: Filter) => {
-    if (f !== activeFilter) setActiveFilter(f);
-  };
-
-  const emptyLabel =
-    FILTERS.find((f) => f.value === activeFilter)?.emptyLabel ??
-    "Nenhuma conversa encontrada.";
+  const emptyLabel = FILTERS.find((f) => f.value === activeFilter)?.emptyLabel ?? "Nenhuma conversa encontrada.";
 
   return (
-    <aside className="w-72 flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-900 min-h-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 flex-shrink-0">
-        <h1 className="text-sm font-semibold text-white">Inbox</h1>
-        {canCreate ? (
+    <aside className="w-72 flex-shrink-0 border-r border-nb-border flex flex-col bg-nb-surface min-h-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-nb-border flex-shrink-0">
+        <h1 className="text-sm font-semibold text-nb-text">Inbox</h1>
+        {canCreate && (
           <button
             type="button"
             onClick={onNewConversation}
-            className="px-2.5 py-1 rounded text-xs font-medium bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 transition-colors"
+            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-nb-primary-bg text-nb-primary-strong hover:bg-nb-primary/20 transition-colors"
           >
             + Nova conversa
           </button>
-        ) : null}
+        )}
       </div>
 
-      {/* Status tabs */}
-      <div className="flex gap-0 border-b border-gray-800 flex-shrink-0 overflow-x-auto">
+      <div className="flex gap-0 border-b border-nb-border flex-shrink-0 overflow-x-auto">
         {FILTERS.map((f) => (
           <button
             key={f.value}
             type="button"
-            onClick={() => handleFilter(f.value)}
-            className={`
-              flex-shrink-0 px-3 py-2 text-xs font-medium transition-colors border-b-2
-              ${activeFilter === f.value
-                ? "text-indigo-400 border-indigo-500"
-                : "text-gray-500 border-transparent hover:text-gray-300"}
-            `}
+            onClick={() => { if (f.value !== activeFilter) setActiveFilter(f.value); }}
+            className={`flex-shrink-0 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+              activeFilter === f.value
+                ? "text-nb-primary-strong border-nb-primary"
+                : "text-nb-muted border-transparent hover:text-nb-secondary"
+            }`}
           >
             {f.label}
           </button>
         ))}
       </div>
 
-      {/* Body */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <Skeleton />
         ) : error ? (
           <div className="flex flex-col items-center justify-center px-4 py-10 text-center gap-3">
-            <p className="text-xs text-red-400">{error}</p>
+            <p className="text-xs text-nb-danger">{error}</p>
             <button
               type="button"
               onClick={() => void load(activeFilter)}
-              className="px-3 py-1.5 rounded text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-nb-elevated text-nb-secondary hover:bg-nb-soft transition-colors"
             >
               Tentar novamente
             </button>
           </div>
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-            <p className="text-xs text-gray-500">{emptyLabel}</p>
+            <p className="text-xs text-nb-muted">{emptyLabel}</p>
           </div>
         ) : (
           conversations.map((conv) => (

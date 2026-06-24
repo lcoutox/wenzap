@@ -1,1 +1,49 @@
 @import "tailwindcss";
+
+/* ── Nexbrain Design Tokens ──────────────────────────────────────────────────
+   Paleta: Operacional Noturno
+   Hierarquia de superfícies (mais escuro → mais elevado):
+     bg < surface < panel < elevated < soft
+────────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Backgrounds */
+  --color-nb-bg:          #080C14;
+  --color-nb-surface:     #0C1220;
+  --color-nb-panel:       #111827;
+  --color-nb-elevated:    #172033;
+  --color-nb-soft:        #1D2738;
+
+  /* Borders */
+  --color-nb-border:        #253044;
+  --color-nb-border-strong: #334155;
+
+  /* Typography */
+  --color-nb-text:       #F4F7FB;
+  --color-nb-secondary:  #A8B3C7;
+  --color-nb-muted:      #6F7B90;
+
+  /* Primary — indigo/roxo para ação, IA, seleção */
+  --color-nb-primary:       #7167F0;
+  --color-nb-primary-strong:#8B7CFF;
+  --color-nb-primary-bg:    #2A255F;
+
+  /* Semânticos */
+  --color-nb-success: #34D399;
+  --color-nb-warning: #FBBF24;
+  --color-nb-danger:  #FB7185;
+  --color-nb-info:    #38BDF8;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────────
+   Define fundo escuro global para que qualquer área não pintada seja escura.
+────────────────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  html,
+  body {
+    background-color: #080C14;
+    color: #F4F7FB;
+    -webkit-font-smoothing: antialiased;
+  }
+}

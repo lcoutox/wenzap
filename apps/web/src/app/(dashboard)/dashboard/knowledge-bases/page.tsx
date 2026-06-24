@@ -7,21 +7,17 @@ import { BookOpen, Calendar, Plus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { KnowledgeBase, MemberRole } from "@/lib/api";
 
-// ── RBAC ─────────────────────────────────────────────────────────────────────
-
 function canWrite(role: MemberRole | null) {
   return role === "owner" || role === "admin" || role === "member";
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
-
 function KbStatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    active:   { label: "Ativa",    cls: "bg-green-50 text-green-700 border-green-200" },
-    inactive: { label: "Inativa",  cls: "bg-gray-50 text-gray-500 border-gray-200" },
-    archived: { label: "Arquivada", cls: "bg-red-50 text-red-600 border-red-200" },
+    active:   { label: "Ativa",     cls: "bg-nb-success/10 text-nb-success border-nb-success/20" },
+    inactive: { label: "Inativa",   cls: "bg-nb-elevated   text-nb-muted   border-nb-border"     },
+    archived: { label: "Arquivada", cls: "bg-nb-danger/10  text-nb-danger  border-nb-danger/20"  },
   };
-  const s = map[status] ?? { label: status, cls: "bg-gray-50 text-gray-500 border-gray-200" };
+  const s = map[status] ?? { label: status, cls: "bg-nb-elevated text-nb-muted border-nb-border" };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>
       {s.label}
@@ -29,36 +25,33 @@ function KbStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── KB Card ───────────────────────────────────────────────────────────────────
-
 function KbCard({ kb }: { kb: KnowledgeBase }) {
   return (
-    <div className="group bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all duration-150 flex flex-col">
+    <div className="group bg-nb-panel rounded-2xl border border-nb-border hover:border-nb-border-strong transition-all duration-150 flex flex-col">
       <div className="p-5 flex items-start gap-4">
-        <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
-          <BookOpen className="w-5 h-5 text-indigo-500" />
+        <div className="w-10 h-10 rounded-xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <BookOpen className="w-5 h-5 text-nb-primary-strong" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-gray-900 truncate">{kb.name}</h3>
+            <h3 className="text-sm font-semibold text-nb-text truncate">{kb.name}</h3>
             <KbStatusBadge status={kb.status} />
           </div>
           {kb.description ? (
-            <p className="mt-1 text-xs text-gray-500 line-clamp-2">{kb.description}</p>
+            <p className="mt-1 text-xs text-nb-muted line-clamp-2">{kb.description}</p>
           ) : (
-            <p className="mt-1 text-xs text-gray-300 italic">Sem descrição</p>
+            <p className="mt-1 text-xs text-nb-muted/40 italic">Sem descrição</p>
           )}
         </div>
       </div>
-
-      <div className="px-5 pb-4 mt-auto flex items-center justify-between border-t border-gray-50 pt-3">
-        <span className="flex items-center gap-1 text-xs text-gray-400">
+      <div className="px-5 pb-4 mt-auto flex items-center justify-between border-t border-nb-border pt-3">
+        <span className="flex items-center gap-1 text-xs text-nb-muted">
           <Calendar className="w-3 h-3" />
           {new Date(kb.created_at).toLocaleDateString("pt-BR")}
         </span>
         <Link
           href={`/dashboard/knowledge-bases/${kb.id}`}
-          className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+          className="text-xs font-medium text-nb-primary hover:text-nb-primary-strong transition-colors"
         >
           Ver detalhes →
         </Link>
@@ -67,30 +60,26 @@ function KbCard({ kb }: { kb: KnowledgeBase }) {
   );
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
 function EmptyState({ canCreate }: { canCreate: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mb-4">
-        <BookOpen className="w-8 h-8 text-indigo-400" />
+      <div className="w-16 h-16 rounded-2xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center mb-4">
+        <BookOpen className="w-8 h-8 text-nb-primary" />
       </div>
-      <h3 className="text-base font-semibold text-gray-900 mb-1">
+      <h3 className="text-base font-semibold text-nb-text mb-1">
         Nenhuma base de conhecimento ainda
       </h3>
-      <p className="text-sm text-gray-500 max-w-xs mb-6">
+      <p className="text-sm text-nb-muted max-w-xs mb-6">
         Crie uma base e adicione textos, FAQs e procedimentos para que seus agentes respondam com mais precisão.
       </p>
       {canCreate && (
-        <div className="text-sm text-indigo-600 font-medium">
+        <p className="text-sm text-nb-primary font-medium">
           ↑ Clique em &ldquo;Nova Base&rdquo; para começar
-        </div>
+        </p>
       )}
     </div>
   );
 }
-
-// ── Modal Nova Base ───────────────────────────────────────────────────────────
 
 function CreateKbModal({
   onClose,
@@ -108,7 +97,10 @@ function CreateKbModal({
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -134,26 +126,25 @@ function CreateKbModal({
     }
   }
 
+  const inputCls = "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Nova base de conhecimento</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-nb-surface rounded-[18px] border border-nb-border shadow-2xl w-full max-w-md mx-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-nb-border">
+          <h2 className="text-base font-semibold text-nb-text">Nova base de conhecimento</h2>
+          <button type="button" onClick={onClose} className="text-nb-muted hover:text-nb-secondary transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Nome <span className="text-red-500">*</span>
+            <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+              Nome <span className="text-nb-danger">*</span>
             </label>
             <input
               ref={inputRef}
@@ -162,25 +153,25 @@ function CreateKbModal({
               onChange={(e) => setName(e.target.value)}
               maxLength={200}
               placeholder="Ex: FAQ de Atendimento"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={inputCls}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Descrição <span className="text-gray-400">(opcional)</span>
+            <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+              Descrição <span className="text-nb-muted">(opcional)</span>
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Descreva o conteúdo desta base..."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className={inputCls + " resize-none"}
             />
           </div>
 
           {error && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-nb-danger bg-nb-danger/10 border border-nb-danger/20 rounded-xl px-3 py-2">
               {error}
             </p>
           )}
@@ -189,14 +180,14 @@ function CreateKbModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 text-sm font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong disabled:opacity-40 transition-colors"
             >
               {saving ? "Criando..." : "Criar base"}
             </button>
@@ -206,8 +197,6 @@ function CreateKbModal({
     </div>
   );
 }
-
-// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function KnowledgeBasesPage() {
   const { getToken } = useAuth();
@@ -221,10 +210,7 @@ export default function KnowledgeBasesPage() {
     getToken().then(async (token) => {
       if (!token) return;
       try {
-        const [kbList, me] = await Promise.all([
-          api.knowledgeBases.list(token),
-          api.me(token),
-        ]);
+        const [kbList, me] = await Promise.all([api.knowledgeBases.list(token), api.me(token)]);
         setKbs(kbList);
         setRole(me.role);
       } catch (e) {
@@ -242,14 +228,14 @@ export default function KnowledgeBasesPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="h-8 w-56 bg-gray-200 rounded" />
-          <div className="h-9 w-28 bg-gray-200 rounded-lg" />
+          <div className="h-8 w-56 bg-nb-panel rounded-xl animate-pulse" />
+          <div className="h-9 w-28 bg-nb-panel rounded-xl animate-pulse" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-36 bg-white rounded-xl border border-gray-200" />
+            <div key={i} className="h-36 bg-nb-panel rounded-2xl border border-nb-border animate-pulse" />
           ))}
         </div>
       </div>
@@ -258,7 +244,7 @@ export default function KnowledgeBasesPage() {
 
   if (loadError) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+      <div className="p-4 bg-nb-danger/10 border border-nb-danger/20 rounded-xl text-sm text-nb-danger">
         {loadError}
       </div>
     );
@@ -267,17 +253,13 @@ export default function KnowledgeBasesPage() {
   return (
     <>
       {showCreate && (
-        <CreateKbModal
-          onClose={() => setShowCreate(false)}
-          onCreate={handleCreated}
-        />
+        <CreateKbModal onClose={() => setShowCreate(false)} onCreate={handleCreated} />
       )}
 
-      {/* Page header */}
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Bases de Conhecimento</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-nb-text">Bases de Conhecimento</h1>
+          <p className="text-sm text-nb-muted mt-0.5">
             Organize informações que seus agentes poderão usar para responder com mais precisão.
           </p>
         </div>
@@ -285,7 +267,7 @@ export default function KnowledgeBasesPage() {
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
           >
             <Plus className="w-4 h-4" />
             Nova Base

@@ -5,9 +5,9 @@ import { SaveBar } from "@/components/agents/workspace/SaveBar";
 import type { Agent, AiModel } from "@/lib/api";
 
 const baseInput =
-  "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent";
+  "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
 const disabledInput =
-  "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-400 bg-gray-50 cursor-not-allowed";
+  "w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-muted cursor-not-allowed";
 
 function Field({
   label,
@@ -20,9 +20,9 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <label className="block text-sm font-medium text-nb-secondary">{label}</label>
       {children}
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+      {hint && <p className="text-xs text-nb-muted">{hint}</p>}
     </div>
   );
 }
@@ -52,10 +52,7 @@ export function ConfigGeral({
 }) {
   return (
     <div className="space-y-5">
-      <AgentFormSection
-        title="Identidade"
-        description="Nome e descrição exibidos na plataforma."
-      >
+      <AgentFormSection title="Identidade" description="Nome e descrição exibidos na plataforma.">
         <Field label="Nome *">
           <input
             type="text"
@@ -82,35 +79,35 @@ export function ConfigGeral({
 
       <AgentFormSection title="Status e modelo" description="Resumo do estado atual do agente.">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status</p>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Status</p>
             <AgentStatusBadge status={agent.status} />
           </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Criado em</p>
-            <p className="text-sm text-gray-700">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Criado em</p>
+            <p className="text-sm text-nb-secondary">
               {new Date(agent.created_at).toLocaleDateString("pt-BR", {
                 day: "2-digit", month: "short", year: "numeric",
               })}
             </p>
           </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Modelo ativo</p>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Modelo ativo</p>
             {activeModel ? (
               <div className="flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-700">{activeModel.display_name}</span>
+                <Cpu className="w-4 h-4 text-nb-muted" />
+                <span className="text-sm text-nb-secondary">{activeModel.display_name}</span>
               </div>
             ) : (
-              <span className="text-sm font-mono text-gray-500">{agent.model_name}</span>
+              <span className="text-sm font-mono text-nb-muted">{agent.model_name}</span>
             )}
           </div>
           {activeModel && activeModel.credits_per_message > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Custo por mensagem</p>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Custo por mensagem</p>
               <div className="flex items-center gap-1.5">
-                <Coins className="w-4 h-4 text-amber-500" />
-                <span className="text-sm text-amber-600 font-medium">
+                <Coins className="w-4 h-4 text-nb-warning" />
+                <span className="text-sm text-nb-warning font-medium">
                   {activeModel.credits_per_message} crédito{activeModel.credits_per_message !== 1 ? "s" : ""}
                 </span>
               </div>

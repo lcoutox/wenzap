@@ -20,10 +20,10 @@ type Capability = { label: string; icon: React.ElementType };
 
 function modelCapabilities(model: AiModel): Capability[] {
   const caps: Capability[] = [];
-  if (model.supports_vision)    caps.push({ label: "Visão",        icon: Eye });
-  if (model.supports_tools)     caps.push({ label: "Ferramentas",  icon: Wrench });
-  if (model.supports_code)      caps.push({ label: "Código",       icon: Code2 });
-  if (model.supports_reasoning) caps.push({ label: "Raciocínio",   icon: BrainCircuit });
+  if (model.supports_vision)    caps.push({ label: "Visão",       icon: Eye });
+  if (model.supports_tools)     caps.push({ label: "Ferramentas", icon: Wrench });
+  if (model.supports_code)      caps.push({ label: "Código",      icon: Code2 });
+  if (model.supports_reasoning) caps.push({ label: "Raciocínio",  icon: BrainCircuit });
   return caps;
 }
 
@@ -40,34 +40,34 @@ function ActiveModelSummary({
   const capabilities = modelCapabilities(model);
 
   return (
-    <div className="flex items-start gap-4 p-4 rounded-xl bg-indigo-50/60 border border-indigo-100">
-      <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0">
+    <div className="flex items-start gap-4 p-4 rounded-xl bg-nb-primary-bg border border-nb-primary/20">
+      <div className="w-9 h-9 rounded-xl bg-nb-primary flex items-center justify-center flex-shrink-0">
         <Zap className="w-4 h-4 text-white" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <p className="text-sm font-semibold text-gray-900">{model.display_name}</p>
+          <p className="text-sm font-semibold text-nb-text">{model.display_name}</p>
           {model.is_recommended && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-nb-primary-bg text-nb-primary-strong border-nb-primary/20">
               Recomendado
             </span>
           )}
           {model.is_featured && !model.is_recommended && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-nb-elevated text-nb-secondary border-nb-border">
               Destaque
             </span>
           )}
-          <span className="text-xs text-gray-400 ml-auto">
+          <span className="text-xs text-nb-muted ml-auto">
             {model.credits_per_message} crédito{model.credits_per_message !== 1 ? "s" : ""}/msg
           </span>
         </div>
-        <p className="text-xs text-gray-500 mb-2">{provider.name}</p>
+        <p className="text-xs text-nb-muted mb-2">{provider.name}</p>
         {capabilities.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {capabilities.map(({ label, icon: Icon }) => (
               <span
                 key={label}
-                className="inline-flex items-center gap-1 text-xs text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md"
+                className="inline-flex items-center gap-1 text-xs text-nb-primary-strong bg-nb-primary-bg px-2 py-0.5 rounded-lg"
               >
                 <Icon className="w-3 h-3" />
                 {label}
@@ -106,48 +106,47 @@ function ModelCard({
       onClick={onSelect}
       className={`
         w-full text-left rounded-xl border p-4 transition-all duration-150
-        ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:shadow-sm"}
+        ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:border-nb-border-strong"}
         ${selected
-          ? "border-indigo-500 bg-indigo-50/50 ring-1 ring-indigo-500"
-          : "border-gray-200 bg-white hover:border-gray-300"
-        }
+          ? "border-nb-primary bg-nb-primary-bg/50 ring-1 ring-nb-primary/40"
+          : "border-nb-border bg-nb-elevated"}
       `}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-semibold text-gray-900">{model.display_name}</span>
+          <span className="text-sm font-semibold text-nb-text">{model.display_name}</span>
           {model.is_recommended && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-nb-primary-bg text-nb-primary-strong border-nb-primary/20">
               Recomendado
             </span>
           )}
           {model.is_featured && !model.is_recommended && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-nb-elevated text-nb-secondary border-nb-border">
               Destaque
             </span>
           )}
         </div>
         {selected && !unavailable && (
-          <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+          <CheckCircle2 className="w-4 h-4 text-nb-primary flex-shrink-0 mt-0.5" />
         )}
         {unavailable && (
-          <Lock className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+          <Lock className="w-4 h-4 text-nb-muted flex-shrink-0 mt-0.5" />
         )}
       </div>
 
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-gray-400">{provider.name}</p>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-nb-muted">{provider.name}</p>
+        <p className="text-xs text-nb-muted">
           {model.credits_per_message} crédito{model.credits_per_message !== 1 ? "s" : ""}/msg
         </p>
       </div>
 
       {model.description && (
-        <p className="text-xs text-gray-500 mb-3 line-clamp-2">{model.description}</p>
+        <p className="text-xs text-nb-muted mb-3 line-clamp-2">{model.description}</p>
       )}
 
       {unavailable && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
+        <p className="text-xs text-nb-warning bg-nb-warning/10 rounded-lg px-2 py-1 mb-2 border border-nb-warning/20">
           Requer plano {model.min_plan_code}
         </p>
       )}
@@ -157,7 +156,7 @@ function ModelCard({
           {capabilities.map(({ label, icon: Icon }) => (
             <span
               key={label}
-              className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-md"
+              className="inline-flex items-center gap-1 text-xs text-nb-muted bg-nb-soft border border-nb-border px-2 py-0.5 rounded-lg"
             >
               <Icon className="w-3 h-3" />
               {label}
@@ -186,8 +185,6 @@ export function ModelCardSelector({
   const [providers, setProviders] = useState<AiProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Track whether we've fired the initial default selection
   const didInit = useRef(false);
 
   useEffect(() => {
@@ -196,8 +193,6 @@ export function ModelCardSelector({
       try {
         const catalog = await api.aiModels.list(token);
         setProviders(catalog.providers);
-
-        // If no model is selected yet, auto-select the default available one
         if (!aiModelId && !didInit.current) {
           didInit.current = true;
           const allModels = catalog.providers.flatMap((p) => p.models);
@@ -216,17 +211,14 @@ export function ModelCardSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken]);
 
-  // Find the currently selected model + its provider
-  const allModels = providers.flatMap((p) =>
-    p.models.map((m) => ({ model: m, provider: p }))
-  );
-  const selected = allModels.find(({ model }) => model.id === aiModelId) ?? null;
+  const allModels = providers.flatMap((p) => p.models.map((m) => ({ model: m, provider: p })));
+  const selected  = allModels.find(({ model }) => model.id === aiModelId) ?? null;
 
   if (loading) {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-24 rounded-xl border border-gray-200 bg-gray-50 animate-pulse" />
+          <div key={i} className="h-24 rounded-xl border border-nb-border bg-nb-elevated animate-pulse" />
         ))}
       </div>
     );
@@ -234,7 +226,7 @@ export function ModelCardSelector({
 
   if (error) {
     return (
-      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+      <div className="p-3 bg-nb-danger/10 border border-nb-danger/20 rounded-xl text-sm text-nb-danger">
         {error}
       </div>
     );
@@ -242,7 +234,7 @@ export function ModelCardSelector({
 
   if (providers.length === 0 || allModels.length === 0) {
     return (
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500 text-center">
+      <div className="p-4 bg-nb-elevated border border-nb-border rounded-xl text-sm text-nb-muted text-center">
         Nenhum modelo disponível para o seu plano atual.
       </div>
     );
@@ -250,16 +242,14 @@ export function ModelCardSelector({
 
   return (
     <div className="space-y-5">
-      {/* Active model summary */}
       {selected && (
         <ActiveModelSummary model={selected.model} provider={selected.provider} />
       )}
 
-      {/* Model grid — grouped by provider */}
       {providers.map((provider) => (
         <div key={provider.code}>
           {providers.length > 1 && (
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+            <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-2">
               {provider.name}
             </p>
           )}

@@ -40,39 +40,46 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Configurações do workspace</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-nb-text">Configurações do workspace</h1>
+        <p className="text-sm text-nb-muted mt-0.5">Gerencie as informações do seu workspace.</p>
+      </div>
 
       {workspace && (
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Slug</label>
-            <input
-              type="text"
-              value={workspace.slug}
-              readOnly
-              className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
-            />
-          </div>
-          {message && (
-            <p className="text-sm text-green-600">{message}</p>
-          )}
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {saving ? "Salvando..." : "Salvar"}
-          </button>
-        </form>
+        <div className="bg-nb-panel rounded-2xl border border-nb-border p-6">
+          <form onSubmit={handleSave} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-nb-secondary mb-1.5">Nome</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-nb-secondary mb-1.5">Slug</label>
+              <input
+                type="text"
+                value={workspace.slug}
+                readOnly
+                className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-muted cursor-not-allowed"
+              />
+            </div>
+            {message && (
+              <p className={`text-sm ${message.includes("sucesso") ? "text-nb-success" : "text-nb-danger"}`}>
+                {message}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong disabled:opacity-40 transition-colors"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );

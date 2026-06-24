@@ -16,16 +16,16 @@ import {
 import type { Subscription, Usage } from "@/lib/api";
 
 const nav = [
-  { href: "/dashboard",                      label: "Dashboard",       icon: LayoutDashboard },
-  { href: "/dashboard/agents",               label: "Agentes",         icon: Bot },
-  { href: "/dashboard/inbox",               label: "Inbox",           icon: MessageSquare },
-  { href: "/dashboard/knowledge-bases",      label: "Conhecimento",    icon: BookOpen },
-  { href: "/dashboard/members",              label: "Membros",         icon: Users },
-  { href: "/dashboard/settings",             label: "Configurações",   icon: Settings },
-  { href: "/dashboard/plan",                 label: "Plano e uso",     icon: CreditCard },
+  { href: "/dashboard",               label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
+  { href: "/dashboard/inbox",         label: "Inbox",        icon: MessageSquare },
+  { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
+  { href: "/dashboard/members",       label: "Membros",      icon: Users },
+  { href: "/dashboard/settings",      label: "Configurações", icon: Settings },
+  { href: "/dashboard/plan",          label: "Plano e uso",  icon: CreditCard },
 ];
 
-// ── Plan card ────────────────────────────────────────────────────────────────
+// ── Plan card ─────────────────────────────────────────────────────────────────
 
 function PlanCard({
   collapsed,
@@ -37,7 +37,7 @@ function PlanCard({
   usage: Usage | null;
 }) {
   const plan = subscription?.plan;
-  const creditsUsed = usage?.ai_credits_used ?? 0;
+  const creditsUsed  = usage?.ai_credits_used ?? 0;
   const creditsTotal = plan?.monthly_ai_credits ?? 1;
   const pct = Math.min(100, Math.round((creditsUsed / creditsTotal) * 100));
 
@@ -46,43 +46,41 @@ function PlanCard({
       <div className="px-3 pb-4">
         <div
           title={plan ? `${plan.name} — ${pct}% de créditos usados` : "Sem plano ativo"}
-          className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600/10 border border-indigo-500/20 cursor-default mx-auto"
+          className="flex items-center justify-center w-8 h-8 rounded-lg bg-nb-primary-bg border border-nb-primary/20 cursor-default mx-auto"
         >
-          <Zap className="w-4 h-4 text-indigo-400" />
+          <Zap className="w-4 h-4 text-nb-primary" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-3 mb-4 p-3 rounded-lg bg-gray-800/60 border border-gray-700/60">
+    <div className="mx-3 mb-4 p-3 rounded-xl bg-nb-elevated border border-nb-border">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-300">
+        <span className="text-xs font-medium text-nb-secondary truncate">
           {plan?.name ?? "Sem plano"}
         </span>
-        <TrendingUp className="w-3.5 h-3.5 text-gray-500" />
+        <TrendingUp className="w-3.5 h-3.5 text-nb-muted flex-shrink-0" />
       </div>
 
       {plan && (
-        <>
-          <div className="mb-1.5">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Créditos IA</span>
-              <span>{creditsUsed.toLocaleString()} / {creditsTotal.toLocaleString()}</span>
-            </div>
-            <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+        <div className="mb-2">
+          <div className="flex justify-between text-[10px] text-nb-muted mb-1">
+            <span>Créditos IA</span>
+            <span>{creditsUsed.toLocaleString()} / {creditsTotal.toLocaleString()}</span>
           </div>
-        </>
+          <div className="h-1 bg-nb-border rounded-full overflow-hidden">
+            <div
+              className="h-full bg-nb-primary rounded-full transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
       )}
 
       <Link
         href="/dashboard/plan"
-        className="mt-2 flex items-center justify-center gap-1 w-full py-1.5 rounded text-xs font-medium bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 transition-colors"
+        className="mt-1 flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-xs font-medium bg-nb-primary-bg text-nb-primary-strong hover:bg-nb-primary/20 transition-colors"
       >
         <Zap className="w-3 h-3" />
         Upgrade
@@ -110,24 +108,25 @@ export function Sidebar({
   return (
     <aside
       className={`
-        flex flex-col h-screen bg-gray-900 border-r border-gray-800 transition-all duration-200 overflow-hidden
+        flex flex-col h-screen bg-nb-surface border-r border-nb-border
+        transition-all duration-200 overflow-hidden flex-shrink-0
         ${collapsed ? "w-14" : "w-56"}
       `}
     >
-      {/* Logo — same height as header (h-14) */}
-      <div className="h-14 flex items-center border-b border-gray-800 flex-shrink-0 overflow-hidden">
+      {/* Brand mark */}
+      <div className="h-14 flex items-center border-b border-nb-border flex-shrink-0 overflow-hidden">
         {collapsed ? (
           <div className="flex items-center justify-center w-14">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
-              <span className="text-white font-bold text-xs">N</span>
+            <div className="w-7 h-7 rounded-lg bg-nb-primary flex items-center justify-center">
+              <span className="text-white font-bold text-xs tracking-tight">N</span>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2 px-4">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-xs">N</span>
+          <div className="flex items-center gap-2.5 px-4">
+            <div className="w-7 h-7 rounded-lg bg-nb-primary flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-xs tracking-tight">N</span>
             </div>
-            <span className="font-bold text-base tracking-tight text-white">Nexbrain</span>
+            <span className="font-bold text-sm tracking-tight text-nb-text">Nexbrain</span>
           </div>
         )}
       </div>
@@ -142,16 +141,18 @@ export function Sidebar({
               href={href}
               title={collapsed ? label : undefined}
               className={`
-                flex items-center gap-3 px-2 py-2 rounded-md text-sm font-medium transition-colors
+                relative flex items-center gap-3 px-2 py-2 rounded-lg text-sm font-medium transition-colors
                 ${collapsed ? "justify-center" : ""}
-                ${
-                  active
-                    ? "bg-indigo-600/15 text-indigo-400"
-                    : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                }
+                ${active
+                  ? "bg-nb-primary-bg text-nb-primary-strong"
+                  : "text-nb-muted hover:bg-nb-elevated hover:text-nb-secondary"}
               `}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              {/* Active indicator bar */}
+              {active && !collapsed && (
+                <span className="absolute left-0 inset-y-1.5 w-0.5 bg-nb-primary rounded-full" />
+              )}
+              <Icon className={`w-4 h-4 flex-shrink-0 ${active ? "text-nb-primary-strong" : ""}`} />
               {!collapsed && <span>{label}</span>}
             </Link>
           );

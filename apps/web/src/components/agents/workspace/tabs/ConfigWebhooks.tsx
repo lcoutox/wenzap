@@ -25,8 +25,8 @@ export function ConfigWebhooks() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Webhooks e eventos</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-base font-semibold text-nb-text">Webhooks e eventos</h2>
+        <p className="text-sm text-nb-muted mt-1">
           Conecte este agente a sistemas externos através de webhooks e eventos. Disponível na Phase 6.
         </p>
       </div>
@@ -35,24 +35,24 @@ export function ConfigWebhooks() {
         {ITEMS.map(({ icon: Icon, name, description, phase }) => (
           <div
             key={name}
-            className="bg-white rounded-xl border border-gray-200 p-5 opacity-70 flex items-start gap-4"
+            className="bg-nb-panel rounded-2xl border border-nb-border p-5 opacity-70 flex items-start gap-4"
           >
-            <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0">
-              <Icon className="w-5 h-5 text-gray-400" />
+            <div className="w-10 h-10 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <Icon className="w-5 h-5 text-nb-muted" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-gray-700">{name}</h3>
-                <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-gray-100 text-gray-400 border border-gray-200 leading-none">
+                <h3 className="text-sm font-semibold text-nb-secondary">{name}</h3>
+                <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-nb-elevated text-nb-muted border border-nb-border leading-none">
                   {phase}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
+              <p className="text-xs text-nb-muted mt-1 leading-relaxed">{description}</p>
             </div>
             <button
               type="button"
               disabled
-              className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+              className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-xl bg-nb-elevated text-nb-muted border border-nb-border cursor-not-allowed"
             >
               Configurar
             </button>

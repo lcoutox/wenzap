@@ -44,8 +44,8 @@ export function ConfigFerramentas() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Ferramentas do agente</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 className="text-base font-semibold text-nb-text">Ferramentas do agente</h2>
+        <p className="text-sm text-nb-muted mt-1">
           Ferramentas ampliam as capacidades do agente. Serão liberadas progressivamente nas próximas fases.
         </p>
       </div>
@@ -54,20 +54,20 @@ export function ConfigFerramentas() {
         {TOOLS.map(({ icon: Icon, name, description, phase }) => (
           <div
             key={name}
-            className="bg-white rounded-xl border border-gray-200 p-5 opacity-70"
+            className="bg-nb-panel rounded-2xl border border-nb-border p-5 opacity-60"
           >
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0">
-                <Icon className="w-4 h-4 text-gray-400" />
+              <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4 text-nb-muted" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-semibold text-gray-700">{name}</h3>
-                  <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-gray-100 text-gray-400 border border-gray-200 leading-none">
+                  <h3 className="text-sm font-semibold text-nb-secondary">{name}</h3>
+                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-nb-elevated text-nb-muted border border-nb-border leading-none tracking-wide">
                     {phase}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
+                <p className="text-xs text-nb-muted mt-1 leading-relaxed">{description}</p>
               </div>
             </div>
           </div>

@@ -20,9 +20,9 @@ function canWrite(role: MemberRole | null) {
 function EmptyPanel() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="w-12 h-12 rounded-full bg-gray-800/60 flex items-center justify-center mb-4">
+      <div className="w-12 h-12 rounded-full bg-nb-elevated border border-nb-border flex items-center justify-center mb-4">
         <svg
-          className="w-6 h-6 text-gray-600"
+          className="w-6 h-6 text-nb-muted"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -35,8 +35,8 @@ function EmptyPanel() {
           />
         </svg>
       </div>
-      <h2 className="text-sm font-medium text-gray-400">Selecione uma conversa</h2>
-      <p className="text-xs text-gray-600 mt-1 max-w-xs">
+      <h2 className="text-sm font-medium text-nb-secondary">Selecione uma conversa</h2>
+      <p className="text-xs text-nb-muted mt-1 max-w-xs">
         As conversas dos canais conectados aparecerão aqui.
       </p>
     </div>
@@ -105,7 +105,7 @@ export default function InboxPage() {
         onNewConversation={() => setShowModal(true)}
       />
 
-      <main className="flex-1 bg-gray-950 min-w-0 overflow-hidden">
+      <main className="flex-1 bg-nb-bg min-w-0 overflow-hidden">
         {selectedId ? (
           <ConversationThread
             conversationId={selectedId}

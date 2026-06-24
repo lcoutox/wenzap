@@ -10,19 +10,17 @@ import type { Subscription, Usage } from "@/lib/api";
 const STORAGE_KEY = "nexbrain:sidebar-collapsed";
 
 const BREADCRUMBS: Record<string, string> = {
-  "/dashboard":                "Dashboard",
-  "/dashboard/agents":         "Agentes",
-  "/dashboard/inbox":          "Inbox",
-  "/dashboard/knowledge-bases":"Conhecimento",
-  "/dashboard/members":        "Membros",
-  "/dashboard/settings":       "Configurações",
-  "/dashboard/plan":           "Plano e uso",
+  "/dashboard":                 "Dashboard",
+  "/dashboard/agents":          "Agentes",
+  "/dashboard/inbox":           "Inbox",
+  "/dashboard/knowledge-bases": "Conhecimento",
+  "/dashboard/members":         "Membros",
+  "/dashboard/settings":        "Configurações",
+  "/dashboard/plan":            "Plano e uso",
 };
 
 function getBreadcrumb(pathname: string): string {
-  // Exact match first
   if (BREADCRUMBS[pathname]) return BREADCRUMBS[pathname];
-  // Prefix match for nested routes (e.g. /dashboard/agents/new)
   const match = Object.keys(BREADCRUMBS)
     .filter((k) => k !== "/dashboard" && pathname.startsWith(k))
     .sort((a, b) => b.length - a.length)[0];
@@ -42,7 +40,6 @@ export function DashboardShell({
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Read localStorage after mount to avoid SSR mismatch
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -54,31 +51,24 @@ export function DashboardShell({
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem(STORAGE_KEY, String(next));
-      } catch {}
+      try { localStorage.setItem(STORAGE_KEY, String(next)); } catch {}
       return next;
     });
   }, []);
 
-  // Avoid layout shift: render collapsed=false until mounted
   const effectiveCollapsed = mounted ? collapsed : false;
 
   return (
-    <div className="h-screen overflow-hidden flex bg-gray-50">
-      <Sidebar
-        collapsed={effectiveCollapsed}
-        subscription={subscription}
-        usage={usage}
-      />
+    <div className="h-screen overflow-hidden flex bg-nb-bg">
+      <Sidebar collapsed={effectiveCollapsed} subscription={subscription} usage={usage} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header — h-14 matches sidebar logo area, never scrolls */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 gap-4 flex-shrink-0">
+        {/* Topbar — h-14, dark surface */}
+        <header className="h-14 bg-nb-surface border-b border-nb-border flex items-center justify-between px-4 gap-4 flex-shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={toggle}
-              className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              className="p-1.5 rounded-md text-nb-muted hover:bg-nb-elevated hover:text-nb-secondary transition-colors"
               aria-label={effectiveCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
             >
               {effectiveCollapsed ? (
@@ -87,7 +77,7 @@ export function DashboardShell({
                 <PanelLeftClose className="w-4.5 h-4.5" />
               )}
             </button>
-            <span className="text-sm font-semibold text-gray-700">
+            <span className="text-sm font-semibold text-nb-secondary tracking-wide">
               {getBreadcrumb(pathname)}
             </span>
           </div>
@@ -95,8 +85,8 @@ export function DashboardShell({
           <UserMenuDropdown />
         </header>
 
-        {/* Only this area scrolls */}
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        {/* Content area */}
+        <main className="flex-1 overflow-y-auto p-6 bg-nb-bg">{children}</main>
       </div>
     </div>
   );

@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Agent, ApiError, Conversation } from "@/lib/api";
-
-// ── Error mapping ─────────────────────────────────────────────────────────────
 
 function friendlyError(e: unknown): string {
   const err = e as ApiError;
@@ -14,7 +13,7 @@ function friendlyError(e: unknown): string {
   return "Não foi possível criar a conversa.";
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+const inputCls = "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 disabled:opacity-50 transition-colors";
 
 export function NewConversationModal({
   onClose,
@@ -34,7 +33,6 @@ export function NewConversationModal({
   const [nameError, setNameError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load active agents for the select
   useEffect(() => {
     (async () => {
       try {
@@ -42,18 +40,14 @@ export function NewConversationModal({
         if (!token) return;
         const list = await api.agents.list(token, "active");
         setAgents(list);
-      } catch {
-        // Non-blocking — agents select will just be empty
-      } finally {
+      } catch { /* non-blocking */ } finally {
         setLoadingAgents(false);
       }
     })();
-    // Focus the name field on open
     setTimeout(() => inputRef.current?.focus(), 50);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -64,14 +58,8 @@ export function NewConversationModal({
     e.preventDefault();
     setNameError(null);
     setError(null);
-
     const trimmedName = contactName.trim();
-    if (!trimmedName) {
-      setNameError("O nome do contato é obrigatório.");
-      inputRef.current?.focus();
-      return;
-    }
-
+    if (!trimmedName) { setNameError("O nome do contato é obrigatório."); inputRef.current?.focus(); return; }
     setCreating(true);
     try {
       const token = await getToken();
@@ -91,35 +79,22 @@ export function NewConversationModal({
   };
 
   return (
-    // Backdrop
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* Modal panel */}
-      <div className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-xl shadow-2xl flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-white">Nova conversa</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={creating}
-            className="text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-            aria-label="Fechar"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+      <div className="w-full max-w-md bg-nb-surface border border-nb-border rounded-[18px] shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-nb-border">
+          <h2 className="text-sm font-semibold text-nb-text">Nova conversa</h2>
+          <button type="button" onClick={onClose} disabled={creating} className="text-nb-muted hover:text-nb-secondary transition-colors disabled:opacity-40" aria-label="Fechar">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-5 px-5 py-5">
-          {/* Contact name */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-300" htmlFor="contact-name">
-              Nome do contato <span className="text-red-400">*</span>
+            <label className="text-xs font-medium text-nb-secondary" htmlFor="contact-name">
+              Nome do contato <span className="text-nb-danger">*</span>
             </label>
             <input
               ref={inputRef}
@@ -129,18 +104,13 @@ export function NewConversationModal({
               onChange={(e) => { setContactName(e.target.value); setNameError(null); }}
               placeholder="Ex: João Silva"
               disabled={creating}
-              className="
-                bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100
-                placeholder-gray-600 focus:outline-none focus:border-indigo-500
-                focus:ring-1 focus:ring-indigo-500/40 disabled:opacity-50 transition-colors
-              "
+              className={inputCls}
             />
-            {nameError && <p className="text-xs text-red-400">{nameError}</p>}
+            {nameError && <p className="text-xs text-nb-danger">{nameError}</p>}
           </div>
 
-          {/* Agent select */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-gray-300" htmlFor="agent-select">
+            <label className="text-xs font-medium text-nb-secondary" htmlFor="agent-select">
               Agente responsável
             </label>
             <select
@@ -148,73 +118,43 @@ export function NewConversationModal({
               value={agentId}
               onChange={(e) => setAgentId(e.target.value)}
               disabled={creating || loadingAgents}
-              className="
-                bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200
-                focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40
-                disabled:opacity-50 cursor-pointer transition-colors
-              "
+              className={inputCls + " cursor-pointer"}
             >
-              <option value="">
-                {loadingAgents ? "Carregando agentes…" : "Sem agente"}
-              </option>
+              <option value="">{loadingAgents ? "Carregando agentes…" : "Sem agente"}</option>
               {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
+                <option key={agent.id} value={agent.id}>{agent.name}</option>
               ))}
             </select>
           </div>
 
-          {/* AI toggle */}
           <label className="flex items-center justify-between cursor-pointer select-none">
-            <span className="text-xs font-medium text-gray-300">IA ativa nesta conversa</span>
+            <span className="text-xs font-medium text-nb-secondary">IA ativa nesta conversa</span>
             <button
               type="button"
               role="switch"
               aria-checked={aiEnabled}
               onClick={() => setAiEnabled((v) => !v)}
               disabled={creating}
-              className={`
-                relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0
-                focus:outline-none disabled:opacity-50
-                ${aiEnabled ? "bg-indigo-600" : "bg-gray-700"}
-              `}
+              className={`relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0 focus:outline-none disabled:opacity-50 ${aiEnabled ? "bg-nb-primary" : "bg-nb-border"}`}
             >
-              <span
-                className={`
-                  absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200
-                  ${aiEnabled ? "translate-x-4" : "translate-x-0"}
-                `}
-              />
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${aiEnabled ? "translate-x-4" : "translate-x-0"}`} />
             </button>
           </label>
 
-          {/* Channel info */}
-          <p className="text-xs text-gray-600">
-            Canal: <span className="text-gray-500">Internal</span>
+          <p className="text-xs text-nb-muted/50">
+            Canal: <span className="text-nb-muted">Internal</span>
           </p>
 
-          {/* Submit error */}
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-nb-danger">{error}</p>}
 
-          {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={creating}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-40"
-            >
+            <button type="button" onClick={onClose} disabled={creating} className="px-4 py-2 rounded-xl text-xs font-medium text-nb-muted hover:text-nb-secondary transition-colors disabled:opacity-40">
               Cancelar
             </button>
             <button
               type="submit"
               disabled={creating || !contactName.trim()}
-              className="
-                px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600 text-white
-                hover:bg-indigo-500 transition-colors
-                disabled:opacity-40 disabled:cursor-not-allowed
-              "
+              className="px-4 py-2 rounded-xl text-xs font-medium bg-nb-primary text-white hover:bg-nb-primary-strong transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {creating ? "Criando…" : "Criar conversa"}
             </button>

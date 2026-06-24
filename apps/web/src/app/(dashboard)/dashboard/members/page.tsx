@@ -6,10 +6,17 @@ import { api } from "@/lib/api";
 import type { Member } from "@/lib/api";
 
 const ROLE_LABELS: Record<string, string> = {
-  owner: "Owner",
-  admin: "Admin",
+  owner:  "Owner",
+  admin:  "Admin",
   member: "Membro",
   viewer: "Visualizador",
+};
+
+const ROLE_CLS: Record<string, string> = {
+  owner:  "bg-nb-primary-bg text-nb-primary-strong border-nb-primary/20",
+  admin:  "bg-nb-info/10     text-nb-info            border-nb-info/20",
+  member: "bg-nb-elevated    text-nb-secondary       border-nb-border",
+  viewer: "bg-nb-elevated    text-nb-muted           border-nb-border",
 };
 
 export default function MembersPage() {
@@ -24,33 +31,36 @@ export default function MembersPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Membros</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-nb-text">Membros</h1>
+        <p className="text-sm text-nb-muted mt-0.5">Gerencie os membros do seu workspace.</p>
+      </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-nb-panel rounded-2xl border border-nb-border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-nb-elevated border-b border-nb-border">
             <tr>
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">Nome</th>
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">Email</th>
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">Papel</th>
-              <th className="text-left px-4 py-3 text-gray-500 font-medium">Status</th>
+              <th className="text-left px-4 py-3 text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Nome</th>
+              <th className="text-left px-4 py-3 text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Email</th>
+              <th className="text-left px-4 py-3 text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Papel</th>
+              <th className="text-left px-4 py-3 text-[10px] font-semibold text-nb-muted uppercase tracking-widest">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-nb-border">
             {members.map((m) => (
-              <tr key={m.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">{m.name}</td>
-                <td className="px-4 py-3 text-gray-500">{m.email}</td>
+              <tr key={m.id} className="hover:bg-nb-elevated/50 transition-colors">
+                <td className="px-4 py-3 font-medium text-nb-text">{m.name}</td>
+                <td className="px-4 py-3 text-nb-muted">{m.email}</td>
                 <td className="px-4 py-3">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium border ${ROLE_CLS[m.role] ?? "bg-nb-elevated text-nb-muted border-nb-border"}`}>
                     {ROLE_LABELS[m.role] ?? m.role}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-medium border ${
                     m.status === "active"
-                      ? "bg-green-50 text-green-700"
-                      : "bg-gray-100 text-gray-500"
+                      ? "bg-nb-success/10 text-nb-success border-nb-success/20"
+                      : "bg-nb-elevated   text-nb-muted   border-nb-border"
                   }`}>
                     {m.status === "active" ? "Ativo" : "Inativo"}
                   </span>
@@ -60,7 +70,7 @@ export default function MembersPage() {
           </tbody>
         </table>
         {members.length === 0 && (
-          <p className="text-center text-gray-400 py-8 text-sm">Nenhum membro encontrado.</p>
+          <p className="text-center text-nb-muted py-8 text-sm">Nenhum membro encontrado.</p>
         )}
       </div>
     </div>
