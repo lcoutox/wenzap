@@ -110,7 +110,7 @@ def create_message(
     db: Session,
     workspace_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    current_user_id: uuid.UUID,
+    current_user_id: uuid.UUID | None,
     data: ConversationMessageCreate,
 ) -> ConversationMessage:
     conv: Conversation = get_conversation_or_404(db, workspace_id, conversation_id)
@@ -120,6 +120,12 @@ def create_message(
 
     if data.sender_type == "human":
         # Default to the authenticated user if not specified.
+        # current_user_id must be present for human messages (public widget passes None).
+        if current_user_id is None and data.sender_user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="current_user_id is required for sender_type='human'.",
+            )
         uid = data.sender_user_id if data.sender_user_id is not None else current_user_id
         _require_active_member(db, workspace_id, uid)
         sender_user_id = uid

@@ -8,6 +8,7 @@ from app.models.agent_test_run import AgentTestRun
 from app.models.agent_test_run_retrieved_chunk import AgentTestRunRetrievedChunk
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
+from app.models.channel import Channel
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_agent_run import ConversationAgentRun
@@ -18,6 +19,7 @@ from app.models.knowledge_source import KnowledgeSource
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
+from app.models.widget_session import WidgetSession
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_subscription import WorkspaceSubscription
@@ -30,6 +32,7 @@ __all__ = [
     "WorkspaceSubscription",
     "UsageCounter",
     "Agent",
+    "Channel",
     "AgentPromptSettings",
     "AgentModelSettings",
     "AgentTestRun",
@@ -46,4 +49,5 @@ __all__ = [
     "Conversation",
     "ConversationAgentRun",
     "ConversationMessage",
+    "WidgetSession",
 ]

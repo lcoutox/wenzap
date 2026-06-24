@@ -5,6 +5,7 @@ from app.config import settings
 from app.routers import (
     agents,
     ai_models,
+    channels,
     contacts,
     conversations,
     health,
@@ -12,6 +13,7 @@ from app.routers import (
     me,
     members,
     plans,
+    public_widgets,
     workspaces,
 )
 
@@ -33,5 +35,7 @@ app.include_router(plans.router)
 app.include_router(agents.router)
 app.include_router(knowledge_bases.router)
 app.include_router(ai_models.router)
+app.include_router(channels.router)
+app.include_router(public_widgets.router)
 app.include_router(contacts.router)
 app.include_router(conversations.router)

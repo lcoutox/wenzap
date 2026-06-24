@@ -225,3 +225,17 @@ def unauthenticated_client() -> Generator[TestClient, None, None]:
         yield TestClient(app, raise_server_exceptions=False)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def public_client(db: Session) -> Generator[TestClient, None, None]:
+    """
+    TestClient for public endpoints (no Clerk auth).
+    Overrides only get_db so that the test database is used.
+    Does NOT set get_current_user or get_current_workspace.
+    """
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        yield TestClient(app, raise_server_exceptions=True)
+    finally:
+        app.dependency_overrides.clear()
