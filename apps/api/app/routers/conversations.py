@@ -68,7 +68,7 @@ def get_conversation(
     db: Session = Depends(get_db),
 ) -> ConversationOut:
     _require_role(_READ_ROLES, db, current_workspace, current_user)
-    return conversation_service.get_conversation_or_404(
+    return conversation_service.get_conversation_detail(
         db, current_workspace.id, conversation_id
     )
 

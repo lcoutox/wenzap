@@ -10,11 +10,13 @@ import type { Subscription, Usage } from "@/lib/api";
 const STORAGE_KEY = "nexbrain:sidebar-collapsed";
 
 const BREADCRUMBS: Record<string, string> = {
-  "/dashboard":          "Dashboard",
-  "/dashboard/agents":   "Agentes",
-  "/dashboard/members":  "Membros",
-  "/dashboard/settings": "Configurações",
-  "/dashboard/plan":     "Plano e uso",
+  "/dashboard":                "Dashboard",
+  "/dashboard/agents":         "Agentes",
+  "/dashboard/inbox":          "Inbox",
+  "/dashboard/knowledge-bases":"Conhecimento",
+  "/dashboard/members":        "Membros",
+  "/dashboard/settings":       "Configurações",
+  "/dashboard/plan":           "Plano e uso",
 };
 
 function getBreadcrumb(pathname: string): string {

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Bot,
+  MessageSquare,
   Users,
   Settings,
   CreditCard,
@@ -17,6 +18,7 @@ import type { Subscription, Usage } from "@/lib/api";
 const nav = [
   { href: "/dashboard",                      label: "Dashboard",       icon: LayoutDashboard },
   { href: "/dashboard/agents",               label: "Agentes",         icon: Bot },
+  { href: "/dashboard/inbox",               label: "Inbox",           icon: MessageSquare },
   { href: "/dashboard/knowledge-bases",      label: "Conhecimento",    icon: BookOpen },
   { href: "/dashboard/members",              label: "Membros",         icon: Users },
   { href: "/dashboard/settings",             label: "Configurações",   icon: Settings },

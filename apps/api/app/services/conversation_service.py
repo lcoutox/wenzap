@@ -17,15 +17,38 @@ from app.services.contact_service import create_contact
 _MAX_LIMIT = 100
 
 
+def _conv_to_dict(conv: Conversation, contact_name: str | None) -> dict:
+    """Serialize a Conversation ORM object to a dict, injecting contact_name."""
+    return {
+        "id": conv.id,
+        "workspace_id": conv.workspace_id,
+        "contact_id": conv.contact_id,
+        "contact_name": contact_name,
+        "agent_id": conv.agent_id,
+        "assigned_user_id": conv.assigned_user_id,
+        "channel_type": conv.channel_type,
+        "channel_external_id": conv.channel_external_id,
+        "status": conv.status,
+        "ai_enabled": conv.ai_enabled,
+        "last_message_at": conv.last_message_at,
+        "created_at": conv.created_at,
+        "updated_at": conv.updated_at,
+    }
+
+
 def list_conversations(
     db: Session,
     workspace_id: uuid.UUID,
     status_filter: str | None = None,
     skip: int = 0,
     limit: int = 50,
-) -> list[Conversation]:
+) -> list[dict]:
     effective_limit = min(limit, _MAX_LIMIT)
-    q = select(Conversation).where(Conversation.workspace_id == workspace_id)
+    q = (
+        select(Conversation, Contact.name.label("contact_name"))
+        .outerjoin(Contact, Conversation.contact_id == Contact.id)
+        .where(Conversation.workspace_id == workspace_id)
+    )
     if status_filter is not None:
         q = q.where(Conversation.status == status_filter)
     else:
@@ -39,7 +62,8 @@ def list_conversations(
         .offset(skip)
         .limit(effective_limit)
     )
-    return list(db.scalars(q).all())
+    rows = db.execute(q).all()
+    return [_conv_to_dict(conv, contact_name) for conv, contact_name in rows]
 
 
 def _require_contact(db: Session, workspace_id: uuid.UUID, contact_id: uuid.UUID) -> Contact:
@@ -87,10 +111,11 @@ def create_conversation(
     db: Session,
     workspace_id: uuid.UUID,
     data: ConversationCreate,
-) -> Conversation:
+) -> dict:
     if data.contact_id is not None:
-        _require_contact(db, workspace_id, data.contact_id)
+        contact = _require_contact(db, workspace_id, data.contact_id)
         contact_id = data.contact_id
+        contact_name: str | None = contact.name
     else:
         # Inline contact creation from contact_name (strip to avoid leading/trailing spaces).
         inline = create_contact(
@@ -99,6 +124,7 @@ def create_conversation(
             ContactCreate(name=data.contact_name.strip()),  # type: ignore[union-attr]
         )
         contact_id = inline.id
+        contact_name = inline.name
 
     agent_id: uuid.UUID | None = None
     if data.agent_id is not None:
@@ -118,7 +144,7 @@ def create_conversation(
     db.add(conv)
     db.commit()
     db.refresh(conv)
-    return conv
+    return _conv_to_dict(conv, contact_name)
 
 
 def get_conversation_or_404(
@@ -126,6 +152,7 @@ def get_conversation_or_404(
     workspace_id: uuid.UUID,
     conversation_id: uuid.UUID,
 ) -> Conversation:
+    """Return the ORM object. Used internally by message service and update."""
     conv = db.scalar(
         select(Conversation).where(
             Conversation.id == conversation_id,
@@ -140,12 +167,35 @@ def get_conversation_or_404(
     return conv
 
 
+def get_conversation_detail(
+    db: Session,
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> dict:
+    """Return a dict with contact_name included. Used by the router GET endpoint."""
+    row = db.execute(
+        select(Conversation, Contact.name.label("contact_name"))
+        .outerjoin(Contact, Conversation.contact_id == Contact.id)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.workspace_id == workspace_id,
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+    conv, contact_name = row
+    return _conv_to_dict(conv, contact_name)
+
+
 def update_conversation(
     db: Session,
     workspace_id: uuid.UUID,
     conversation_id: uuid.UUID,
     data: ConversationUpdate,
-) -> Conversation:
+) -> dict:
     conv = get_conversation_or_404(db, workspace_id, conversation_id)
 
     if "status" in data.model_fields_set and data.status is not None:
@@ -167,4 +217,9 @@ def update_conversation(
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(conv)
-    return conv
+
+    contact_name: str | None = None
+    if conv.contact_id is not None:
+        contact_name = db.scalar(select(Contact.name).where(Contact.id == conv.contact_id))
+
+    return _conv_to_dict(conv, contact_name)

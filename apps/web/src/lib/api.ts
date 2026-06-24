@@ -266,6 +266,106 @@ export type AgentKnowledgeBase = {
   knowledge_base_status: string;
 };
 
+// ── Inbox — Contacts ─────────────────────────────────────────────────────────
+
+export type Contact = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  external_id: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContactCreateInput = {
+  name: string;
+  email?: string;
+  phone?: string;
+  external_id?: string;
+};
+
+export type ContactUpdateInput = {
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  external_id?: string | null;
+};
+
+// ── Inbox — Conversations ─────────────────────────────────────────────────────
+
+export type ConversationStatus = "open" | "pending" | "resolved" | "archived";
+
+export type ChannelType =
+  | "internal"
+  | "web_widget"
+  | "whatsapp"
+  | "instagram"
+  | "email"
+  | "api";
+
+export type Conversation = {
+  id: string;
+  workspace_id: string;
+  contact_id: string | null;
+  contact_name: string | null;
+  agent_id: string | null;
+  assigned_user_id: string | null;
+  channel_type: ChannelType;
+  channel_external_id: string | null;
+  status: ConversationStatus;
+  ai_enabled: boolean;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConversationCreateInput = {
+  contact_id?: string;
+  contact_name?: string;
+  agent_id?: string;
+  channel_type?: ChannelType;
+  channel_external_id?: string;
+  ai_enabled?: boolean;
+};
+
+export type ConversationUpdateInput = {
+  status?: ConversationStatus;
+  agent_id?: string | null;
+  assigned_user_id?: string | null;
+  ai_enabled?: boolean;
+};
+
+// ── Inbox — Messages ──────────────────────────────────────────────────────────
+
+export type MessageDirection = "inbound" | "outbound" | "internal";
+export type MessageSenderType = "customer" | "human" | "agent" | "system";
+
+export type ConversationMessage = {
+  id: string;
+  workspace_id: string;
+  conversation_id: string;
+  direction: MessageDirection;
+  sender_type: MessageSenderType;
+  sender_user_id: string | null;
+  agent_id: string | null;
+  content: string;
+  content_type: string;
+  external_message_id: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ConversationMessageCreateInput = {
+  content: string;
+  direction: MessageDirection;
+  sender_type: MessageSenderType;
+  sender_user_id?: string;
+  agent_id?: string;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -327,6 +427,77 @@ export const api = {
   },
   aiModels: {
     list: (token: string) => apiFetch<AiCatalog>("/ai-models", token),
+  },
+  contacts: {
+    list: (token: string, params?: { skip?: number; limit?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.skip != null) qs.set("skip", String(params.skip));
+      if (params?.limit != null) qs.set("limit", String(params.limit));
+      const q = qs.toString();
+      return apiFetch<Contact[]>(q ? `/contacts?${q}` : "/contacts", token);
+    },
+    get: (token: string, contactId: string) =>
+      apiFetch<Contact>(`/contacts/${contactId}`, token),
+    create: (token: string, data: ContactCreateInput) =>
+      apiFetch<Contact>("/contacts", token, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (token: string, contactId: string, data: ContactUpdateInput) =>
+      apiFetch<Contact>(`/contacts/${contactId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+  },
+  conversations: {
+    list: (token: string, params?: { status?: string; skip?: number; limit?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.status) qs.set("status", params.status);
+      if (params?.skip != null) qs.set("skip", String(params.skip));
+      if (params?.limit != null) qs.set("limit", String(params.limit));
+      const q = qs.toString();
+      return apiFetch<Conversation[]>(q ? `/conversations?${q}` : "/conversations", token);
+    },
+    get: (token: string, conversationId: string) =>
+      apiFetch<Conversation>(`/conversations/${conversationId}`, token),
+    create: (token: string, data: ConversationCreateInput) =>
+      apiFetch<Conversation>("/conversations", token, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (token: string, conversationId: string, data: ConversationUpdateInput) =>
+      apiFetch<Conversation>(`/conversations/${conversationId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    messages: {
+      list: (
+        token: string,
+        conversationId: string,
+        params?: { skip?: number; limit?: number },
+      ) => {
+        const qs = new URLSearchParams();
+        if (params?.skip != null) qs.set("skip", String(params.skip));
+        if (params?.limit != null) qs.set("limit", String(params.limit));
+        const q = qs.toString();
+        return apiFetch<ConversationMessage[]>(
+          q
+            ? `/conversations/${conversationId}/messages?${q}`
+            : `/conversations/${conversationId}/messages`,
+          token,
+        );
+      },
+      create: (
+        token: string,
+        conversationId: string,
+        data: ConversationMessageCreateInput,
+      ) =>
+        apiFetch<ConversationMessage>(
+          `/conversations/${conversationId}/messages`,
+          token,
+          { method: "POST", body: JSON.stringify(data) },
+        ),
+    },
   },
   agents: {
     list: (token: string, status?: AgentStatus) =>

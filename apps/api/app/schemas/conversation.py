@@ -63,6 +63,7 @@ class ConversationOut(BaseModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
     contact_id: uuid.UUID | None
+    contact_name: str | None = None
     agent_id: uuid.UUID | None
     assigned_user_id: uuid.UUID | None
     channel_type: str

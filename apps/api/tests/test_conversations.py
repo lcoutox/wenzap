@@ -659,3 +659,90 @@ def test_patch_conversation_cross_tenant_isolation(
     with _make_client(db, user_a, workspace_a) as client:
         r = client.patch(f"/conversations/{conv_b.id}", json={"status": "resolved"})
     assert r.status_code == 404
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 8. CONTACT NAME — 5.2.1 regression
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_list_conversations_includes_contact_name(
+    db: Session, client_a, workspace_a: Workspace
+):
+    contact = _seed_contact(db, workspace_a, name="Maria Clara")
+    _seed_conversation(db, workspace_a, contact)
+    db.commit()
+
+    r = client_a.get("/conversations")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["contact_name"] == "Maria Clara"
+
+
+def test_get_conversation_includes_contact_name(
+    db: Session, client_a, workspace_a: Workspace
+):
+    contact = _seed_contact(db, workspace_a, name="Pedro Alves")
+    conv = _seed_conversation(db, workspace_a, contact)
+    db.commit()
+
+    r = client_a.get(f"/conversations/{conv.id}")
+    assert r.status_code == 200
+    assert r.json()["contact_name"] == "Pedro Alves"
+
+
+def test_create_with_contact_id_response_includes_contact_name(
+    db: Session, client_a, workspace_a: Workspace
+):
+    contact = _seed_contact(db, workspace_a, name="Carla Dias")
+    db.commit()
+
+    r = client_a.post("/conversations", json={"contact_id": str(contact.id)})
+    assert r.status_code == 201
+    assert r.json()["contact_name"] == "Carla Dias"
+
+
+def test_create_with_contact_name_response_includes_contact_name(
+    db: Session, client_a, workspace_a: Workspace
+):
+    r = client_a.post("/conversations", json={"contact_name": "Inline User"})
+    assert r.status_code == 201
+    assert r.json()["contact_name"] == "Inline User"
+
+
+def test_conversation_without_contact_returns_null_contact_name(
+    db: Session, client_a, workspace_a: Workspace
+):
+    # Seed a conversation directly with contact_id=None (simulates a deleted contact).
+    conv = Conversation(
+        workspace_id=workspace_a.id,
+        contact_id=None,
+        status="open",
+        channel_type="internal",
+        ai_enabled=True,
+    )
+    db.add(conv)
+    db.commit()
+
+    r_list = client_a.get("/conversations")
+    r_get = client_a.get(f"/conversations/{conv.id}")
+    assert r_list.status_code == 200
+    assert r_get.status_code == 200
+    # No contact linked — contact_name must be null.
+    found = next((c for c in r_list.json() if c["id"] == str(conv.id)), None)
+    assert found is not None
+    assert found["contact_name"] is None
+    assert r_get.json()["contact_name"] is None
+
+
+def test_update_conversation_response_includes_contact_name(
+    db: Session, client_a, workspace_a: Workspace
+):
+    contact = _seed_contact(db, workspace_a, name="Lucas Souza")
+    conv = _seed_conversation(db, workspace_a, contact)
+    db.commit()
+
+    r = client_a.patch(f"/conversations/{conv.id}", json={"status": "pending"})
+    assert r.status_code == 200
+    assert r.json()["contact_name"] == "Lucas Souza"
