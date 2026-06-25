@@ -30,6 +30,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_subscription import WorkspaceSubscription
+from app.services.rate_limiter import _store as _rate_limiter_store
 
 TEST_DATABASE_URL = settings.database_test_url or settings.database_url.replace(
     "/nexbrain", "/nexbrain_test"
@@ -44,6 +45,14 @@ def setup_test_db():
     Base.metadata.create_all(test_engine)
     yield
     Base.metadata.drop_all(test_engine)
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limiter():
+    """Reset the in-memory rate limiter between every test to prevent cross-test leakage."""
+    _rate_limiter_store.clear()
+    yield
+    _rate_limiter_store.clear()
 
 
 @pytest.fixture()

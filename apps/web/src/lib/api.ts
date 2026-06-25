@@ -366,6 +366,52 @@ export type ConversationMessageCreateInput = {
   agent_id?: string;
 };
 
+// ── Channels ──────────────────────────────────────────────────────────────────
+
+export type ChannelStatus = "active" | "inactive" | "archived";
+
+export type WebWidgetConfig = {
+  theme: "dark" | "light" | "auto";
+  primary_color: string;
+  position: "bottom-right" | "bottom-left";
+  welcome_message: string;
+  header_title: string;
+  header_subtitle: string;
+  placeholder: string;
+  avatar_url: string | null;
+  auto_open: boolean;
+  auto_open_delay_seconds: number;
+};
+
+export type Channel = {
+  id: string;
+  workspace_id: string;
+  agent_id: string;
+  channel_type: "web_widget";
+  name: string;
+  public_key: string;
+  status: ChannelStatus;
+  config: WebWidgetConfig;
+  allowed_origins: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChannelCreateInput = {
+  name: string;
+  channel_type: "web_widget";
+  agent_id: string;
+  config?: Partial<WebWidgetConfig>;
+  allowed_origins?: string[];
+};
+
+export type ChannelUpdateInput = {
+  name?: string;
+  status?: "active" | "inactive";
+  config?: Partial<WebWidgetConfig>;
+  allowed_origins?: string[];
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -506,6 +552,32 @@ export const api = {
           { method: "POST", body: JSON.stringify(data) },
         ),
     },
+  },
+  channels: {
+    list: (
+      token: string,
+      params?: { channel_type?: string; agent_id?: string; include_archived?: boolean },
+    ) => {
+      const qs = new URLSearchParams();
+      if (params?.channel_type) qs.set("channel_type", params.channel_type);
+      if (params?.agent_id) qs.set("agent_id", params.agent_id);
+      if (params?.include_archived) qs.set("include_archived", "true");
+      const q = qs.toString();
+      return apiFetch<Channel[]>(q ? `/channels?${q}` : "/channels", token);
+    },
+    get: (token: string, id: string) => apiFetch<Channel>(`/channels/${id}`, token),
+    create: (token: string, data: ChannelCreateInput) =>
+      apiFetch<Channel>("/channels", token, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (token: string, id: string, data: ChannelUpdateInput) =>
+      apiFetch<Channel>(`/channels/${id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    archive: (token: string, id: string) =>
+      apiFetch<Channel>(`/channels/${id}/archive`, token, { method: "POST" }),
   },
   agents: {
     list: (token: string, status?: AgentStatus) =>

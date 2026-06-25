@@ -13,7 +13,7 @@ import { ConfigTabs } from "@/components/agents/workspace/ConfigTabs";
 import type { ConfigTab } from "@/components/agents/workspace/ConfigTabs";
 
 import { AgentChat }           from "@/components/agents/workspace/tabs/AgentChat";
-import { ImplantarPlaceholder } from "@/components/agents/workspace/tabs/ImplantarPlaceholder";
+import { ImplantarTab } from "@/components/agents/workspace/tabs/ImplantarTab";
 import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
 import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
@@ -242,7 +242,7 @@ export default function AgentWorkspacePage() {
 
         {/* ── Implantar ── */}
         {workspaceTab === "deploy" && (
-          <ImplantarPlaceholder />
+          <ImplantarTab agentId={id} role={role} getToken={getToken} />
         )}
 
         {/* ── Conhecimento ── */}

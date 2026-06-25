@@ -18,12 +18,21 @@ from app.schemas.public_widget import (
     WidgetSessionOut,
 )
 from app.services import public_widget_service
+from app.services.rate_limiter import check_message_rate, check_session_rate
 
 router = APIRouter(prefix="/public/widgets")
 
 
 def _get_origin(request: Request) -> str | None:
     return request.headers.get("origin")
+
+
+def _get_client_ip(request: Request) -> str:
+    # Prefer X-Forwarded-For (set by reverse proxies) over direct client IP.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 @router.get("/{public_key}/config", response_model=PublicWidgetConfigOut)
@@ -43,6 +52,7 @@ def create_or_resume_session(
     request: Request,
     db: Session = Depends(get_db),
 ) -> WidgetSessionOut:
+    check_session_rate(_get_client_ip(request))
     origin = _get_origin(request)
     return public_widget_service.create_or_resume_widget_session(
         db, public_key, origin, data.session_token
@@ -61,6 +71,8 @@ def send_message(
     x_session_token: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> PublicWidgetMessageOut:
+    if x_session_token:
+        check_message_rate(x_session_token)
     origin = _get_origin(request)
     return public_widget_service.send_widget_message(
         db, public_key, origin, x_session_token, data
