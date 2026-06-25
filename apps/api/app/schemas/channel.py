@@ -24,6 +24,23 @@ class WebWidgetConfig(BaseModel):
     auto_open: bool = False
     auto_open_delay_seconds: int = Field(default=3, ge=0, le=60)
 
+    # ── Visitor identity / lead capture ───────────────────────────────────────
+    contact_capture_enabled: bool = False
+    require_name: bool = False
+    require_email: bool = False
+    require_phone: bool = False
+
+    @model_validator(mode="after")
+    def validate_capture_has_at_least_one_field(self) -> "WebWidgetConfig":
+        if self.contact_capture_enabled and not any(
+            [self.require_name, self.require_email, self.require_phone]
+        ):
+            raise ValueError(
+                "contact_capture_enabled requires at least one of "
+                "require_name, require_email, or require_phone to be true."
+            )
+        return self
+
     @field_validator("primary_color")
     @classmethod
     def validate_hex_color(cls, v: str) -> str:

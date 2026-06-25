@@ -20,6 +20,7 @@ from app.models.conversation_message import ConversationMessage
 from app.models.widget_session import WidgetSession
 from app.schemas.conversation_message import ConversationMessageCreate
 from app.schemas.public_widget import (
+    ContactCaptureInput,
     PublicWidgetConfigOut,
     PublicWidgetMessageCreate,
     PublicWidgetMessageOut,
@@ -41,6 +42,11 @@ _CONFIG_DEFAULTS: dict = {
     "avatar_url": None,
     "auto_open": False,
     "auto_open_delay_seconds": 3,
+    # Contact capture defaults
+    "contact_capture_enabled": False,
+    "require_name": False,
+    "require_email": False,
+    "require_phone": False,
 }
 
 
@@ -87,6 +93,29 @@ def _check_origin(channel: Channel, origin: str | None) -> None:
         )
 
 
+def _get_cfg(channel: Channel) -> dict:
+    return {**_CONFIG_DEFAULTS, **(channel.config_json or {})}
+
+
+def _is_contact_captured(cfg: dict, contact: Contact) -> bool:
+    """
+    Returns True when contact_capture is satisfied for this session.
+
+    True when:
+    - contact_capture_enabled is False (capture not required), OR
+    - All required fields are already filled in on the Contact.
+    """
+    if not cfg.get("contact_capture_enabled", False):
+        return True
+    if cfg.get("require_name") and not (contact.name and contact.name != "Visitante"):
+        return False
+    if cfg.get("require_email") and not contact.email:
+        return False
+    if cfg.get("require_phone") and not contact.phone:
+        return False
+    return True
+
+
 def get_public_widget_config(
     db: Session,
     public_key: str,
@@ -95,23 +124,25 @@ def get_public_widget_config(
     channel = _resolve_active_web_widget(db, public_key)
     _check_origin(channel, origin)
 
-    cfg: dict = {**_CONFIG_DEFAULTS, **(channel.config_json or {})}
+    cfg = _get_cfg(channel)
 
     return PublicWidgetConfigOut(
         public_key=channel.public_key,
         name=channel.name,
-        theme=cfg.get("theme", _CONFIG_DEFAULTS["theme"]),
-        primary_color=cfg.get("primary_color", _CONFIG_DEFAULTS["primary_color"]),
-        position=cfg.get("position", _CONFIG_DEFAULTS["position"]),
-        welcome_message=cfg.get("welcome_message", _CONFIG_DEFAULTS["welcome_message"]),
-        header_title=cfg.get("header_title", _CONFIG_DEFAULTS["header_title"]),
-        header_subtitle=cfg.get("header_subtitle", _CONFIG_DEFAULTS["header_subtitle"]),
-        placeholder=cfg.get("placeholder", _CONFIG_DEFAULTS["placeholder"]),
-        avatar_url=cfg.get("avatar_url"),
-        auto_open=cfg.get("auto_open", _CONFIG_DEFAULTS["auto_open"]),
-        auto_open_delay_seconds=cfg.get(
-            "auto_open_delay_seconds", _CONFIG_DEFAULTS["auto_open_delay_seconds"]
-        ),
+        theme=cfg["theme"],
+        primary_color=cfg["primary_color"],
+        position=cfg["position"],
+        welcome_message=cfg["welcome_message"],
+        header_title=cfg["header_title"],
+        header_subtitle=cfg["header_subtitle"],
+        placeholder=cfg["placeholder"],
+        avatar_url=cfg["avatar_url"],
+        auto_open=cfg["auto_open"],
+        auto_open_delay_seconds=cfg["auto_open_delay_seconds"],
+        contact_capture_enabled=cfg["contact_capture_enabled"],
+        require_name=cfg["require_name"],
+        require_email=cfg["require_email"],
+        require_phone=cfg["require_phone"],
     )
 
 
@@ -173,8 +204,6 @@ def _create_new_session(db: Session, channel: Channel) -> WidgetSession:
             db.rollback()
             if "uq_widget_sessions_session_token" in str(exc.orig) or \
                "widget_sessions_session_token" in str(exc.orig):
-                # Extremely rare collision — regenerate token and retry.
-                # Re-add the contact and conversation that were rolled back.
                 contact = _create_anonymous_contact(db, channel)
                 conv = _create_widget_conversation(db, channel, contact)
                 continue
@@ -194,8 +223,8 @@ def create_or_resume_widget_session(
 ) -> WidgetSessionOut:
     channel = _resolve_active_web_widget(db, public_key)
     _check_origin(channel, origin)
+    cfg = _get_cfg(channel)
 
-    # Try to resume an existing session if the visitor supplied a token.
     if session_token:
         existing = db.scalar(
             select(WidgetSession).where(
@@ -207,17 +236,23 @@ def create_or_resume_widget_session(
         if existing:
             existing.last_seen_at = datetime.now(timezone.utc)
             db.commit()
-            return WidgetSessionOut(session_token=existing.session_token)
-        # Token supplied but not found for this channel → create fresh session.
-        # This handles: expired localStorage, wrong channel, cross-channel tokens.
+            contact = db.get(Contact, existing.contact_id)
+            captured = _is_contact_captured(cfg, contact) if contact else True
+            return WidgetSessionOut(
+                session_token=existing.session_token,
+                contact_captured=captured,
+            )
 
     new_session = _create_new_session(db, channel)
-    return WidgetSessionOut(session_token=new_session.session_token)
+    contact = db.get(Contact, new_session.contact_id)
+    captured = _is_contact_captured(cfg, contact) if contact else True
+    return WidgetSessionOut(
+        session_token=new_session.session_token,
+        contact_captured=captured,
+    )
 
 
 # ── Visible directions for widget visitors ────────────────────────────────────
-# Visitors see external messages only: their own (customer), agent replies, and
-# any human operator responses. Internal notes and system messages are hidden.
 _PUBLIC_VISIBLE_DIRECTIONS_SENDERS: set[tuple[str, str]] = {
     ("inbound",  "customer"),
     ("outbound", "agent"),
@@ -230,7 +265,6 @@ def _resolve_session_or_401(
     channel: Channel,
     session_token: str | None,
 ) -> WidgetSession:
-    """Resolve and validate a session token for the given channel."""
     if not session_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -251,6 +285,62 @@ def _resolve_session_or_401(
     return session
 
 
+def update_widget_contact(
+    db: Session,
+    public_key: str,
+    origin: str | None,
+    session_token: str | None,
+    data: ContactCaptureInput,
+) -> None:
+    """
+    PATCH /public/widgets/{public_key}/session/contact
+
+    Updates the anonymous Contact linked to this widget session with
+    visitor-supplied identity data. Validates required fields per channel config.
+    """
+    channel = _resolve_active_web_widget(db, public_key)
+    _check_origin(channel, origin)
+    session = _resolve_session_or_401(db, channel, session_token)
+    cfg = _get_cfg(channel)
+
+    contact = db.get(Contact, session.contact_id)
+    if not contact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session contact not found.",
+        )
+
+    # Validate required fields against channel config.
+    errors: list[str] = []
+    if cfg.get("require_name") and not data.name:
+        errors.append("name is required for this widget.")
+    if cfg.get("require_email") and not data.email:
+        errors.append("email is required for this widget.")
+    if cfg.get("require_phone") and not data.phone:
+        errors.append("phone is required for this widget.")
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=errors,
+        )
+
+    # Apply updates — only overwrite if a value was provided.
+    if data.name is not None:
+        contact.name = data.name
+    if data.email is not None:
+        contact.email = data.email
+    if data.phone is not None:
+        contact.phone = data.phone
+
+    # Reflect name on conversation.contact_name if the model has it.
+    if data.name is not None:
+        conv = db.get(Conversation, session.conversation_id)
+        if conv and hasattr(conv, "contact_name"):
+            conv.contact_name = data.name
+
+    db.commit()
+
+
 def send_widget_message(
     db: Session,
     public_key: str,
@@ -261,6 +351,16 @@ def send_widget_message(
     channel = _resolve_active_web_widget(db, public_key)
     _check_origin(channel, origin)
     session = _resolve_session_or_401(db, channel, session_token)
+    cfg = _get_cfg(channel)
+
+    # Block messages if contact capture is required but not yet fulfilled.
+    if cfg.get("contact_capture_enabled"):
+        contact = db.get(Contact, session.contact_id)
+        if contact and not _is_contact_captured(cfg, contact):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="contact_required",
+            )
 
     msg_data = ConversationMessageCreate(
         direction="inbound",
@@ -269,19 +369,16 @@ def send_widget_message(
         content_type="text",
     )
 
-    # Import locally to avoid circular dependency (message service imports
-    # conversation service which has no dependency on this module).
     from app.services.conversation_message_service import create_message  # noqa: PLC0415
 
     msg = create_message(
         db=db,
         workspace_id=session.workspace_id,
         conversation_id=session.conversation_id,
-        current_user_id=None,  # Public endpoint — no Clerk user.
+        current_user_id=None,
         data=msg_data,
     )
 
-    # Touch last_seen_at for the session.
     session.last_seen_at = datetime.now(timezone.utc)
     db.commit()
 

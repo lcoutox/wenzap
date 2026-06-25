@@ -381,6 +381,11 @@ export type WebWidgetConfig = {
   avatar_url: string | null;
   auto_open: boolean;
   auto_open_delay_seconds: number;
+  // Visitor identity / lead capture
+  contact_capture_enabled: boolean;
+  require_name: boolean;
+  require_email: boolean;
+  require_phone: boolean;
 };
 
 export type Channel = {

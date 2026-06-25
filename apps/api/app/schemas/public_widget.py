@@ -1,8 +1,11 @@
-
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_PHONE_RE = re.compile(r"^[+\d\s\(\)\-]{4,30}$")
 
 
 class PublicWidgetConfigOut(BaseModel):
@@ -20,6 +23,11 @@ class PublicWidgetConfigOut(BaseModel):
     avatar_url: str | None
     auto_open: bool
     auto_open_delay_seconds: int
+    # Contact capture settings
+    contact_capture_enabled: bool
+    require_name: bool
+    require_email: bool
+    require_phone: bool
 
     model_config = ConfigDict(from_attributes=False)
 
@@ -31,9 +39,10 @@ class WidgetSessionCreate(BaseModel):
 
 
 class WidgetSessionOut(BaseModel):
-    """Returned to the visitor — only the opaque token."""
+    """Returned to the visitor — token plus contact_captured flag."""
 
     session_token: str
+    contact_captured: bool
 
     model_config = ConfigDict(from_attributes=False)
 
@@ -59,3 +68,48 @@ class PublicWidgetMessageOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ContactCaptureInput(BaseModel):
+    """
+    Visitor-supplied identity data for PATCH /public/widgets/{key}/session/contact.
+
+    All fields are optional in the schema; the service validates which are
+    required based on the channel's contact_capture config.
+    """
+
+    name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=30)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("name must be at least 2 characters.")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email format.")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not _PHONE_RE.match(v):
+            raise ValueError(
+                "phone must contain only digits, +, spaces, parentheses, or hyphens (4–30 chars)."
+            )
+        return v

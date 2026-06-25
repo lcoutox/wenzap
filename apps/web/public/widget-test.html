@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clínica Aurora — Saúde que transforma</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --bg2: #161b27;
+      --border: #1e2635;
+      --text: #e8eaf0;
+      --muted: #8892a4;
+      --accent: #6c63ff;
+      --accent2: #4ade80;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 17, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .logo span { color: var(--accent); }
+
+    nav { display: flex; gap: 2rem; }
+
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    nav a:hover { color: var(--text); }
+
+    .btn-nav {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.5rem 1.25rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn-nav:hover { opacity: 0.85; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 6rem 2rem 5rem;
+      max-width: 900px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(108, 99, 255, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 1rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.25rem;
+    }
+
+    h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, #6c63ff, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 2.5rem;
+    }
+
+    .cta-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0.85rem 2rem;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+
+    .btn-primary:hover { transform: translateY(-1px); opacity: 0.9; }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 2rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .btn-secondary:hover { border-color: var(--muted); }
+
+    /* ── Stats ── */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+      padding: 2rem 2rem 4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat { text-align: center; }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent2);
+      letter-spacing: -0.03em;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.25rem;
+    }
+
+    /* ── Section ── */
+    section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.75rem;
+    }
+
+    h2 {
+      font-size: clamp(1.6rem, 3vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+    }
+
+    .section-subtitle {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 520px;
+      margin-bottom: 3rem;
+    }
+
+    /* ── Cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .card:hover { border-color: rgba(108, 99, 255, 0.4); transform: translateY(-2px); }
+
+    .card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(108, 99, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 1rem;
+    }
+
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .card p { font-size: 0.875rem; color: var(--muted); line-height: 1.6; }
+
+    /* ── Testimonials ── */
+    .testimonials { background: var(--bg2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+    .testimonials-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .testimonial-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .testimonial {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+    }
+
+    .testimonial-text {
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 1.25rem;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .author-name { font-size: 0.875rem; font-weight: 600; }
+    .author-role { font-size: 0.75rem; color: var(--muted); }
+
+    /* ── CTA Banner ── */
+    .cta-banner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    .cta-box {
+      background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(74,222,128,0.08));
+      border: 1px solid rgba(108,99,255,0.25);
+      border-radius: 24px;
+      padding: 4rem 2rem;
+      text-align: center;
+    }
+
+    .cta-box h2 { margin-bottom: 1rem; }
+
+    .cta-box p {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 480px;
+      margin: 0 auto 2rem;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    footer strong { color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo">Clínica <span>Aurora</span></div>
+    <nav>
+      <a href="#">Serviços</a>
+      <a href="#">Especialistas</a>
+      <a href="#">Sobre</a>
+      <a href="#">Contato</a>
+    </nav>
+    <button class="btn-nav">Agendar consulta</button>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="badge">✦ Saúde integrativa &amp; bem-estar</div>
+    <h1>Cuide da sua saúde com <em>quem entende</em> de você</h1>
+    <p class="subtitle">
+      Consultas presenciais e online com especialistas em saúde física, mental e preventiva.
+      Atendimento humanizado, resultado real.
+    </p>
+    <div class="cta-group">
+      <button class="btn-primary">Agendar agora →</button>
+      <button class="btn-secondary">Conhecer especialistas</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value">12k+</div>
+      <div class="stat-label">Pacientes atendidos</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">98%</div>
+      <div class="stat-label">Satisfação</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">40+</div>
+      <div class="stat-label">Especialistas</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">8 anos</div>
+      <div class="stat-label">De experiência</div>
+    </div>
+  </div>
+
+  <!-- Serviços -->
+  <section>
+    <div class="section-label">Nossos serviços</div>
+    <h2>Cuidado completo para toda a família</h2>
+    <p class="section-subtitle">
+      Do check-up preventivo ao acompanhamento contínuo — estamos com você em cada etapa.
+    </p>
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">🩺</div>
+        <h3>Clínica Geral</h3>
+        <p>Consultas de rotina, check-up anual e acompanhamento de saúde geral com médicos experientes.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🧠</div>
+        <h3>Saúde Mental</h3>
+        <p>Psicólogos e psiquiatras disponíveis para suporte emocional, ansiedade, depressão e muito mais.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🥗</div>
+        <h3>Nutrição</h3>
+        <p>Planos alimentares personalizados com nutricionistas certificados para seus objetivos de saúde.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🏃</div>
+        <h3>Fisioterapia</h3>
+        <p>Reabilitação, prevenção de lesões e melhora da mobilidade com profissionais especializados.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">💊</div>
+        <h3>Endocrinologia</h3>
+        <p>Controle hormonal, diabetes, tireoide e metabolismo com especialistas de referência.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🫀</div>
+        <h3>Cardiologia</h3>
+        <p>Exames cardíacos, prevenção de doenças cardiovasculares e acompanhamento especializado.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials -->
+  <div class="testimonials">
+    <div class="testimonials-inner">
+      <div class="section-label">Depoimentos</div>
+      <h2>O que nossos pacientes dizem</h2>
+      <p class="section-subtitle" style="margin-bottom: 3rem;">
+        Histórias reais de quem transformou a saúde com a Aurora.
+      </p>
+      <div class="testimonial-grid">
+        <div class="testimonial">
+          <p class="testimonial-text">
+            "Depois de anos buscando um acompanhamento que realmente me ouvisse, encontrei a Clínica Aurora.
+            A equipe é incrível e me sinto muito mais saudável hoje."
+          </p>
+          <div class="testimonial-author">
+            <div class="avatar">MF</div>
+            <div>
+              <div class="author-name">Maria Fernanda</div>
+              <div class="author-role">Paciente há 3 anos</div>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial">
+          <p class="testimonial-text">
+            "O atendimento online é perfeito para minha rotina. Consulto com o mesmo médico,
+            tenho histórico completo e posso tirar dúvidas a qualquer hora."
+          </p>
+          <div class="testimonial-author">
+            <div class="avatar">RS</div>
+            <div>
+              <div class="author-name">Ricardo Silva</div>
+              <div class="author-role">Consultas online</div>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial">
+          <p class="testimonial-text">
+            "Trago minha família inteira para cá. Pediatra, cardiologista, nutricionista —
+            tudo no mesmo lugar com a mesma qualidade. Recomendo demais."
+          </p>
+          <div class="testimonial-author">
+            <div class="avatar">AC</div>
+            <div>
+              <div class="author-name">Ana Carvalho</div>
+              <div class="author-role">Paciente e mãe</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA Banner -->
+  <div class="cta-banner">
+    <div class="cta-box">
+      <h2>Pronto para cuidar da sua saúde?</h2>
+      <p>Agende sua primeira consulta hoje. Atendimento presencial em São Paulo e online para todo o Brasil.</p>
+      <button class="btn-primary" style="font-size: 1.05rem; padding: 1rem 2.5rem;">
+        Agendar consulta gratuita →
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>© 2026 <strong>Clínica Aurora</strong> · Todos os direitos reservados · CNPJ 00.000.000/0001-00</p>
+    <p style="margin-top: 0.5rem;">Esta é uma página de demonstração do <strong>Nexbrain Web Widget</strong>.</p>
+  </footer>
+
+  <!-- Nexbrain Web Widget -->
+  <script
+    src="http://localhost:3000/widget.js"
+    data-widget-key="wgt_bUZZrOQZ77uhnSxW_5DoFghc"
+  ></script>
+
+</body>
+</html>

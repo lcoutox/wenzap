@@ -20,6 +20,15 @@ export type PublicWidgetConfig = {
   avatar_url: string | null;
   auto_open: boolean;
   auto_open_delay_seconds: number;
+  contact_capture_enabled: boolean;
+  require_name: boolean;
+  require_email: boolean;
+  require_phone: boolean;
+};
+
+export type WidgetSessionResult = {
+  session_token: string;
+  contact_captured: boolean;
 };
 
 export type WidgetMessage = {
@@ -28,6 +37,12 @@ export type WidgetMessage = {
   sender_type: string;
   content: string;
   created_at: string;
+};
+
+export type ContactCaptureData = {
+  name?: string;
+  email?: string;
+  phone?: string;
 };
 
 // ── Fetch helper ──────────────────────────────────────────────────────────────
@@ -58,12 +73,19 @@ export const publicWidgetApi = {
     widgetFetch<PublicWidgetConfig>(`/public/widgets/${publicKey}/config`),
 
   createOrResumeSession: (publicKey: string, sessionToken?: string) =>
-    widgetFetch<{ session_token: string }>(
+    widgetFetch<WidgetSessionResult>(
       `/public/widgets/${publicKey}/sessions`,
       {
         method: "POST",
         body: JSON.stringify({ session_token: sessionToken ?? null }),
       },
+    ),
+
+  updateContact: (publicKey: string, sessionToken: string, data: ContactCaptureData) =>
+    widgetFetch<void>(
+      `/public/widgets/${publicKey}/session/contact`,
+      { method: "PATCH", body: JSON.stringify(data) },
+      sessionToken,
     ),
 
   sendMessage: (publicKey: string, sessionToken: string, content: string) =>

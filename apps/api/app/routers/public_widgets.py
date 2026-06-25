@@ -6,11 +6,12 @@ Workspace and agent are resolved internally from the public_key.
 The visitor never sends workspace_id or agent_id.
 """
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.public_widget import (
+    ContactCaptureInput,
     PublicWidgetConfigOut,
     PublicWidgetMessageCreate,
     PublicWidgetMessageOut,
@@ -28,7 +29,6 @@ def _get_origin(request: Request) -> str | None:
 
 
 def _get_client_ip(request: Request) -> str:
-    # Prefer X-Forwarded-For (set by reverse proxies) over direct client IP.
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -56,6 +56,23 @@ def create_or_resume_session(
     origin = _get_origin(request)
     return public_widget_service.create_or_resume_widget_session(
         db, public_key, origin, data.session_token
+    )
+
+
+@router.patch(
+    "/{public_key}/session/contact",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def update_contact(
+    public_key: str,
+    data: ContactCaptureInput,
+    request: Request,
+    x_session_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> None:
+    origin = _get_origin(request)
+    public_widget_service.update_widget_contact(
+        db, public_key, origin, x_session_token, data
     )
 
 

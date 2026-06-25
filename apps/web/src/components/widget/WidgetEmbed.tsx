@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, X, Loader2, AlertTriangle } from "lucide-react";
 import { publicWidgetApi } from "@/lib/publicWidgetApi";
-import type { PublicWidgetConfig, WidgetMessage } from "@/lib/publicWidgetApi";
+import type { ContactCaptureData, PublicWidgetConfig, WidgetMessage } from "@/lib/publicWidgetApi";
 
 // ── Markdown renderer (no external deps) ─────────────────────────────────────
 // Supports: **bold**, *italic*, \n line breaks. Safe — no dangerouslySetInnerHTML.
@@ -141,6 +141,11 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
   const [initError, setInitError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [initDone, setInitDone] = useState(false);
+  // Contact capture state
+  const [contactCaptured, setContactCaptured] = useState(true); // true = no form needed
+  const [captureForm, setCaptureForm] = useState<ContactCaptureData>({});
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [captureSubmitting, setCaptureSubmitting] = useState(false);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -159,13 +164,12 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
 
         // 2. Create or resume session
         const storedToken = readStoredToken(publicKey);
-        const { session_token } = await publicWidgetApi.createOrResumeSession(
-          publicKey,
-          storedToken,
-        );
+        const { session_token, contact_captured } =
+          await publicWidgetApi.createOrResumeSession(publicKey, storedToken);
         if (cancelled) return;
         saveToken(publicKey, session_token);
         setSessionToken(session_token);
+        setContactCaptured(contact_captured);
 
         // 3. Load history
         const history = await publicWidgetApi.listMessages(publicKey, session_token);
@@ -286,6 +290,24 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
       setPolling(false);
     }
   }, [publicKey, sessionToken, input, sending]);
+
+  // ── Contact capture submit ───────────────────────────────────────────────────
+
+  const handleCaptureSubmit = useCallback(async () => {
+    if (!sessionToken || !config) return;
+    setCaptureError(null);
+    setCaptureSubmitting(true);
+    try {
+      await publicWidgetApi.updateContact(publicKey, sessionToken, captureForm);
+      setContactCaptured(true);
+    } catch (err) {
+      setCaptureError(
+        err instanceof Error ? err.message : "Não foi possível salvar seus dados."
+      );
+    } finally {
+      setCaptureSubmitting(false);
+    }
+  }, [publicKey, sessionToken, captureForm, config]);
 
   // ── Keyboard handler ────────────────────────────────────────────────────────
 
@@ -416,7 +438,111 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
             </button>
           </div>
 
-          {/* Messages */}
+          {/* Contact capture form */}
+          {!contactCaptured && config?.contact_capture_enabled && (
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "20px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 13, color: t.muted, lineHeight: 1.5 }}>
+                Antes de continuar, precisamos de algumas informações.
+              </p>
+              {config.require_name && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 12, color: t.muted, fontWeight: 500 }}>Nome</label>
+                  <input
+                    type="text"
+                    placeholder="Seu nome"
+                    value={captureForm.name ?? ""}
+                    onChange={(e) => setCaptureForm((f) => ({ ...f, name: e.target.value }))}
+                    style={{
+                      background: t.inputBg,
+                      border: `1px solid ${t.border}`,
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      color: t.text,
+                      outline: "none",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+              )}
+              {config.require_email && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 12, color: t.muted, fontWeight: 500 }}>E-mail</label>
+                  <input
+                    type="email"
+                    placeholder="seu@email.com"
+                    value={captureForm.email ?? ""}
+                    onChange={(e) => setCaptureForm((f) => ({ ...f, email: e.target.value }))}
+                    style={{
+                      background: t.inputBg,
+                      border: `1px solid ${t.border}`,
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      color: t.text,
+                      outline: "none",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+              )}
+              {config.require_phone && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 12, color: t.muted, fontWeight: 500 }}>Telefone</label>
+                  <input
+                    type="tel"
+                    placeholder="+55 (11) 99999-9999"
+                    value={captureForm.phone ?? ""}
+                    onChange={(e) => setCaptureForm((f) => ({ ...f, phone: e.target.value }))}
+                    style={{
+                      background: t.inputBg,
+                      border: `1px solid ${t.border}`,
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      color: t.text,
+                      outline: "none",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+              )}
+              {captureError && (
+                <p style={{ margin: 0, fontSize: 12, color: t.errorText }}>{captureError}</p>
+              )}
+              <button
+                type="button"
+                onClick={handleCaptureSubmit}
+                disabled={captureSubmitting}
+                style={{
+                  background: primaryColor,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "10px 0",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: captureSubmitting ? "not-allowed" : "pointer",
+                  opacity: captureSubmitting ? 0.7 : 1,
+                  fontFamily: "inherit",
+                }}
+              >
+                {captureSubmitting ? "Enviando..." : "Continuar"}
+              </button>
+            </div>
+          )}
+
+          {/* Messages + input (shown only after contact captured) */}
+          {contactCaptured && (<>
           <div
             ref={messagesRef}
             style={{
@@ -612,6 +738,7 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
               />
             </button>
           </div>
+          </>)} {/* end contactCaptured */}
         </div>
       )}
 

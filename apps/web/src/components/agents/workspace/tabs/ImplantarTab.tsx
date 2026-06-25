@@ -140,6 +140,10 @@ const DEFAULT_CONFIG: WebWidgetConfig = {
   avatar_url: null,
   auto_open: false,
   auto_open_delay_seconds: 3,
+  contact_capture_enabled: false,
+  require_name: false,
+  require_email: false,
+  require_phone: false,
 };
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -170,6 +174,11 @@ type FormState = {
   auto_open: boolean;
   auto_open_delay_seconds: number;
   allowed_origins_raw: string;
+  // Visitor identity / lead capture
+  contact_capture_enabled: boolean;
+  require_name: boolean;
+  require_email: boolean;
+  require_phone: boolean;
 };
 
 function channelToForm(ch?: Channel): FormState {
@@ -187,6 +196,10 @@ function channelToForm(ch?: Channel): FormState {
     auto_open: cfg.auto_open,
     auto_open_delay_seconds: cfg.auto_open_delay_seconds,
     allowed_origins_raw: (ch?.allowed_origins ?? []).join("\n"),
+    contact_capture_enabled: cfg.contact_capture_enabled ?? false,
+    require_name: cfg.require_name ?? false,
+    require_email: cfg.require_email ?? false,
+    require_phone: cfg.require_phone ?? false,
   };
 }
 
@@ -206,6 +219,10 @@ function formToPayload(
     avatar_url: f.avatar_url.trim() || null,
     auto_open: f.auto_open,
     auto_open_delay_seconds: f.auto_open_delay_seconds,
+    contact_capture_enabled: f.contact_capture_enabled,
+    require_name: f.require_name,
+    require_email: f.require_email,
+    require_phone: f.require_phone,
   };
   const allowed_origins = parseOrigins(f.allowed_origins_raw);
 
@@ -406,6 +423,59 @@ function WidgetForm({
           className={baseInput}
         />
       </Field>
+
+      {/* Contact capture */}
+      <div className="flex flex-col gap-3 p-4 rounded-xl border border-nb-border/60 bg-nb-elevated/30">
+        <p className="text-xs font-semibold text-nb-secondary uppercase tracking-wide">Coleta de dados do visitante</p>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            id="contact_capture_enabled"
+            checked={form.contact_capture_enabled}
+            onChange={(e) => {
+              set("contact_capture_enabled", e.target.checked);
+              if (!e.target.checked) {
+                set("require_name", false);
+                set("require_email", false);
+                set("require_phone", false);
+              }
+            }}
+            className="w-4 h-4 accent-nb-primary"
+          />
+          <span className="text-sm text-nb-secondary">Exigir dados antes de iniciar o chat</span>
+        </label>
+        {form.contact_capture_enabled && (
+          <div className="flex flex-col gap-2 pl-7">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
+              <input
+                type="checkbox"
+                checked={form.require_name}
+                onChange={(e) => set("require_name", e.target.checked)}
+                className="w-4 h-4 accent-nb-primary"
+              />
+              Nome
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
+              <input
+                type="checkbox"
+                checked={form.require_email}
+                onChange={(e) => set("require_email", e.target.checked)}
+                className="w-4 h-4 accent-nb-primary"
+              />
+              E-mail
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
+              <input
+                type="checkbox"
+                checked={form.require_phone}
+                onChange={(e) => set("require_phone", e.target.checked)}
+                className="w-4 h-4 accent-nb-primary"
+              />
+              Telefone
+            </label>
+          </div>
+        )}
+      </div>
 
       {/* Allowed origins */}
       <Field
