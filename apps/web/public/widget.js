@@ -40,7 +40,7 @@
     var w = isMobile ? "calc(100vw - 16px)" : "420px";
     var h = isMobile ? "calc(100vh - 16px)" : "680px";
     var bottom = isMobile ? "8px" : "0";
-    var horizontal = (side === "left") ? "left:8px;right:auto;" : "right:0;left:auto;";
+    var horizontal = (side === "left") ? "left:8px;right:auto;" : "right:8px;left:auto;";
 
     iframe.style.cssText =
       "position:fixed;" +

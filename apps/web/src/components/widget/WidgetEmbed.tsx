@@ -5,10 +5,35 @@ import { MessageCircle, Send, X, Loader2, AlertTriangle } from "lucide-react";
 import { publicWidgetApi } from "@/lib/publicWidgetApi";
 import type { PublicWidgetConfig, WidgetMessage } from "@/lib/publicWidgetApi";
 
+// ── Markdown renderer (no external deps) ─────────────────────────────────────
+// Supports: **bold**, *italic*, \n line breaks. Safe — no dangerouslySetInnerHTML.
+
+function renderMarkdown(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  // Split on newlines first, then parse inline tokens per line.
+  const lines = text.split("\n");
+  lines.forEach((line, li) => {
+    if (li > 0) nodes.push(<br key={`br-${li}`} />);
+    // Tokenize inline: **bold** | *italic* | plain text
+    const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+    parts.forEach((part, pi) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        nodes.push(<strong key={`${li}-${pi}`}>{part.slice(2, -2)}</strong>);
+      } else if (part.startsWith("*") && part.endsWith("*")) {
+        nodes.push(<em key={`${li}-${pi}`}>{part.slice(1, -1)}</em>);
+      } else {
+        nodes.push(part);
+      }
+    });
+  });
+  return nodes;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 3;
+const PASSIVE_POLL_INTERVAL_MS = 5000;
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
 
@@ -175,6 +200,33 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
     init();
     return () => { cancelled = true; };
   }, [publicKey]);
+
+  // Passive polling: refresh messages every 5s while chat is open.
+  // Silently updates — no error shown on failure. Deduplication is handled
+  // by replacing the messages array entirely (server is the source of truth).
+  useEffect(() => {
+    if (!open || !sessionToken || !initDone) return;
+
+    const id = setInterval(async () => {
+      try {
+        const updated = await publicWidgetApi.listMessages(publicKey, sessionToken);
+        setMessages((prev) => {
+          // Only update if something actually changed to avoid unnecessary re-renders.
+          if (
+            updated.length === prev.length &&
+            updated.every((m, i) => m.id === prev[i].id)
+          ) {
+            return prev;
+          }
+          return updated;
+        });
+      } catch {
+        // Fail silently — network hiccups shouldn't disrupt the visitor.
+      }
+    }, PASSIVE_POLL_INTERVAL_MS);
+
+    return () => clearInterval(id);
+  }, [open, sessionToken, publicKey, initDone]);
 
   // Scroll to bottom whenever messages change or chat opens.
   useEffect(() => {
@@ -444,7 +496,7 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
                       wordBreak: "break-word",
                     }}
                   >
-                    {msg.content}
+                    {isCustomer ? msg.content : renderMarkdown(msg.content)}
                   </div>
                 </div>
               );
