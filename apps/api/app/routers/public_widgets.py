@@ -55,7 +55,7 @@ def create_or_resume_session(
     check_session_rate(_get_client_ip(request))
     origin = _get_origin(request)
     return public_widget_service.create_or_resume_widget_session(
-        db, public_key, origin, data.session_token
+        db, public_key, origin, data.session_token, data.page_context
     )
 
 

@@ -2,7 +2,7 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PHONE_RE = re.compile(r"^[+\d\s\(\)\-]{4,30}$")
@@ -32,10 +32,36 @@ class PublicWidgetConfigOut(BaseModel):
     model_config = ConfigDict(from_attributes=False)
 
 
+class WidgetPageContext(BaseModel):
+    """Attribution data captured by widget.js from the embedding page."""
+
+    page_url: str | None = Field(default=None, max_length=2048)
+    page_title: str | None = Field(default=None, max_length=300)
+    referrer: str | None = Field(default=None, max_length=2048)
+    utm_source: str | None = Field(default=None, max_length=200)
+    utm_medium: str | None = Field(default=None, max_length=200)
+    utm_campaign: str | None = Field(default=None, max_length=200)
+    utm_term: str | None = Field(default=None, max_length=200)
+    utm_content: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="before")
+    @classmethod
+    def trim_and_nullify(cls, values: object) -> object:
+        if not isinstance(values, dict):
+            return values
+        cleaned: dict = {}
+        for k, v in values.items():
+            if isinstance(v, str):
+                v = v.strip() or None
+            cleaned[k] = v
+        return cleaned
+
+
 class WidgetSessionCreate(BaseModel):
     """Optional: visitor may include an existing token to resume a session."""
 
     session_token: str | None = None
+    page_context: WidgetPageContext | None = None
 
 
 class WidgetSessionOut(BaseModel):

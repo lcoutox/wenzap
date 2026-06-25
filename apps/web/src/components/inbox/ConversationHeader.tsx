@@ -169,6 +169,28 @@ export function ConversationHeader({
         ) : null}
       </div>
 
+      {/* Attribution row — shown for web_widget conversations with source data */}
+      {conversation.channel_type === "web_widget" && (
+        conversation.source_page_title || conversation.source_page_url || conversation.utm_source
+      ) && (
+        <div className="flex items-center gap-2 px-5 pb-2 flex-wrap">
+          {(conversation.source_page_title || conversation.source_page_url) && (
+            <span className="text-[10px] text-nb-muted truncate max-w-[200px]" title={conversation.source_page_url ?? undefined}>
+              📄 {conversation.source_page_title || (() => {
+                try { return new URL(conversation.source_page_url!).hostname; } catch { return conversation.source_page_url; }
+              })()}
+            </span>
+          )}
+          {conversation.utm_source && (
+            <span className="text-[10px] text-nb-muted">
+              {[conversation.utm_source, conversation.utm_medium, conversation.utm_campaign]
+                .filter(Boolean)
+                .join(" / ")}
+            </span>
+          )}
+        </div>
+      )}
+
       {patchError && (
         <div className="px-5 pb-2">
           <p className="text-[10px] text-nb-danger">{patchError}</p>

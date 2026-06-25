@@ -320,6 +320,15 @@ export type Conversation = {
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
+  // Attribution (web_widget only, derived from Contact.metadata_json)
+  source_page_url: string | null;
+  source_page_title: string | null;
+  source_referrer: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  last_seen_page_url: string | null;
+  last_seen_page_title: string | null;
 };
 
 export type ConversationCreateInput = {

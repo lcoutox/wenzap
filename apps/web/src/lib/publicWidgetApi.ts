@@ -45,6 +45,17 @@ export type ContactCaptureData = {
   phone?: string;
 };
 
+export type WidgetPageContext = {
+  page_url?: string | null;
+  page_title?: string | null;
+  referrer?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+};
+
 // ── Fetch helper ──────────────────────────────────────────────────────────────
 
 async function widgetFetch<T>(
@@ -72,12 +83,19 @@ export const publicWidgetApi = {
   getConfig: (publicKey: string) =>
     widgetFetch<PublicWidgetConfig>(`/public/widgets/${publicKey}/config`),
 
-  createOrResumeSession: (publicKey: string, sessionToken?: string) =>
+  createOrResumeSession: (
+    publicKey: string,
+    sessionToken?: string,
+    pageContext?: WidgetPageContext,
+  ) =>
     widgetFetch<WidgetSessionResult>(
       `/public/widgets/${publicKey}/sessions`,
       {
         method: "POST",
-        body: JSON.stringify({ session_token: sessionToken ?? null }),
+        body: JSON.stringify({
+          session_token: sessionToken ?? null,
+          page_context: pageContext ?? null,
+        }),
       },
     ),
 

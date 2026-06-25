@@ -17,9 +17,31 @@ from app.services.contact_service import create_contact
 _MAX_LIMIT = 100
 
 
-def _conv_to_dict(conv: Conversation, contact_name: str | None) -> dict:
-    """Serialize a Conversation ORM object to a dict, injecting contact_name."""
+def _extract_attribution(contact_meta: dict | None) -> dict:
+    """Extract attribution fields from Contact.metadata_json for ConversationOut."""
+    if not contact_meta:
+        return {}
+    a: dict = contact_meta.get("attribution", {})
+    ls: dict = contact_meta.get("last_seen", {})
     return {
+        "source_page_url": a.get("first_page_url"),
+        "source_page_title": a.get("first_page_title"),
+        "source_referrer": a.get("first_referrer"),
+        "utm_source": a.get("utm_source"),
+        "utm_medium": a.get("utm_medium"),
+        "utm_campaign": a.get("utm_campaign"),
+        "last_seen_page_url": ls.get("page_url"),
+        "last_seen_page_title": ls.get("page_title"),
+    }
+
+
+def _conv_to_dict(
+    conv: Conversation,
+    contact_name: str | None,
+    contact_meta: dict | None = None,
+) -> dict:
+    """Serialize a Conversation ORM object to a dict, injecting contact fields."""
+    result: dict = {
         "id": conv.id,
         "workspace_id": conv.workspace_id,
         "contact_id": conv.contact_id,
@@ -34,6 +56,8 @@ def _conv_to_dict(conv: Conversation, contact_name: str | None) -> dict:
         "created_at": conv.created_at,
         "updated_at": conv.updated_at,
     }
+    result.update(_extract_attribution(contact_meta))
+    return result
 
 
 def list_conversations(
@@ -45,7 +69,11 @@ def list_conversations(
 ) -> list[dict]:
     effective_limit = min(limit, _MAX_LIMIT)
     q = (
-        select(Conversation, Contact.name.label("contact_name"))
+        select(
+            Conversation,
+            Contact.name.label("contact_name"),
+            Contact.metadata_json.label("contact_meta"),
+        )
         .outerjoin(Contact, Conversation.contact_id == Contact.id)
         .where(Conversation.workspace_id == workspace_id)
     )
@@ -63,7 +91,10 @@ def list_conversations(
         .limit(effective_limit)
     )
     rows = db.execute(q).all()
-    return [_conv_to_dict(conv, contact_name) for conv, contact_name in rows]
+    return [
+        _conv_to_dict(conv, contact_name, contact_meta)
+        for conv, contact_name, contact_meta in rows
+    ]
 
 
 def _require_contact(db: Session, workspace_id: uuid.UUID, contact_id: uuid.UUID) -> Contact:
@@ -174,7 +205,11 @@ def get_conversation_detail(
 ) -> dict:
     """Return a dict with contact_name included. Used by the router GET endpoint."""
     row = db.execute(
-        select(Conversation, Contact.name.label("contact_name"))
+        select(
+            Conversation,
+            Contact.name.label("contact_name"),
+            Contact.metadata_json.label("contact_meta"),
+        )
         .outerjoin(Contact, Conversation.contact_id == Contact.id)
         .where(
             Conversation.id == conversation_id,
@@ -186,11 +221,25 @@ def get_conversation_detail(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found.",
         )
-    conv, contact_name = row
-    return _conv_to_dict(conv, contact_name)
+    conv, contact_name, contact_meta = row
+    return _conv_to_dict(conv, contact_name, contact_meta)
 
 
 _TAKE_OVER_ALLOWED_STATUSES = {"open", "pending", "resolved"}
+
+
+def _fetch_contact_fields(
+    db: Session, contact_id: uuid.UUID | None
+) -> tuple[str | None, dict | None]:
+    """Return (name, metadata_json) for a contact in a single query."""
+    if contact_id is None:
+        return None, None
+    row = db.execute(
+        select(Contact.name, Contact.metadata_json).where(Contact.id == contact_id)
+    ).first()
+    if row is None:
+        return None, None
+    return row[0], row[1]
 
 
 def take_over_conversation(
@@ -217,10 +266,8 @@ def take_over_conversation(
     db.commit()
     db.refresh(conv)
 
-    contact_name: str | None = None
-    if conv.contact_id is not None:
-        contact_name = db.scalar(select(Contact.name).where(Contact.id == conv.contact_id))
-    return _conv_to_dict(conv, contact_name)
+    contact_name, contact_meta = _fetch_contact_fields(db, conv.contact_id)
+    return _conv_to_dict(conv, contact_name, contact_meta)
 
 
 def return_to_ai(
@@ -243,10 +290,8 @@ def return_to_ai(
     db.commit()
     db.refresh(conv)
 
-    contact_name: str | None = None
-    if conv.contact_id is not None:
-        contact_name = db.scalar(select(Contact.name).where(Contact.id == conv.contact_id))
-    return _conv_to_dict(conv, contact_name)
+    contact_name, contact_meta = _fetch_contact_fields(db, conv.contact_id)
+    return _conv_to_dict(conv, contact_name, contact_meta)
 
 
 def update_conversation(
@@ -277,8 +322,5 @@ def update_conversation(
     db.commit()
     db.refresh(conv)
 
-    contact_name: str | None = None
-    if conv.contact_id is not None:
-        contact_name = db.scalar(select(Contact.name).where(Contact.id == conv.contact_id))
-
-    return _conv_to_dict(conv, contact_name)
+    contact_name, contact_meta = _fetch_contact_fields(db, conv.contact_id)
+    return _conv_to_dict(conv, contact_name, contact_meta)

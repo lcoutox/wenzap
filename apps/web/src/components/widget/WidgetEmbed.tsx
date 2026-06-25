@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, X, Loader2, AlertTriangle } from "lucide-react";
 import { publicWidgetApi } from "@/lib/publicWidgetApi";
-import type { ContactCaptureData, PublicWidgetConfig, WidgetMessage } from "@/lib/publicWidgetApi";
+import type { ContactCaptureData, PublicWidgetConfig, WidgetMessage, WidgetPageContext } from "@/lib/publicWidgetApi";
 
 // ── Markdown renderer (no external deps) ─────────────────────────────────────
 // Supports: **bold**, *italic*, \n line breaks. Safe — no dangerouslySetInnerHTML.
@@ -149,11 +149,27 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const pageContextRef = useRef<WidgetPageContext | null>(null);
+  // Resolver called by the message listener to unblock init early.
+  const pageContextResolverRef = useRef<(() => void) | null>(null);
 
   // ── Initialization ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     let cancelled = false;
+
+    // Register page-context listener immediately so it can fire before or during init.
+    function handleMessage(event: MessageEvent) {
+      if (!event.data || event.data.type !== "nexbrain:page-context") return;
+      const ctx = event.data.pageContext as WidgetPageContext | undefined;
+      if (ctx && typeof ctx === "object") {
+        pageContextRef.current = ctx;
+      }
+      // If init is already waiting, unblock it now.
+      pageContextResolverRef.current?.();
+      pageContextResolverRef.current = null;
+    }
+    window.addEventListener("message", handleMessage);
 
     async function init() {
       try {
@@ -162,10 +178,29 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
         if (cancelled) return;
         setConfig(cfg);
 
-        // 2. Create or resume session
+        // 2. Wait for pageContext from widget.js, or fall back after 600ms.
+        //    The Promise resolves early if the listener fires first.
+        await new Promise<void>((resolve) => {
+          if (pageContextRef.current !== null) {
+            resolve();
+            return;
+          }
+          pageContextResolverRef.current = resolve;
+          setTimeout(() => {
+            pageContextResolverRef.current = null;
+            resolve();
+          }, 600);
+        });
+        if (cancelled) return;
+
+        // 3. Create or resume session — page context is now available (or absent).
         const storedToken = readStoredToken(publicKey);
         const { session_token, contact_captured } =
-          await publicWidgetApi.createOrResumeSession(publicKey, storedToken);
+          await publicWidgetApi.createOrResumeSession(
+            publicKey,
+            storedToken,
+            pageContextRef.current ?? undefined,
+          );
         if (cancelled) return;
         saveToken(publicKey, session_token);
         setSessionToken(session_token);
@@ -202,7 +237,13 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
     }
 
     init();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.removeEventListener("message", handleMessage);
+      // Unblock any pending wait so it doesn't hold a stale resolver.
+      pageContextResolverRef.current?.();
+      pageContextResolverRef.current = null;
+    };
   }, [publicKey]);
 
   // Passive polling: refresh messages every 5s while chat is open.

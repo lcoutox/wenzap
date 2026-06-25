@@ -59,6 +59,39 @@
   var currentSide = "right";
   applyStyles(currentSide);
 
+  // Capture page context from the parent page (this script runs in the parent, not the iframe).
+  function getPageContext() {
+    var params = new URLSearchParams(window.location.search);
+    return {
+      page_url: window.location.href || null,
+      page_title: document.title || null,
+      referrer: document.referrer || null,
+      utm_source: params.get("utm_source") || null,
+      utm_medium: params.get("utm_medium") || null,
+      utm_campaign: params.get("utm_campaign") || null,
+      utm_term: params.get("utm_term") || null,
+      utm_content: params.get("utm_content") || null,
+    };
+  }
+
+  // Send page context to the embed iframe after it loads.
+  function sendPageContext() {
+    try {
+      iframe.contentWindow.postMessage(
+        { type: "nexbrain:page-context", pageContext: getPageContext() },
+        appOrigin
+      );
+    } catch (e) {
+      // Ignore cross-origin or sandboxed errors.
+    }
+  }
+
+  iframe.addEventListener("load", function () {
+    sendPageContext();
+    // Retry once after a short delay in case the embed was not yet listening.
+    setTimeout(sendPageContext, 400);
+  });
+
   // Listen for position updates sent by the WidgetEmbed component.
   window.addEventListener("message", function (event) {
     // Accept only messages from the widget origin.

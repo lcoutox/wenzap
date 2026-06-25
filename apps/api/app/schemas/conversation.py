@@ -73,5 +73,14 @@ class ConversationOut(BaseModel):
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Attribution fields derived from Contact.metadata_json (web_widget only)
+    source_page_url: str | None = None
+    source_page_title: str | None = None
+    source_referrer: str | None = None
+    utm_source: str | None = None
+    utm_medium: str | None = None
+    utm_campaign: str | None = None
+    last_seen_page_url: str | None = None
+    last_seen_page_title: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

@@ -24,6 +24,7 @@ from app.schemas.public_widget import (
     PublicWidgetConfigOut,
     PublicWidgetMessageCreate,
     PublicWidgetMessageOut,
+    WidgetPageContext,
     WidgetSessionOut,
 )
 
@@ -150,6 +151,62 @@ def _generate_session_token() -> str:
     return _SESSION_TOKEN_PREFIX + secrets.token_urlsafe(32)
 
 
+def _build_attribution(ctx: WidgetPageContext) -> dict:
+    return {
+        k: v
+        for k, v in {
+            "first_page_url": ctx.page_url,
+            "first_page_title": ctx.page_title,
+            "first_referrer": ctx.referrer,
+            "utm_source": ctx.utm_source,
+            "utm_medium": ctx.utm_medium,
+            "utm_campaign": ctx.utm_campaign,
+            "utm_term": ctx.utm_term,
+            "utm_content": ctx.utm_content,
+        }.items()
+        if v is not None
+    }
+
+
+def _build_last_seen(ctx: WidgetPageContext) -> dict:
+    return {
+        k: v
+        for k, v in {
+            "page_url": ctx.page_url,
+            "page_title": ctx.page_title,
+            "referrer": ctx.referrer,
+        }.items()
+        if v is not None
+    }
+
+
+def _apply_attribution_to_contact(
+    contact: Contact, ctx: WidgetPageContext, is_new: bool
+) -> None:
+    """
+    Persist attribution data in Contact.metadata_json.
+    - first_* fields: written only if not already present.
+    - last_seen: always updated when page_context is provided.
+    - UTM fields in attribution: only set if not already present.
+    """
+    meta: dict = dict(contact.metadata_json or {})
+
+    attribution: dict = dict(meta.get("attribution", {}))
+    new_attribution = _build_attribution(ctx)
+    for k, v in new_attribution.items():
+        if k not in attribution:
+            attribution[k] = v
+
+    last_seen = _build_last_seen(ctx)
+
+    if attribution:
+        meta["attribution"] = attribution
+    if last_seen:
+        meta["last_seen"] = last_seen
+
+    contact.metadata_json = meta
+
+
 def _create_anonymous_contact(db: Session, channel: Channel) -> Contact:
     contact = Contact(
         workspace_id=channel.workspace_id,
@@ -220,6 +277,7 @@ def create_or_resume_widget_session(
     public_key: str,
     origin: str | None,
     session_token: str | None,
+    page_context: WidgetPageContext | None = None,
 ) -> WidgetSessionOut:
     channel = _resolve_active_web_widget(db, public_key)
     _check_origin(channel, origin)
@@ -235,8 +293,10 @@ def create_or_resume_widget_session(
         )
         if existing:
             existing.last_seen_at = datetime.now(timezone.utc)
-            db.commit()
             contact = db.get(Contact, existing.contact_id)
+            if contact and page_context:
+                _apply_attribution_to_contact(contact, page_context, is_new=False)
+            db.commit()
             captured = _is_contact_captured(cfg, contact) if contact else True
             return WidgetSessionOut(
                 session_token=existing.session_token,
@@ -245,6 +305,9 @@ def create_or_resume_widget_session(
 
     new_session = _create_new_session(db, channel)
     contact = db.get(Contact, new_session.contact_id)
+    if contact and page_context:
+        _apply_attribution_to_contact(contact, page_context, is_new=True)
+        db.commit()
     captured = _is_contact_captured(cfg, contact) if contact else True
     return WidgetSessionOut(
         session_token=new_session.session_token,
