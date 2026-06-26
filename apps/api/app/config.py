@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # Example: "http://localhost:3000,https://app.nexbrain.com"
     cors_origins: str = "http://localhost:3000"
 
+    # ── WhatsApp / Meta ───────────────────────────────────────────────────────
+    whatsapp_webhook_verify_token: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
