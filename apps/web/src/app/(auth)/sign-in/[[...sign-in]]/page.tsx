@@ -1,8 +1,8 @@
 "use client";
 
-import { useSignIn } from "@clerk/nextjs";
+import { useSignIn, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { AuthLeftPanel } from "@/components/auth/AuthLeftPanel";
@@ -34,6 +34,7 @@ function GoogleButton({ onClick, loading }: { onClick: () => void; loading: bool
 
 export default function SignInPage() {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { client, setActive: clerkSetActive } = useClerk();
   const router = useRouter();
 
   const [email, setEmail]       = useState("");
@@ -41,6 +42,16 @@ export default function SignInPage() {
   const [showPwd, setShowPwd]   = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
+
+  // Clerk redirects here with #tasks/choose-organization when Organizations
+  // is disabled but a pending session exists. Activate the session directly.
+  useEffect(() => {
+    if (!client || typeof window === "undefined") return;
+    if (!window.location.hash.includes("choose-organization")) return;
+    const pending = client.sessions.find((s) => s.status === "pending");
+    if (!pending) return;
+    void clerkSetActive({ session: pending.id }).then(() => router.replace("/dashboard"));
+  }, [client, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
