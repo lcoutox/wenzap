@@ -16,43 +16,56 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Rename name → display_name
-    op.alter_column("ai_models", "name", new_column_name="display_name")
+    # Rename name → display_name only if the old column name still exists.
+    # When migration 010 already creates the column as display_name, this is a no-op.
+    op.execute(sa.text("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='ai_models' AND column_name='name'
+            ) THEN
+                ALTER TABLE ai_models RENAME COLUMN name TO display_name;
+            END IF;
+        END $$;
+    """))
 
-    # Extend model_name to 200 chars (may already be 200 via 012, safe to re-run)
-    op.alter_column("ai_models", "model_name", type_=sa.String(200))
+    # Extend model_name to 200 chars (safe re-run).
+    op.execute(sa.text("ALTER TABLE ai_models ALTER COLUMN model_name TYPE VARCHAR(200)"))
 
-    # Add missing columns
-    op.add_column("ai_models", sa.Column(
-        "credits_per_message", sa.Integer(), nullable=False, server_default="1"
+    # Add columns if they don't already exist (migration 010 may have created them).
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS credits_per_message INTEGER NOT NULL DEFAULT 1"
     ))
-    op.add_column("ai_models", sa.Column(
-        "min_plan_code", sa.String(50), nullable=False, server_default="starter"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS min_plan_code VARCHAR(50) NOT NULL DEFAULT 'starter'"
     ))
-    op.add_column("ai_models", sa.Column(
-        "context_window_tokens", sa.Integer(), nullable=True
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS context_window_tokens INTEGER"
     ))
-    op.add_column("ai_models", sa.Column(
-        "is_recommended", sa.Boolean(), nullable=False, server_default="false"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS is_recommended BOOLEAN NOT NULL DEFAULT false"
     ))
-    op.add_column("ai_models", sa.Column(
-        "is_featured", sa.Boolean(), nullable=False, server_default="false"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT false"
     ))
-    op.add_column("ai_models", sa.Column(
-        "supports_vision", sa.Boolean(), nullable=False, server_default="false"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_vision BOOLEAN NOT NULL DEFAULT false"
     ))
-    op.add_column("ai_models", sa.Column(
-        "supports_tools", sa.Boolean(), nullable=False, server_default="false"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN NOT NULL DEFAULT false"
     ))
-    op.add_column("ai_models", sa.Column(
-        "supports_reasoning", sa.Boolean(), nullable=False, server_default="false"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_reasoning BOOLEAN NOT NULL DEFAULT false"
     ))
-    op.add_column("ai_models", sa.Column(
-        "supports_code", sa.Boolean(), nullable=False, server_default="false"
+    op.execute(sa.text(
+        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_code BOOLEAN NOT NULL DEFAULT false"
     ))
 
-    # Add missing index
-    op.create_index("ix_ai_models_min_plan_code", "ai_models", ["min_plan_code"])
+    # Create index if it doesn't already exist.
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_ai_models_min_plan_code ON ai_models (min_plan_code)"
+    ))
 
     # Re-seed models with correct values (UPDATE existing rows seeded by 011)
     op.execute(sa.text("""

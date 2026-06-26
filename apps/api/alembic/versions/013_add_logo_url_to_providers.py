@@ -16,10 +16,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "ai_model_providers",
-        sa.Column("logo_url", sa.String(500), nullable=True),
-    )
+    # Column already exists when migration 010 was updated to include it.
+    op.execute(sa.text(
+        "ALTER TABLE ai_model_providers ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500)"
+    ))
 
 
 def downgrade() -> None:
