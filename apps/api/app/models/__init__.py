@@ -22,6 +22,7 @@ from app.models.user import User
 from app.models.widget_session import WidgetSession
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
+from app.models.workspace_onboarding_profile import WorkspaceOnboardingProfile
 from app.models.workspace_subscription import WorkspaceSubscription
 
 __all__ = [
@@ -50,4 +51,5 @@ __all__ = [
     "ConversationAgentRun",
     "ConversationMessage",
     "WidgetSession",
+    "WorkspaceOnboardingProfile",
 ]

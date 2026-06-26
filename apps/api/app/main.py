@@ -13,6 +13,7 @@ from app.routers import (
     knowledge_bases,
     me,
     members,
+    onboarding,
     plans,
     public_widgets,
     whatsapp_webhooks,
@@ -62,4 +63,5 @@ app.include_router(channels.router)
 app.include_router(public_widgets.router)
 app.include_router(contacts.router)
 app.include_router(conversations.router)
+app.include_router(onboarding.router)
 app.include_router(whatsapp_webhooks.router)
