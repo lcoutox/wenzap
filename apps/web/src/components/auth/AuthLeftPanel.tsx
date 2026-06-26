@@ -1,4 +1,5 @@
 import { WenzapIcon } from "./WenzapIcon";
+import { APP_VERSION } from "@/lib/version";
 
 const features = [
   "Agentes de IA para atendimento, vendas e operações",
@@ -37,7 +38,7 @@ export function AuthLeftPanel() {
       </div>
 
       <p className="text-nb-muted text-xs">
-        © {new Date().getFullYear()} Wenzap. Todos os direitos reservados.
+        © {new Date().getFullYear()} Wenzap. Todos os direitos reservados. · v{APP_VERSION}
       </p>
     </div>
   );

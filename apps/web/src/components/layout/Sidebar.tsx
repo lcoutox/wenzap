@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { APP_VERSION } from "@/lib/version";
 import {
   LayoutDashboard,
   Bot,
@@ -178,6 +179,13 @@ export function Sidebar({
 
       {/* Plan card */}
       <PlanCard collapsed={collapsed} subscription={subscription} usage={usage} />
+
+      {/* Version */}
+      {!collapsed && (
+        <p className="pb-3 text-center text-[10px] text-nb-muted select-none">
+          v{APP_VERSION}
+        </p>
+      )}
     </aside>
   );
 }
