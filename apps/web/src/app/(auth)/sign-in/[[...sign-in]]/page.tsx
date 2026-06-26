@@ -43,11 +43,16 @@ export default function SignInPage() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
 
-  // Clerk redirects here with #tasks/choose-organization when Organizations
-  // is disabled but a pending session exists. Activate the session directly.
+  // Clerk redirects here as /sign-in/tasks?redirect_url=... (or #tasks/...)
+  // when a pending session has a choose-organization task. Activate directly.
   useEffect(() => {
     if (!client || typeof window === "undefined") return;
-    if (!window.location.hash.includes("choose-organization")) return;
+    const { pathname, hash, search } = window.location;
+    const isClerksTaskRoute =
+      pathname.includes("/tasks") ||
+      hash.includes("choose-organization") ||
+      search.includes("choose-organization");
+    if (!isClerksTaskRoute) return;
     const pending = client.sessions.find((s) => s.status === "pending");
     if (!pending) return;
     void clerkSetActive({ session: pending.id }).then(() => router.replace("/dashboard"));
