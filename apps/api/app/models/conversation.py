@@ -39,6 +39,11 @@ class Conversation(Base):
     assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Channel that received/will deliver messages for this conversation.
+    # Set on creation when channel is known (e.g. WhatsApp inbound). NULL for internal/legacy.
+    channel_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
+    )
     channel_type: Mapped[str] = mapped_column(
         String(32), nullable=False, default="internal"
     )

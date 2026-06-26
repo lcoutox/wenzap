@@ -34,33 +34,16 @@ def upgrade() -> None:
     op.execute(sa.text("ALTER TABLE ai_models ALTER COLUMN model_name TYPE VARCHAR(200)"))
 
     # Add columns if they don't already exist (migration 010 may have created them).
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS credits_per_message INTEGER NOT NULL DEFAULT 1"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS min_plan_code VARCHAR(50) NOT NULL DEFAULT 'starter'"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS context_window_tokens INTEGER"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS is_recommended BOOLEAN NOT NULL DEFAULT false"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS is_featured BOOLEAN NOT NULL DEFAULT false"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_vision BOOLEAN NOT NULL DEFAULT false"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN NOT NULL DEFAULT false"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_reasoning BOOLEAN NOT NULL DEFAULT false"
-    ))
-    op.execute(sa.text(
-        "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS supports_code BOOLEAN NOT NULL DEFAULT false"
-    ))
+    _add_col = "ALTER TABLE ai_models ADD COLUMN IF NOT EXISTS"
+    op.execute(sa.text(f"{_add_col} credits_per_message INTEGER NOT NULL DEFAULT 1"))
+    op.execute(sa.text(f"{_add_col} min_plan_code VARCHAR(50) NOT NULL DEFAULT 'starter'"))
+    op.execute(sa.text(f"{_add_col} context_window_tokens INTEGER"))
+    op.execute(sa.text(f"{_add_col} is_recommended BOOLEAN NOT NULL DEFAULT false"))
+    op.execute(sa.text(f"{_add_col} is_featured BOOLEAN NOT NULL DEFAULT false"))
+    op.execute(sa.text(f"{_add_col} supports_vision BOOLEAN NOT NULL DEFAULT false"))
+    op.execute(sa.text(f"{_add_col} supports_tools BOOLEAN NOT NULL DEFAULT false"))
+    op.execute(sa.text(f"{_add_col} supports_reasoning BOOLEAN NOT NULL DEFAULT false"))
+    op.execute(sa.text(f"{_add_col} supports_code BOOLEAN NOT NULL DEFAULT false"))
 
     # Create index if it doesn't already exist.
     op.execute(sa.text(

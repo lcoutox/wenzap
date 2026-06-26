@@ -69,7 +69,9 @@ def _process(db: Session, msg: WhatsAppInboundMessage) -> ConversationMessage | 
     agent_id: uuid.UUID | None = channel.agent_id
 
     contact = _get_or_create_contact(db, workspace_id, msg)
-    conversation = _get_or_create_conversation(db, workspace_id, contact, agent_id)
+    conversation = _get_or_create_conversation(
+        db, workspace_id, contact, agent_id, channel_id=channel.id
+    )
     return _create_message_idempotent(db, workspace_id, conversation, msg)
 
 
@@ -127,6 +129,7 @@ def _get_or_create_conversation(
     workspace_id: uuid.UUID,
     contact: Contact,
     agent_id: uuid.UUID | None,
+    channel_id: uuid.UUID | None = None,
 ) -> Conversation:
     conversation = db.scalar(
         select(Conversation)
@@ -146,11 +149,9 @@ def _get_or_create_conversation(
             workspace_id=workspace_id,
             contact_id=contact.id,
             agent_id=agent_id,
+            channel_id=channel_id,
             channel_type="whatsapp",
             status="open",
-            # ai_enabled=False: outbound delivery to WhatsApp does not exist yet.
-            # Enabling auto-reply now would generate agent messages in the Inbox
-            # that are never delivered to the customer. Phase 6.3 enables this.
             ai_enabled=False,
             assigned_user_id=None,
             created_at=now,

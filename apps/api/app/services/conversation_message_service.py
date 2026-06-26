@@ -202,4 +202,22 @@ def create_message(
                 msg.id,
             )
 
+    # ── WhatsApp outbound delivery ────────────────────────────────────────────
+    if (
+        msg.direction == "outbound"
+        and msg.sender_type == "human"
+        and conv.channel_type == "whatsapp"
+    ):
+        try:
+            from app.services.whatsapp_outbound_service import (  # noqa: PLC0415
+                deliver_human_message,
+            )
+            deliver_human_message(db, msg, conv)
+        except Exception:
+            logger.exception(
+                "WhatsApp delivery failed for conversation %s message %s",
+                conv.id,
+                msg.id,
+            )
+
     return msg
