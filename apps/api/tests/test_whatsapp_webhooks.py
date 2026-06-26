@@ -360,3 +360,179 @@ class TestWhatsAppReceivePost:
             ).all()
         )
         assert len(messages) == 1
+
+
+def _status_payload_full(
+    wamid: str = "wamid.ST001",
+    status: str = "delivered",
+    timestamp: str = "1710000005",
+    errors: list | None = None,
+) -> dict:
+    status_obj: dict = {
+        "id": wamid,
+        "status": status,
+        "timestamp": timestamp,
+        "recipient_id": "5537900000001",
+        "conversation": {
+            "id": "wamid-conv-001",
+            "origin": {"type": "service"},
+        },
+        "pricing": {
+            "billable": True,
+            "pricing_model": "CBP",
+            "category": "service",
+        },
+    }
+    if errors:
+        status_obj["errors"] = errors
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "metadata": {"phone_number_id": "PID_STATUS_EP"},
+                            "statuses": [status_obj],
+                        },
+                    }
+                ]
+            }
+        ],
+    }
+
+
+def _seed_outbound_msg(
+    db: Session,
+    workspace: Workspace,
+    wamid: str = "wamid.ST001",
+) -> ConversationMessage:
+    from app.models.agent import Agent
+    from app.models.contact import Contact
+    from app.models.conversation import Conversation
+
+    agent = Agent(workspace_id=workspace.id, name="Agent-st")
+    db.add(agent)
+    db.flush()
+    contact = Contact(workspace_id=workspace.id, name="C", external_id="whatsapp:55379")
+    db.add(contact)
+    db.flush()
+    conv = Conversation(
+        workspace_id=workspace.id,
+        contact_id=contact.id,
+        agent_id=agent.id,
+        channel_type="whatsapp",
+        status="open",
+        ai_enabled=False,
+    )
+    db.add(conv)
+    db.flush()
+    msg = ConversationMessage(
+        workspace_id=workspace.id,
+        conversation_id=conv.id,
+        direction="outbound",
+        sender_type="human",
+        content="Oi",
+        external_message_id=wamid,
+        metadata_json={"delivery": {"status": "sent", "sent_at": "2026-06-26T12:00:00+00:00"}},
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
+class TestStatusUpdateEndpoint:
+    def test_status_delivered_returns_200(self, client: TestClient):
+        resp = client.post(VERIFY_URL, json=_status_payload_full())
+        assert resp.status_code == 200
+
+    def test_status_delivered_updates_existing_message(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        msg = _seed_outbound_msg(db, workspace_a, wamid="wamid.EP_DELIVERED")
+        public_webhook_client.post(
+            VERIFY_URL, json=_status_payload_full(wamid="wamid.EP_DELIVERED", status="delivered")
+        )
+        db.refresh(msg)
+        assert msg.metadata_json["delivery"]["status"] == "delivered"
+
+    def test_status_failed_saves_error_code(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        msg = _seed_outbound_msg(db, workspace_a, wamid="wamid.EP_FAILED")
+        errors = [{"code": 130497, "title": "Country restricted", "message": "Restricted."}]
+        public_webhook_client.post(
+            VERIFY_URL,
+            json=_status_payload_full(wamid="wamid.EP_FAILED", status="failed", errors=errors),
+        )
+        db.refresh(msg)
+        delivery = msg.metadata_json["delivery"]
+        assert delivery["status"] == "failed"
+        assert delivery["error_code"] == "130497"
+
+    def test_status_unknown_returns_200(self, client: TestClient):
+        payload = _status_payload_full(status="processing")
+        resp = client.post(VERIFY_URL, json=payload)
+        assert resp.status_code == 200
+
+    def test_status_for_unknown_wamid_returns_200(self, client: TestClient):
+        resp = client.post(VERIFY_URL, json=_status_payload_full(wamid="wamid.NOT_IN_DB"))
+        assert resp.status_code == 200
+
+    def test_mixed_payload_processes_both_inbound_and_status(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        """A payload with both messages[] and statuses[] must process both."""
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(db, workspace_a.id, agent.id, phone_number_id="PID_MIXED")
+        outbound = _seed_outbound_msg(db, workspace_a, wamid="wamid.MIXED_STATUS")
+
+        mixed_payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "metadata": {"phone_number_id": "PID_MIXED"},
+                                "contacts": [
+                                    {"profile": {"name": "Usr"}, "wa_id": "5537900000099"}
+                                ],
+                                "messages": [
+                                    {
+                                        "from": "5537900000099",
+                                        "id": "wamid.MIXED_INBOUND",
+                                        "timestamp": "1710000099",
+                                        "type": "text",
+                                        "text": {"body": "Oi"},
+                                    }
+                                ],
+                                "statuses": [
+                                    {
+                                        "id": "wamid.MIXED_STATUS",
+                                        "status": "delivered",
+                                        "timestamp": "1710000100",
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            ],
+        }
+        public_webhook_client.post(VERIFY_URL, json=mixed_payload)
+
+        # Inbound message created
+        inbound_msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.MIXED_INBOUND"
+            )
+        )
+        assert inbound_msg is not None
+
+        # Outbound status updated
+        db.refresh(outbound)
+        assert outbound.metadata_json["delivery"]["status"] == "delivered"

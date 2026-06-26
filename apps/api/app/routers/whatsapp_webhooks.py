@@ -20,9 +20,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.services.whatsapp_inbound_service import process_inbound_message
+from app.services.whatsapp_status_service import process_status_update
 from app.services.whatsapp_webhook_parser import (
-    is_status_update,
     parse_inbound_text_messages,
+    parse_status_updates,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,13 +74,14 @@ async def whatsapp_receive(
 
     _log_payload_summary(body)
 
-    if is_status_update(body):
-        logger.info("whatsapp_webhook received status update — acknowledged")
-        return {"status": "ok"}
+    try:
+        for status_update in parse_status_updates(body):
+            process_status_update(db, status_update)
+    except Exception:
+        logger.exception("whatsapp_webhook status processing error — returning 200 anyway")
 
     try:
-        messages = parse_inbound_text_messages(body)
-        for msg in messages:
+        for msg in parse_inbound_text_messages(body):
             process_inbound_message(db, msg)
     except Exception:
         logger.exception("whatsapp_webhook inbound processing error — returning 200 anyway")
