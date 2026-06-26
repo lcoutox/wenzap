@@ -375,6 +375,47 @@ export type ConversationMessageCreateInput = {
   agent_id?: string;
 };
 
+// ── Onboarding ────────────────────────────────────────────────────────────────
+
+export type OnboardingProfile = {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  full_name: string;
+  phone: string;
+  main_objective: string;
+  expected_monthly_conversations: string;
+  ai_experience: string;
+  company_name: string;
+  company_industry: string;
+  company_website: string | null;
+  role: string;
+  heard_from: string;
+  contact_consent: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OnboardingStatus = {
+  completed: boolean;
+  profile: OnboardingProfile | null;
+};
+
+export type OnboardingSubmitInput = {
+  full_name: string;
+  phone: string;
+  main_objective: string;
+  expected_monthly_conversations: string;
+  ai_experience: string;
+  company_name: string;
+  company_industry: string;
+  company_website?: string | null;
+  role: string;
+  heard_from: string;
+  contact_consent: boolean;
+};
+
 // ── Channels ──────────────────────────────────────────────────────────────────
 
 export type ChannelStatus = "active" | "inactive" | "archived";
@@ -592,6 +633,14 @@ export const api = {
       }),
     archive: (token: string, id: string) =>
       apiFetch<Channel>(`/channels/${id}/archive`, token, { method: "POST" }),
+  },
+  onboarding: {
+    get: (token: string) => apiFetch<OnboardingStatus>("/onboarding", token),
+    submit: (token: string, data: OnboardingSubmitInput) =>
+      apiFetch<OnboardingStatus>("/onboarding", token, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
   agents: {
     list: (token: string, status?: AgentStatus) =>
