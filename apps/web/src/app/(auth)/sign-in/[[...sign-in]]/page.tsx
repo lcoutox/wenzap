@@ -1,66 +1,96 @@
-import { SignIn } from "@clerk/nextjs";
+"use client";
 
-const features = [
-  "Agentes de IA para atendimento, vendas e operações",
-  "Workspaces seguros e multi-tenant",
-  "Base preparada para integrações e automações",
-];
+import { useSignIn } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
+import { AuthLeftPanel } from "@/components/auth/AuthLeftPanel";
+import { WenzapIcon } from "@/components/auth/WenzapIcon";
+import { clerkErrorMessage, isClerkError } from "@/components/auth/clerkErrors";
 
-function WenzapIcon({ size = 32 }: { size?: number }) {
+// ── Google OAuth button ───────────────────────────────────────────────────────
+
+function GoogleButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 270 270" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M 18,32 6,53 1,71 l -1,82 4,20 9,18 15,17 15,10 -5,26 1,7 4,5 4,2 h 9 l 60,-31 h 81 l 13,-3 24,-12 18,-18 8,-14 6,-19 1,-85 L 264,60 257,43 248,30 232,15 216,6 193,0 H 75 L 57,4 40,12 28,21 Z m 19,13 9,-9 9,-6 12,-5 10,-2 h 114 l 16,4 11,6 12,11 7,10 7,23 v 76 l -4,15 -8,14 -14,13 -17,8 -12,2 h -79 l -45,22 -1,-5 2,-7 V 204 L 46,193 36,183 27,168 24,158 23,81 27,62 Z"
-        fill="#00E09A" fillRule="evenodd"
-      />
-      <path
-        d="m 62,76 -2,4 v 6 l 27,73 9,6 h 11 l 8,-5 12,-31 6,-11 3,1 16,41 8,5 h 12 l 4,-2 7,-10 24,-67 -1,-8 -5,-5 -10,-1 -4,2 -4,6 -15,46 -2,3 h -2 l -18,-47 -8,-6 -11,1 -7,7 -15,43 -4,1 -17,-48 -3,-5 -5,-3 h -8 z"
-        fill="#00E09A" fillRule="evenodd"
-      />
-    </svg>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl bg-nb-elevated border border-nb-border text-nb-secondary text-sm font-medium hover:bg-nb-soft hover:text-nb-text transition-colors disabled:opacity-40 cursor-pointer"
+    >
+      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Continuar com Google
+    </button>
   );
 }
 
+// ── Sign-in form ──────────────────────────────────────────────────────────────
+
 export default function SignInPage() {
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const router = useRouter();
+
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd]   = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isLoaded || loading) return;
+    setError("");
+    setLoading(true);
+
+    try {
+      const result = await signIn.create({ identifier: email, password });
+
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        router.push(process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL ?? "/dashboard");
+      } else {
+        setError("Não foi possível entrar. Tente novamente.");
+      }
+    } catch (err: unknown) {
+      if (isClerkError(err)) {
+        setError(clerkErrorMessage(err.errors));
+      } else {
+        setError("Não foi possível entrar. Tente novamente.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogle() {
+    if (!isLoaded || loading) return;
+    setError("");
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: "oauth_google",
+        redirectUrl: "/sso-callback",
+        redirectUrlComplete: process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL ?? "/dashboard",
+      });
+    } catch (err: unknown) {
+      if (isClerkError(err)) {
+        setError(clerkErrorMessage(err.errors));
+      } else {
+        setError("Login com Google indisponível no momento.");
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen flex bg-nb-bg">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 bg-nb-surface border-r border-nb-border">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <WenzapIcon size={32} />
-            <span className="text-nb-text font-bold text-lg tracking-tight">Wenzap</span>
-          </div>
-        </div>
+      <AuthLeftPanel />
 
-        <div className="space-y-8">
-          <div className="space-y-4">
-            <h1 className="text-4xl font-bold text-nb-text leading-tight">
-              Orquestre agentes de IA para seu negócio
-            </h1>
-            <p className="text-nb-secondary text-lg leading-relaxed">
-              Crie e gerencie agentes de IA conectados aos dados, canais e processos da sua empresa.
-            </p>
-          </div>
-
-          <ul className="space-y-4">
-            {features.map((feature) => (
-              <li key={feature} className="flex items-start gap-3">
-                <div className="mt-1 w-4 h-4 rounded-full bg-nb-primary-bg border border-nb-primary/40 flex items-center justify-center flex-shrink-0">
-                  <div className="w-1.5 h-1.5 rounded-full bg-nb-primary" />
-                </div>
-                <span className="text-nb-secondary text-sm">{feature}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="text-nb-muted text-xs">
-          © {new Date().getFullYear()} Wenzap. Todos os direitos reservados.
-        </p>
-      </div>
-
-      {/* Right panel — Clerk sign-in */}
+      {/* Right panel */}
       <div className="flex-1 flex flex-col items-center justify-center p-8">
         {/* Mobile logo */}
         <div className="flex lg:hidden items-center gap-2.5 mb-8">
@@ -68,48 +98,93 @@ export default function SignInPage() {
           <span className="text-nb-text font-bold text-lg tracking-tight">Wenzap</span>
         </div>
 
-        <div className="w-full max-w-sm space-y-6">
-          <div className="text-center lg:text-left space-y-1">
+        <div className="w-full max-w-sm">
+          {/* Header */}
+          <div className="mb-8">
             <h2 className="text-2xl font-bold text-nb-text">Entre no Wenzap</h2>
-            <p className="text-nb-muted text-sm">
-              Acesse sua conta para continuar.
-            </p>
+            <p className="text-nb-muted text-sm mt-1">Acesse sua conta para continuar.</p>
           </div>
 
-          <SignIn
-            appearance={{
-              variables: {
-                colorPrimary: "#00E09A",
-                colorBackground: "#111827",
-                colorInputBackground: "#1A2030",
-                colorInputText: "#F9FAFB",
-                colorText: "#F9FAFB",
-                colorTextSecondary: "#9CA3AF",
-                colorNeutral: "#374151",
-                borderRadius: "0.5rem",
-                fontFamily: "inherit",
-              },
-              elements: {
-                card: "bg-nb-panel border border-nb-border shadow-xl",
-                headerTitle: "hidden",
-                headerSubtitle: "hidden",
-                socialButtonsBlockButton:
-                  "bg-nb-elevated border border-nb-border text-nb-secondary hover:bg-nb-soft transition-colors",
-                dividerLine: "bg-nb-border",
-                dividerText: "text-nb-muted",
-                formFieldInput:
-                  "bg-nb-elevated border-nb-border text-nb-text placeholder:text-nb-muted focus:border-nb-primary focus:ring-nb-primary",
-                formFieldLabel: "text-nb-secondary",
-                formButtonPrimary:
-                  "bg-nb-primary hover:opacity-90 text-nb-bg font-semibold transition-colors",
-                footerActionLink: "text-nb-primary hover:text-nb-primary-strong",
-                identityPreviewText: "text-nb-secondary",
-                identityPreviewEditButton: "text-nb-primary",
-                formResendCodeLink: "text-nb-primary",
-                otpCodeFieldInput: "bg-nb-elevated border-nb-border text-nb-text",
-              },
-            }}
-          />
+          {/* Google */}
+          <GoogleButton onClick={handleGoogle} loading={loading} />
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-nb-border" />
+            <span className="text-nb-muted text-xs">ou</span>
+            <div className="flex-1 h-px bg-nb-border" />
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-xs font-medium text-nb-secondary mb-1.5">
+                E-mail
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seu@email.com"
+                className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="password" className="block text-xs font-medium text-nb-secondary">
+                  Senha
+                </label>
+              </div>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPwd ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 pr-10 text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPwd((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-nb-muted hover:text-nb-secondary transition-colors cursor-pointer"
+                  aria-label={showPwd ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <p role="alert" aria-live="polite" className="text-nb-danger text-xs">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !isLoaded}
+              className="w-full py-2.5 rounded-xl bg-nb-primary text-nb-bg text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer"
+            >
+              {loading ? "Entrando..." : "Entrar"}
+            </button>
+          </form>
+
+          {/* Sign-up link */}
+          <p className="mt-6 text-center text-xs text-nb-muted">
+            Não tem uma conta?{" "}
+            <Link href="/sign-up" className="text-nb-primary hover:text-nb-primary-strong transition-colors font-medium">
+              Criar conta
+            </Link>
+          </p>
         </div>
       </div>
     </div>
