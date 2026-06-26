@@ -6,9 +6,7 @@ import {
   LayoutDashboard,
   Bot,
   MessageSquare,
-  Users,
   Settings,
-  CreditCard,
   TrendingUp,
   Zap,
   BookOpen,
@@ -16,13 +14,11 @@ import {
 import type { Subscription, Usage } from "@/lib/api";
 
 const nav = [
-  { href: "/dashboard",               label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
+  { href: "/dashboard",               label: "Visão geral",  icon: LayoutDashboard },
   { href: "/dashboard/inbox",         label: "Inbox",        icon: MessageSquare },
+  { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
   { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
-  { href: "/dashboard/members",       label: "Membros",      icon: Users },
   { href: "/dashboard/settings",      label: "Configurações", icon: Settings },
-  { href: "/dashboard/plan",          label: "Plano e uso",  icon: CreditCard },
 ];
 
 // ── Plan card ─────────────────────────────────────────────────────────────────
@@ -102,8 +98,14 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
 
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
+  // Routes absorbed into Configurações (no longer in the nav array).
+  const SETTINGS_SUBROUTES = ["/dashboard/members", "/dashboard/plan"];
+
+  const isActive = (href: string) => {
+    if (href === "/dashboard") return pathname === "/dashboard";
+    if (href === "/dashboard/settings" && SETTINGS_SUBROUTES.some((r) => pathname.startsWith(r))) return true;
+    return pathname.startsWith(href);
+  };
 
   return (
     <aside

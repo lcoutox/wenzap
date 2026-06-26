@@ -4,9 +4,9 @@ export type WorkspaceTab = "chat" | "deploy" | "settings" | "knowledge";
 
 const TABS: { id: WorkspaceTab; label: string; icon: React.ElementType }[] = [
   { id: "chat",      label: "Chat",          icon: MessageSquare },
-  { id: "deploy",    label: "Implantar",     icon: Radio },
-  { id: "settings",  label: "Configurações", icon: Settings },
+  { id: "deploy",    label: "Canais",        icon: Radio },
   { id: "knowledge", label: "Conhecimento",  icon: BookOpen },
+  { id: "settings",  label: "Configurações", icon: Settings },
 ];
 
 export function AgentWorkspaceTabs({

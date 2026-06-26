@@ -10,7 +10,7 @@ import type { Subscription, Usage } from "@/lib/api";
 const STORAGE_KEY = "nexbrain:sidebar-collapsed";
 
 const BREADCRUMBS: Record<string, string> = {
-  "/dashboard":                 "Dashboard",
+  "/dashboard":                 "Visão geral",
   "/dashboard/agents":          "Agentes",
   "/dashboard/inbox":           "Inbox",
   "/dashboard/knowledge-bases": "Conhecimento",
