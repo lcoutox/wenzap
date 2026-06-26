@@ -1,0 +1,221 @@
+"""
+WhatsApp inbound processing service.
+
+Orchestrates: Channel lookup → Contact upsert → Conversation upsert → Message creation.
+
+Design notes:
+- Never raises — all exceptions are caught and logged so the webhook endpoint
+  always returns 200 to Meta.
+- Writes directly to the ORM models instead of going through the public
+  create_message() service, because:
+    (a) there is no authenticated user in the webhook context;
+    (b) we need to persist external_message_id for idempotency;
+    (c) ai_enabled=False must be set unconditionally (no outbound delivery yet).
+- Idempotency: duplicate wamid within the same conversation is detected via
+  external_message_id and silently returns the existing message.
+"""
+
+import logging
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models.contact import Contact
+from app.models.conversation import Conversation
+from app.models.conversation_message import ConversationMessage
+from app.services.channel_service import get_whatsapp_channel_by_phone_number_id
+from app.services.whatsapp_webhook_parser import WhatsAppInboundMessage
+
+logger = logging.getLogger(__name__)
+
+
+def process_inbound_message(
+    db: Session,
+    msg: WhatsAppInboundMessage,
+) -> ConversationMessage | None:
+    """
+    Process one inbound WhatsApp text message and persist it to the Inbox.
+
+    Returns the ConversationMessage (new or existing) on success.
+    Returns None if the channel was not found or an unexpected error occurred.
+    """
+    try:
+        return _process(db, msg)
+    except Exception:
+        logger.exception(
+            "whatsapp_inbound unexpected error processing wamid=%s phone_number_id=%s",
+            msg.wamid,
+            msg.phone_number_id,
+        )
+        return None
+
+
+# ── Private orchestration ──────────────────────────────────────────────────────
+
+
+def _process(db: Session, msg: WhatsAppInboundMessage) -> ConversationMessage | None:
+    channel = get_whatsapp_channel_by_phone_number_id(db, msg.phone_number_id)
+    if channel is None:
+        logger.info(
+            "whatsapp_inbound channel not found for phone_number_id=%s wamid=%s",
+            msg.phone_number_id,
+            msg.wamid,
+        )
+        return None
+
+    workspace_id: uuid.UUID = channel.workspace_id
+    agent_id: uuid.UUID | None = channel.agent_id
+
+    contact = _get_or_create_contact(db, workspace_id, msg)
+    conversation = _get_or_create_conversation(db, workspace_id, contact, agent_id)
+    return _create_message_idempotent(db, workspace_id, conversation, msg)
+
+
+def _get_or_create_contact(
+    db: Session,
+    workspace_id: uuid.UUID,
+    msg: WhatsAppInboundMessage,
+) -> Contact:
+    wa_id = msg.from_wa_id
+    external_id = f"whatsapp:{wa_id}"
+    profile_name = msg.contact.profile_name if msg.contact else None
+
+    contact = db.scalar(
+        select(Contact).where(
+            Contact.workspace_id == workspace_id,
+            Contact.external_id == external_id,
+        )
+    )
+
+    if contact is None:
+        name = profile_name or wa_id
+        contact = Contact(
+            workspace_id=workspace_id,
+            name=name,
+            phone=f"+{wa_id}",
+            external_id=external_id,
+            metadata_json={
+                "source": "whatsapp",
+                "whatsapp": {
+                    "wa_id": wa_id,
+                    "profile_name": profile_name,
+                },
+            },
+        )
+        db.add(contact)
+        db.flush()
+        logger.info(
+            "whatsapp_inbound created contact external_id=%s workspace=%s",
+            external_id,
+            workspace_id,
+        )
+    else:
+        # Update name if it was set to the raw wa_id (default fallback) and a real
+        # profile name is now available.
+        if profile_name and contact.name == wa_id:
+            contact.name = profile_name
+            contact.updated_at = datetime.now(timezone.utc)
+            db.flush()
+
+    return contact
+
+
+def _get_or_create_conversation(
+    db: Session,
+    workspace_id: uuid.UUID,
+    contact: Contact,
+    agent_id: uuid.UUID | None,
+) -> Conversation:
+    conversation = db.scalar(
+        select(Conversation)
+        .where(
+            Conversation.workspace_id == workspace_id,
+            Conversation.contact_id == contact.id,
+            Conversation.agent_id == agent_id,
+            Conversation.channel_type == "whatsapp",
+            Conversation.status.in_(["open", "pending"]),
+        )
+        .order_by(Conversation.created_at.desc())
+    )
+
+    if conversation is None:
+        now = datetime.now(timezone.utc)
+        conversation = Conversation(
+            workspace_id=workspace_id,
+            contact_id=contact.id,
+            agent_id=agent_id,
+            channel_type="whatsapp",
+            status="open",
+            # ai_enabled=False: outbound delivery to WhatsApp does not exist yet.
+            # Enabling auto-reply now would generate agent messages in the Inbox
+            # that are never delivered to the customer. Phase 6.3 enables this.
+            ai_enabled=False,
+            assigned_user_id=None,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(conversation)
+        db.flush()
+        logger.info(
+            "whatsapp_inbound created conversation id=%s workspace=%s contact=%s",
+            conversation.id,
+            workspace_id,
+            contact.id,
+        )
+
+    return conversation
+
+
+def _create_message_idempotent(
+    db: Session,
+    workspace_id: uuid.UUID,
+    conversation: Conversation,
+    msg: WhatsAppInboundMessage,
+) -> ConversationMessage:
+    # Idempotency check: reject duplicate wamid within this conversation.
+    existing = db.scalar(
+        select(ConversationMessage).where(
+            ConversationMessage.conversation_id == conversation.id,
+            ConversationMessage.external_message_id == msg.wamid,
+        )
+    )
+    if existing is not None:
+        logger.info(
+            "whatsapp_inbound duplicate wamid=%s conversation=%s — skipped",
+            msg.wamid,
+            conversation.id,
+        )
+        return existing
+
+    now = datetime.now(timezone.utc)
+    message = ConversationMessage(
+        workspace_id=workspace_id,
+        conversation_id=conversation.id,
+        direction="inbound",
+        sender_type="customer",
+        content_type="text",
+        content=msg.text_body,
+        external_message_id=msg.wamid,
+        metadata_json={
+            "whatsapp_timestamp": msg.timestamp,
+            "wa_id": msg.from_wa_id,
+        },
+    )
+    db.add(message)
+
+    conversation.last_message_at = now
+    conversation.updated_at = now
+    db.flush()
+
+    db.commit()
+    db.refresh(message)
+
+    logger.info(
+        "whatsapp_inbound message created id=%s wamid=%s conversation=%s",
+        message.id,
+        msg.wamid,
+        conversation.id,
+    )
+    return message

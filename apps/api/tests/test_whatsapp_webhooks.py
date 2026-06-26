@@ -1,25 +1,62 @@
 """
-Tests for Phase 6.0 — WhatsApp Webhook Foundation.
+Tests for WhatsApp webhook endpoints — Phase 6.0 + 6.2-A.
 
 Covers:
-- GET /webhooks/whatsapp/meta (hub challenge verification)
-- POST /webhooks/whatsapp/meta (inbound payload receiver)
+  GET /webhooks/whatsapp/meta (hub challenge verification)
+  - valid token returns 200 with challenge body
+  - wrong token returns 403
+  - wrong mode returns 403
+  - missing params return 403
+  - empty settings token returns 403
+
+  POST /webhooks/whatsapp/meta (inbound receiver — Phase 6.2-A)
+  - valid text payload returns 200
+  - valid text payload creates ConversationMessage in DB
+  - valid text payload creates Contact in DB
+  - status update payload returns 200 without creating message
+  - channel not found returns 200 (no crash)
+  - malformed payload returns 200 (no crash)
+  - empty payload returns 200 (no crash)
+  - second POST with same wamid returns 200 but does not duplicate message
 """
 
+import uuid
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.main import app
+from app.models.agent import Agent
+from app.models.channel import Channel
+from app.models.contact import Contact
+from app.models.conversation_message import ConversationMessage
+from app.models.workspace import Workspace
 
 VERIFY_URL = "/webhooks/whatsapp/meta"
 VALID_TOKEN = "test_verify_token_abc"
 
 
+# ── Client fixtures ───────────────────────────────────────────────────────────
+
+
 @pytest.fixture()
 def client():
+    """Unauthenticated client — webhook endpoints are public."""
     return TestClient(app, raise_server_exceptions=True)
+
+
+@pytest.fixture()
+def public_webhook_client(db: Session):
+    """Client with DB override for tests that verify DB state."""
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        yield TestClient(app, raise_server_exceptions=True)
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +67,118 @@ def patch_verify_token():
         yield mock_settings
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _make_agent(db: Session, workspace_id: uuid.UUID) -> Agent:
+    agent = Agent(workspace_id=workspace_id, name="WA Agent", status="active")
+    db.add(agent)
+    db.flush()
+    return agent
+
+
+def _make_whatsapp_channel(
+    db: Session,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    phone_number_id: str,
+) -> Channel:
+    ch = Channel(
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        channel_type="whatsapp",
+        name="WA Test",
+        public_key=f"wap_{uuid.uuid4().hex[:24]}",
+        status="active",
+        config_json={
+            "provider": "meta_cloud_api",
+            "onboarding_type": "manual",
+            "waba_id": "9999000011112222",
+            "phone_number_id": phone_number_id,
+            "display_phone_number": None,
+            "business_id": None,
+            "access_token_ref": None,
+            "status": "testing",
+            "connected_at": None,
+            "last_webhook_at": None,
+        },
+        allowed_origins=[],
+    )
+    db.add(ch)
+    db.commit()
+    db.refresh(ch)
+    return ch
+
+
+def _text_payload(
+    phone_number_id: str = "PID_ENDPOINT_TEST",
+    wa_id: str = "5537900000001",
+    wamid: str = "wamid.ENDPOINT001",
+    text_body: str = "Olá",
+) -> dict:
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_ID",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "metadata": {
+                                "display_phone_number": "15556620073",
+                                "phone_number_id": phone_number_id,
+                            },
+                            "contacts": [
+                                {"profile": {"name": "Test User"}, "wa_id": wa_id}
+                            ],
+                            "messages": [
+                                {
+                                    "from": wa_id,
+                                    "id": wamid,
+                                    "timestamp": "1710000000",
+                                    "text": {"body": text_body},
+                                    "type": "text",
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _status_payload(wamid: str = "wamid.STATUS001") -> dict:
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_ID",
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": {
+                            "messaging_product": "whatsapp",
+                            "statuses": [
+                                {
+                                    "id": wamid,
+                                    "status": "delivered",
+                                    "timestamp": "1710000001",
+                                    "recipient_id": "5537900000001",
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
 # ── GET verification ──────────────────────────────────────────────────────────
+
 
 class TestWhatsAppVerifyGet:
     def test_valid_token_returns_200(self, client: TestClient):
@@ -88,7 +236,6 @@ class TestWhatsAppVerifyGet:
         assert resp.status_code == 403
 
     def test_empty_token_in_settings_returns_403(self, client: TestClient):
-        """If WHATSAPP_WEBHOOK_VERIFY_TOKEN is not configured, always deny."""
         with patch("app.routers.whatsapp_webhooks.settings") as mock:
             mock.whatsapp_webhook_verify_token = ""
             resp = client.get(VERIFY_URL, params={
@@ -99,7 +246,6 @@ class TestWhatsAppVerifyGet:
         assert resp.status_code == 403
 
     def test_missing_challenge_returns_200_with_empty_body(self, client: TestClient):
-        """Missing challenge → still verifies OK, returns empty body."""
         resp = client.get(VERIFY_URL, params={
             "hub.mode": "subscribe",
             "hub.verify_token": VALID_TOKEN,
@@ -110,59 +256,107 @@ class TestWhatsAppVerifyGet:
 
 # ── POST receiver ─────────────────────────────────────────────────────────────
 
+
 class TestWhatsAppReceivePost:
-    def test_typical_payload_returns_200(self, client: TestClient):
-        payload = {
-            "object": "whatsapp_business_account",
-            "entry": [
-                {
-                    "id": "123456789",
-                    "changes": [
-                        {
-                            "field": "messages",
-                            "value": {
-                                "messaging_product": "whatsapp",
-                                "messages": [{"type": "text", "text": {"body": "Olá"}}],
-                            },
-                        }
-                    ],
-                }
-            ],
-        }
-        resp = client.post(VERIFY_URL, json=payload)
+    def test_valid_text_payload_returns_200(self, client: TestClient):
+        resp = client.post(VERIFY_URL, json=_text_payload())
         assert resp.status_code == 200
 
-    def test_typical_payload_returns_ok_body(self, client: TestClient):
-        resp = client.post(VERIFY_URL, json={"object": "whatsapp_business_account", "entry": []})
+    def test_valid_text_payload_returns_ok_body(self, client: TestClient):
+        resp = client.post(VERIFY_URL, json=_text_payload())
         assert resp.json() == {"status": "ok"}
+
+    def test_status_update_returns_200(self, client: TestClient):
+        resp = client.post(VERIFY_URL, json=_status_payload())
+        assert resp.status_code == 200
 
     def test_empty_payload_returns_200(self, client: TestClient):
         resp = client.post(VERIFY_URL, json={})
         assert resp.status_code == 200
 
     def test_unexpected_payload_returns_200(self, client: TestClient):
-        resp = client.post(VERIFY_URL, json={"unexpected": "field", "foo": [1, 2, 3]})
-        assert resp.status_code == 200
-
-    def test_status_update_payload_returns_200(self, client: TestClient):
-        payload = {
-            "object": "whatsapp_business_account",
-            "entry": [
-                {
-                    "id": "123",
-                    "changes": [
-                        {
-                            "field": "statuses",
-                            "value": {"statuses": [{"status": "delivered", "id": "msg_id"}]},
-                        }
-                    ],
-                }
-            ],
-        }
-        resp = client.post(VERIFY_URL, json=payload)
+        resp = client.post(VERIFY_URL, json={"unexpected": "field"})
         assert resp.status_code == 200
 
     def test_no_auth_required(self, client: TestClient):
-        """POST must not require Clerk authentication."""
         resp = client.post(VERIFY_URL, json={"object": "test"})
         assert resp.status_code == 200
+
+    def test_channel_not_found_returns_200(self, client: TestClient):
+        """Unknown phone_number_id must not crash the endpoint."""
+        resp = client.post(VERIFY_URL, json=_text_payload(phone_number_id="PID_UNKNOWN_XYZ"))
+        assert resp.status_code == 200
+
+    def test_valid_text_creates_message_in_db(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(db, workspace_a.id, agent.id, phone_number_id="PID_DB_TEST")
+
+        public_webhook_client.post(
+            VERIFY_URL,
+            json=_text_payload(phone_number_id="PID_DB_TEST", wamid="wamid.DB_CREATE"),
+        )
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.DB_CREATE"
+            )
+        )
+        assert msg is not None
+        assert msg.direction == "inbound"
+        assert msg.sender_type == "customer"
+
+    def test_valid_text_creates_contact_in_db(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(db, workspace_a.id, agent.id, phone_number_id="PID_CONTACT_TEST")
+
+        public_webhook_client.post(
+            VERIFY_URL,
+            json=_text_payload(
+                phone_number_id="PID_CONTACT_TEST",
+                wa_id="5537800000001",
+                wamid="wamid.CONTACT_CREATE",
+            ),
+        )
+
+        contact = db.scalar(
+            select(Contact).where(
+                Contact.workspace_id == workspace_a.id,
+                Contact.external_id == "whatsapp:5537800000001",
+            )
+        )
+        assert contact is not None
+
+    def test_status_update_does_not_create_message(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        public_webhook_client.post(VERIFY_URL, json=_status_payload(wamid="wamid.STATUS_NO_MSG"))
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.workspace_id == workspace_a.id
+            )
+        )
+        assert msg is None
+
+    def test_duplicate_wamid_does_not_create_second_message(
+        self, db: Session, workspace_a: Workspace, public_webhook_client: TestClient
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(db, workspace_a.id, agent.id, phone_number_id="PID_IDEM_TEST")
+
+        payload = _text_payload(phone_number_id="PID_IDEM_TEST", wamid="wamid.IDEM001")
+        public_webhook_client.post(VERIFY_URL, json=payload)
+        public_webhook_client.post(VERIFY_URL, json=payload)
+
+        messages = list(
+            db.scalars(
+                select(ConversationMessage).where(
+                    ConversationMessage.external_message_id == "wamid.IDEM001"
+                )
+            ).all()
+        )
+        assert len(messages) == 1

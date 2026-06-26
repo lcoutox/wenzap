@@ -6,16 +6,24 @@ POST /webhooks/whatsapp/meta  — Inbound payloads (messages, statuses, etc.)
 
 Security notes:
 - GET is protected by the verify token set in the Meta dashboard.
-- POST currently accepts any payload and returns 200 immediately.
+- POST currently returns 200 unconditionally — Meta requires a fast acknowledgement
+  and must never receive non-200 for transient internal errors.
   TODO: validate X-Hub-Signature-256 using WHATSAPP_APP_SECRET in a future phase.
 """
 
 import logging
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import PlainTextResponse
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_db
+from app.services.whatsapp_inbound_service import process_inbound_message
+from app.services.whatsapp_webhook_parser import (
+    is_status_update,
+    parse_inbound_text_messages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +56,15 @@ async def whatsapp_verify(
 
 
 @router.post("/meta", status_code=200)
-async def whatsapp_receive(request: Request) -> dict:
+async def whatsapp_receive(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
     """
     Receive inbound WhatsApp payloads from the Meta platform.
 
-    Returns 200 immediately — Meta requires a fast acknowledgement.
-    Payload processing will be implemented in a future phase.
+    Always returns 200 — processing errors are logged internally and never
+    exposed to Meta (which would cause unnecessary retries).
     """
     try:
         body = await request.json()
@@ -61,6 +72,17 @@ async def whatsapp_receive(request: Request) -> dict:
         body = {}
 
     _log_payload_summary(body)
+
+    if is_status_update(body):
+        logger.info("whatsapp_webhook received status update — acknowledged")
+        return {"status": "ok"}
+
+    try:
+        messages = parse_inbound_text_messages(body)
+        for msg in messages:
+            process_inbound_message(db, msg)
+    except Exception:
+        logger.exception("whatsapp_webhook inbound processing error — returning 200 anyway")
 
     return {"status": "ok"}
 
