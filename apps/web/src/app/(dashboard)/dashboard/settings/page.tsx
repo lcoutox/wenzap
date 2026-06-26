@@ -64,7 +64,7 @@ function TabGeral() {
     <div className="max-w-md space-y-6">
       <div>
         <h2 className="text-sm font-semibold text-nb-text">Informações do workspace</h2>
-        <p className="text-xs text-nb-muted mt-0.5">Nome e identificador do seu workspace no Nexbrain.</p>
+        <p className="text-xs text-nb-muted mt-0.5">Nome e identificador do seu workspace no Wenzap.</p>
       </div>
 
       <div className="bg-nb-panel border border-nb-border rounded-2xl divide-y divide-nb-border">

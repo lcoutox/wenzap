@@ -1,10 +1,10 @@
-/* Nexbrain Web Widget Loader — v1.0 */
+/* Wenzap Web Widget Loader — v1.0 */
 (function () {
   "use strict";
 
   // Prevent double initialization when script is accidentally loaded twice.
-  if (window.__nexbrainWidgetLoaded) return;
-  window.__nexbrainWidgetLoaded = true;
+  if (window.__wenzapWidgetLoaded) return;
+  window.__wenzapWidgetLoaded = true;
 
   // Locate the <script> tag that loaded this file.
   var script =
@@ -16,7 +16,7 @@
 
   var widgetKey = script && script.getAttribute("data-widget-key");
   if (!widgetKey) {
-    console.warn("[Nexbrain Widget] data-widget-key attribute is required.");
+    console.warn("[Wenzap Widget] data-widget-key attribute is required.");
     return;
   }
 
@@ -30,7 +30,7 @@
   iframe.setAttribute("allowtransparency", "true");
   iframe.setAttribute("frameborder", "0");
   iframe.setAttribute("scrolling", "no");
-  iframe.setAttribute("title", "Nexbrain Chat Widget");
+  iframe.setAttribute("title", "Wenzap Chat Widget");
 
   // Helper: apply iframe geometry.
   // Desktop: 420×680px fixed in chosen corner.
@@ -78,7 +78,7 @@
   function sendPageContext() {
     try {
       iframe.contentWindow.postMessage(
-        { type: "nexbrain:page-context", pageContext: getPageContext() },
+        { type: "wenzap:page-context", pageContext: getPageContext() },
         appOrigin
       );
     } catch (e) {
@@ -96,7 +96,7 @@
   window.addEventListener("message", function (event) {
     // Accept only messages from the widget origin.
     if (event.origin !== appOrigin) return;
-    if (!event.data || event.data.type !== "nexbrain:widget-config") return;
+    if (!event.data || event.data.type !== "wenzap:widget-config") return;
     var pos = event.data.position;
     if (pos === "bottom-left" || pos === "bottom-right") {
       var side = pos === "bottom-left" ? "left" : "right";
@@ -113,8 +113,8 @@
   });
 
   function inject() {
-    if (document.getElementById("__nexbrain_widget_iframe__")) return;
-    iframe.id = "__nexbrain_widget_iframe__";
+    if (document.getElementById("__wenzap_widget_iframe__")) return;
+    iframe.id = "__wenzap_widget_iframe__";
     document.body.appendChild(iframe);
   }
 

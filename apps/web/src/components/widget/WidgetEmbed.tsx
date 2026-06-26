@@ -160,7 +160,7 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
 
     // Register page-context listener immediately so it can fire before or during init.
     function handleMessage(event: MessageEvent) {
-      if (!event.data || event.data.type !== "nexbrain:page-context") return;
+      if (!event.data || event.data.type !== "wenzap:page-context") return;
       const ctx = event.data.pageContext as WidgetPageContext | undefined;
       if (ctx && typeof ctx === "object") {
         pageContextRef.current = ctx;
@@ -215,7 +215,7 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
         // 4. Notify parent iframe about position so widget.js can reposition.
         try {
           window.parent.postMessage(
-            { type: "nexbrain:widget-config", position: cfg.position },
+            { type: "wenzap:widget-config", position: cfg.position },
             "*",
           );
         } catch {

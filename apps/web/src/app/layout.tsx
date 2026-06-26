@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nexbrain",
+  title: "Wenzap",
   description: "AI agent orchestration platform",
 };
 

@@ -7,7 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { UserMenuDropdown } from "./UserMenuDropdown";
 import type { Subscription, Usage } from "@/lib/api";
 
-const STORAGE_KEY = "nexbrain:sidebar-collapsed";
+const STORAGE_KEY = "wenzap:sidebar-collapsed";
 
 const BREADCRUMBS: Record<string, string> = {
   "/dashboard":                 "Visão geral",

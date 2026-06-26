@@ -58,7 +58,7 @@ function blockMessage(reason: BlockReason): string {
     case "archived":            return "Este agente está arquivado e não pode ser testado.";
     case "no_system_prompt":    return "Configure um system_prompt em Configurações → Prompt antes de testar.";
     case "no_model":            return "Configure um modelo em Configurações → Modelo antes de testar.";
-    case "model_not_executable":return "O modelo selecionado não está disponível para execução nesta fase. Selecione um modelo Anthropic ou Nexbrain compatível.";
+    case "model_not_executable":return "O modelo selecionado não está disponível para execução nesta fase. Selecione um modelo Anthropic ou Wenzap compatível.";
     default:                    return "";
   }
 }

@@ -1,32 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
-/* ── Nexbrain Design Tokens ──────────────────────────────────────────────────
-   Paleta: Operacional Noturno
+/* ── Wenzap Design Tokens ─────────────────────────────────────────────────────
+   Paleta: Dark Navy + Verde Wenzap
    Hierarquia de superfícies (mais escuro → mais elevado):
      bg < surface < panel < elevated < soft
 ────────────────────────────────────────────────────────────────────────────── */
 
 @theme {
   /* Backgrounds */
-  --color-nb-bg:          #080C14;
-  --color-nb-surface:     #0C1220;
+  --color-nb-bg:          #0B0F14;
+  --color-nb-surface:     #0F1419;
   --color-nb-panel:       #111827;
-  --color-nb-elevated:    #172033;
-  --color-nb-soft:        #1D2738;
+  --color-nb-elevated:    #1A2030;
+  --color-nb-soft:        #1F2937;
 
   /* Borders */
-  --color-nb-border:        #253044;
-  --color-nb-border-strong: #334155;
+  --color-nb-border:        #1F2D3D;
+  --color-nb-border-strong: #374151;
 
   /* Typography */
-  --color-nb-text:       #F4F7FB;
-  --color-nb-secondary:  #A8B3C7;
-  --color-nb-muted:      #6F7B90;
+  --color-nb-text:       #F9FAFB;
+  --color-nb-secondary:  #9CA3AF;
+  --color-nb-muted:      #6B7280;
 
-  /* Primary — indigo/roxo para ação, IA, seleção */
-  --color-nb-primary:       #7167F0;
-  --color-nb-primary-strong:#8B7CFF;
-  --color-nb-primary-bg:    #2A255F;
+  /* Primary — verde Wenzap */
+  --color-nb-primary:        #00E09A;
+  --color-nb-primary-strong: #20e7b2;
+  --color-nb-primary-bg:     #002E20;
 
   /* Semânticos */
   --color-nb-success: #34D399;
@@ -35,15 +36,12 @@
   --color-nb-info:    #38BDF8;
 }
 
-/* ── Base ────────────────────────────────────────────────────────────────────
-   Define fundo escuro global para que qualquer área não pintada seja escura.
-────────────────────────────────────────────────────────────────────────────── */
-
 @layer base {
   html,
   body {
-    background-color: #080C14;
-    color: #F4F7FB;
+    background-color: #0B0F14;
+    color: #F9FAFB;
+    font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
 }
