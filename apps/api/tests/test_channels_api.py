@@ -8,7 +8,7 @@ Covers:
   - member cannot create (403)
   - viewer cannot create (403)
   - agent from another workspace returns 404
-  - unimplemented channel_type (e.g. whatsapp) returns 422
+  - unimplemented channel_type (e.g. instagram) returns 422
   - public_key ignored/not accepted in body
   - public_key generated starts with wgt_
   - default config applied when not provided
@@ -189,7 +189,8 @@ def test_unimplemented_channel_type_returns_422(
     agent = _make_agent(db, workspace_a.id)
     db.commit()
 
-    payload = {"agent_id": str(agent.id), "channel_type": "whatsapp", "name": "WA Widget"}
+    # instagram is a valid but not-yet-implemented channel type
+    payload = {"agent_id": str(agent.id), "channel_type": "instagram", "name": "IG Channel"}
     resp = client_a.post("/channels", json=payload)
 
     assert resp.status_code == 422

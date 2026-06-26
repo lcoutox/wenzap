@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
+_IMPLEMENTED_CHANNEL_TYPES = {"web_widget", "whatsapp"}
+
 
 class WebWidgetConfig(BaseModel):
     """Validated config for channel_type='web_widget'."""
@@ -56,10 +58,49 @@ class WebWidgetConfig(BaseModel):
         return v
 
 
+class WhatsAppChannelConfig(BaseModel):
+    """Validated config for channel_type='whatsapp' (Meta Cloud API)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["meta_cloud_api"] = "meta_cloud_api"
+    onboarding_type: Literal["manual", "embedded_signup"] = "manual"
+    waba_id: str = Field(min_length=1, max_length=100)
+    phone_number_id: str = Field(min_length=1, max_length=100)
+    display_phone_number: str | None = Field(default=None, max_length=50)
+    business_id: str | None = Field(default=None, max_length=100)
+    # Reference to the access token, never the token itself.
+    # Format: "env:<VAR_NAME>" (resolved by the service at call time).
+    access_token_ref: str | None = Field(default=None, max_length=200)
+    status: Literal["testing", "active", "disconnected"] = "testing"
+    connected_at: datetime | None = None
+    last_webhook_at: datetime | None = None
+    # TODO: add partial index on config_json->>'phone_number_id' when volume warrants it:
+    # CREATE INDEX ON channels ((config_json->>'phone_number_id')) WHERE channel_type = 'whatsapp';
+
+
 def _parse_web_widget_config(raw: dict | None) -> dict:
     """Validate and return a WebWidgetConfig dict, applying defaults."""
     cfg = WebWidgetConfig(**(raw or {}))
     return cfg.model_dump()
+
+
+def _parse_whatsapp_config(raw: dict | None) -> dict:
+    """Validate and return a WhatsAppChannelConfig dict."""
+    cfg = WhatsAppChannelConfig(**(raw or {}))
+    return cfg.model_dump()
+
+
+def _parse_config_by_type(channel_type: str, raw: dict | None) -> dict:
+    """Route config validation to the correct schema by channel_type."""
+    if channel_type == "web_widget":
+        return _parse_web_widget_config(raw)
+    if channel_type == "whatsapp":
+        return _parse_whatsapp_config(raw)
+    raise ValueError(
+        f"channel_type '{channel_type}' is not yet implemented. "
+        f"Supported types: {sorted(_IMPLEMENTED_CHANNEL_TYPES)}."
+    )
 
 
 def _validate_allowed_origins(origins: list[str]) -> list[str]:
@@ -85,29 +126,21 @@ class ChannelCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_config_and_origins(self) -> "ChannelCreate":
-        # Only web_widget is implemented; future types rejected early.
-        if self.channel_type != "web_widget":
-            raise ValueError(
-                f"channel_type '{self.channel_type}' is not yet implemented. "
-                "Only 'web_widget' is supported."
-            )
-        self.config = _parse_web_widget_config(self.config)
+        self.config = _parse_config_by_type(self.channel_type, self.config)
         self.allowed_origins = _validate_allowed_origins(self.allowed_origins)
         return self
 
 
 class ChannelUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
+    # Raw config dict; validated against the channel's actual type in the service layer,
+    # where channel_type is available after resolving the channel from the database.
     config: dict | None = None
     allowed_origins: list[str] | None = None
     status: Literal["active", "inactive"] | None = None
 
     @model_validator(mode="after")
     def validate_updatable_fields(self) -> "ChannelUpdate":
-        if self.config is not None:
-            # channel_type is not available here; service validates after resolving the channel.
-            # We just run a basic config parse (web_widget defaults); service re-runs with type.
-            self.config = _parse_web_widget_config(self.config)
         if self.allowed_origins is not None:
             self.allowed_origins = _validate_allowed_origins(self.allowed_origins)
         return self

@@ -3,21 +3,28 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
 from app.models.channel import Channel
-from app.schemas.channel import ChannelCreate, ChannelOut, ChannelUpdate, _parse_web_widget_config
+from app.schemas.channel import ChannelCreate, ChannelOut, ChannelUpdate, _parse_config_by_type
 
 _MAX_LIMIT = 100
-_PUBLIC_KEY_PREFIX = "wgt_"
 _PUBLIC_KEY_MAX_RETRIES = 5
 
+_PUBLIC_KEY_PREFIXES: dict[str, str] = {
+    "web_widget": "wgt_",
+    "whatsapp": "wap_",
+}
+_PUBLIC_KEY_DEFAULT_PREFIX = "ch_"
 
-def _generate_public_key() -> str:
-    return _PUBLIC_KEY_PREFIX + secrets.token_urlsafe(18)
+
+def _generate_public_key(channel_type: str) -> str:
+    prefix = _PUBLIC_KEY_PREFIXES.get(channel_type, _PUBLIC_KEY_DEFAULT_PREFIX)
+    return prefix + secrets.token_urlsafe(18)
 
 
 def _channel_to_out(channel: Channel) -> ChannelOut:
@@ -71,7 +78,7 @@ def create_channel(
     _resolve_agent_or_404(db, workspace_id, data.agent_id)
 
     for _ in range(_PUBLIC_KEY_MAX_RETRIES):
-        public_key = _generate_public_key()
+        public_key = _generate_public_key(data.channel_type)
         channel = Channel(
             workspace_id=workspace_id,
             agent_id=data.agent_id,
@@ -137,11 +144,13 @@ def update_channel(
     if data.name is not None:
         channel.name = data.name
     if data.config is not None:
-        # Re-validate config against the channel's actual type.
-        if channel.channel_type == "web_widget":
-            channel.config_json = _parse_web_widget_config(data.config)
-        else:
-            channel.config_json = data.config
+        try:
+            channel.config_json = _parse_config_by_type(channel.channel_type, data.config)
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
     if data.allowed_origins is not None:
         channel.allowed_origins = data.allowed_origins
     if data.status is not None:
@@ -164,3 +173,28 @@ def archive_channel(
     db.commit()
     db.refresh(channel)
     return _channel_to_out(channel)
+
+
+def get_whatsapp_channel_by_phone_number_id(
+    db: Session,
+    phone_number_id: str,
+) -> Channel | None:
+    """
+    Look up an active WhatsApp channel by its Meta phone_number_id.
+
+    Used by the webhook receiver to route inbound messages to the correct workspace.
+    Returns None (not an error) when no channel matches — the caller decides how to handle it.
+
+    Tenant isolation: the returned Channel carries workspace_id, so the caller always
+    knows which workspace owns the channel without any extra lookup.
+
+    TODO: add a partial index for performance at scale:
+      CREATE INDEX ON channels ((config_json->>'phone_number_id')) WHERE channel_type = 'whatsapp';
+    """
+    return db.scalar(
+        select(Channel).where(
+            Channel.channel_type == "whatsapp",
+            Channel.status != "archived",
+            Channel.config_json["phone_number_id"].astext == phone_number_id,
+        )
+    )
