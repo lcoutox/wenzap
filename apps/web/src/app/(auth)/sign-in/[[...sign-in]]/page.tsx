@@ -44,7 +44,10 @@ export default function SignInPage() {
   const [error, setError]       = useState("");
 
   // Clerk redirects here as /sign-in/tasks?redirect_url=... (or #tasks/...)
-  // when a pending session has a choose-organization task. Activate directly.
+  // when a pending session has a choose-organization task.
+  // Pass organization: null to signal "no org" and activate the session.
+  // The middleware also lets pending sessions with a valid userId through,
+  // so the user reaches the dashboard even if setActive doesn't resolve the task.
   useEffect(() => {
     if (!client || typeof window === "undefined") return;
     const { pathname, hash, search } = window.location;
@@ -55,7 +58,9 @@ export default function SignInPage() {
     if (!isClerksTaskRoute) return;
     const pending = client.sessions.find((s) => s.status === "pending");
     if (!pending) return;
-    void clerkSetActive({ session: pending.id }).then(() => router.replace("/dashboard"));
+    void clerkSetActive({ session: pending.id, organization: null }).then(() =>
+      router.replace("/dashboard"),
+    );
   }, [client, router]);
 
   async function handleSubmit(e: React.FormEvent) {
