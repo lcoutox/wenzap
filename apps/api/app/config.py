@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # Global fallback when the workspace plan has no max_file_size_bytes set.
     max_file_size_bytes: int = 10_485_760  # 10 MB
 
+    # ── First-party auth ──────────────────────────────────────────────────────
+    auth_session_ttl_days: int = 30
+    auth_cookie_name: str = "wenzap_session"
+    # Set to True in production (requires HTTPS). False in dev so localhost works.
+    auth_cookie_secure: bool = False
+
     # Comma-separated list of allowed CORS origins.
     # Example: "http://localhost:3000,https://app.nexbrain.com"
     cors_origins: str = "http://localhost:3000"

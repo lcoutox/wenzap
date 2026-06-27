@@ -6,6 +6,7 @@ from app.config import settings
 from app.routers import (
     agents,
     ai_models,
+    auth,
     channels,
     contacts,
     conversations,
@@ -52,6 +53,7 @@ async def public_widget_cors(request: Request, call_next) -> Response:
     return response
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(workspaces.router)
 app.include_router(members.router)
