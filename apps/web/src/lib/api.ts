@@ -717,6 +717,8 @@ export const api = {
   },
   onboarding: {
     get: (token: string) => apiFetch<OnboardingStatus>("/onboarding", token),
+    // Cookie-based variant — used after first-party login when no Bearer token exists yet.
+    status: () => cookieFetch<OnboardingStatus>("/onboarding"),
     submit: (token: string, data: OnboardingSubmitInput) =>
       apiFetch<OnboardingStatus>("/onboarding", token, {
         method: "POST",
