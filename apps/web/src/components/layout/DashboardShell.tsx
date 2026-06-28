@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { UserMenuDropdown } from "./UserMenuDropdown";
+import { useAppAuth } from "@/contexts/AuthContext";
 import type { Subscription, Usage } from "@/lib/api";
 
 const STORAGE_KEY = "wenzap:sidebar-collapsed";
@@ -37,6 +38,8 @@ export function DashboardShell({
   usage: Usage | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isLoaded, isSignedIn } = useAppAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -48,6 +51,12 @@ export function DashboardShell({
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      router.replace("/sign-in");
+    }
+  }, [isLoaded, isSignedIn, router]);
+
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
@@ -57,6 +66,10 @@ export function DashboardShell({
   }, []);
 
   const effectiveCollapsed = mounted ? collapsed : false;
+
+  if (isLoaded && !isSignedIn) {
+    return null;
+  }
 
   return (
     <div className="h-screen overflow-hidden flex bg-nb-bg">

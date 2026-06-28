@@ -1,26 +1,52 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const isPublicRoute = createRouteMatcher([
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/sso-callback(.*)",
-  "/onboarding(.*)",
-  "/embed(.*)",
-]);
+const AUTH_COOKIE = "wenzap_session";
 
-export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    const authObj = await auth();
-    // Clerk marks sessions as "pending" when there are unresolved tasks
-    // (e.g. choose-organization). Since we do not use Clerk Organizations,
-    // treat any pending session that has a valid userId as authenticated.
-    if (authObj.userId && authObj.sessionStatus === "pending") {
-      return;
-    }
-    await auth.protect();
+const PUBLIC_PREFIXES = [
+  "/sign-in",
+  "/sign-up",
+  "/embed",
+  "/public",
+  "/widget",
+];
+
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/onboarding",
+];
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p + "?"));
+}
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  const hasSession = req.cookies.has(AUTH_COOKIE);
+
+  if (isProtected(pathname) && !hasSession) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/sign-in";
+    url.searchParams.set("redirect_url", pathname);
+    return NextResponse.redirect(url);
   }
-});
+
+  if (isPublic(pathname) && hasSession) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+}
 
 export const config = {
-  matcher: ["/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)", "/(api|trpc)(.*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf)).*)",
+  ],
 };
