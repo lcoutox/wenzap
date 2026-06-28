@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Conversation, MemberRole } from "@/lib/api";
@@ -46,7 +45,6 @@ function EmptyPanel() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InboxPage() {
-  const { getToken } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("conv");
@@ -57,17 +55,7 @@ export default function InboxPage() {
 
   // Fetch the current user's role once on mount (used for the Nova conversa button).
   useEffect(() => {
-    (async () => {
-      try {
-        const token = await getToken();
-        if (!token) return;
-        const me = await api.me(token);
-        setUserRole(me.role);
-      } catch {
-        // Non-critical — button will stay hidden.
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    api.me().then((me) => setUserRole(me.role)).catch(() => {});
   }, []);
 
   const selectConversation = useCallback(

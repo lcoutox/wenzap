@@ -1,12 +1,11 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { useClerk, useUser } from "@clerk/nextjs";
 import { LogOut, ChevronDown, User } from "lucide-react";
+import { useAppAuth } from "@/contexts/AuthContext";
 
 export function UserMenuDropdown() {
-  const { signOut } = useClerk();
-  const { user } = useUser();
+  const { user, logout } = useAppAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -18,9 +17,9 @@ export function UserMenuDropdown() {
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  const name = user?.fullName ?? user?.firstName ?? "Usuário";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const avatarUrl = user?.imageUrl;
+  const name = user?.name ?? "Usuário";
+  const email = user?.email ?? "";
+  const avatarUrl = user?.avatar_url;
   const initials = name.split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
 
   return (
@@ -49,7 +48,7 @@ export function UserMenuDropdown() {
           </div>
           <div className="py-1">
             <button
-              onClick={() => signOut({ redirectUrl: "/sign-in" })}
+              onClick={() => void logout()}
               className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-nb-muted hover:bg-nb-elevated hover:text-nb-secondary transition-colors"
             >
               <LogOut className="w-3.5 h-3.5" />

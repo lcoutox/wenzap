@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
@@ -23,7 +22,6 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 export default function NewAgentPage() {
-  const { getToken } = useAuth();
   const router = useRouter();
 
   const [name,         setName]         = useState("");
@@ -49,9 +47,7 @@ export default function NewAgentPage() {
 
     setSaving(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const agent = await api.agents.create(token, {
+      const agent = await api.agents.create({
         name: name.trim(),
         description: description.trim() || undefined,
         system_prompt: systemPrompt.trim() || undefined,

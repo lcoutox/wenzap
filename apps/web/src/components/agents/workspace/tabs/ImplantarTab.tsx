@@ -717,11 +717,9 @@ function WidgetFormModal({
 export function ImplantarTab({
   agentId,
   role,
-  getToken,
 }: {
   agentId: string;
   role: MemberRole | null;
-  getToken: () => Promise<string | null>;
 }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -743,10 +741,8 @@ export function ImplantarTab({
   // ── Load ────────────────────────────────────────────────────────────────────
 
   const loadChannels = useCallback(async () => {
-    const token = await getToken();
-    if (!token) return;
     try {
-      const data = await api.channels.list(token, {
+      const data = await api.channels.list({
         channel_type: "web_widget",
         agent_id: agentId,
       });
@@ -756,7 +752,7 @@ export function ImplantarTab({
     } finally {
       setLoading(false);
     }
-  }, [agentId, getToken]);
+  }, [agentId]);
 
   useEffect(() => { loadChannels(); }, [loadChannels]);
 
@@ -768,12 +764,10 @@ export function ImplantarTab({
   // ── Create ──────────────────────────────────────────────────────────────────
 
   async function handleCreate(f: FormState) {
-    const token = await getToken();
-    if (!token) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const created = await api.channels.create(token, formToPayload(f, agentId, true) as import("@/lib/api").ChannelCreateInput);
+      const created = await api.channels.create(formToPayload(f, agentId, true) as import("@/lib/api").ChannelCreateInput);
       setChannels((prev) => [created, ...prev]);
       setModal(null);
       showSuccess("Widget criado com sucesso.");
@@ -787,12 +781,10 @@ export function ImplantarTab({
   // ── Edit ────────────────────────────────────────────────────────────────────
 
   async function handleEdit(ch: Channel, f: FormState) {
-    const token = await getToken();
-    if (!token) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await api.channels.update(token, ch.id, formToPayload(f, agentId, false) as import("@/lib/api").ChannelUpdateInput);
+      const updated = await api.channels.update(ch.id, formToPayload(f, agentId, false) as import("@/lib/api").ChannelUpdateInput);
       setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       setModal(null);
       showSuccess("Widget atualizado.");
@@ -806,12 +798,10 @@ export function ImplantarTab({
   // ── Toggle status ────────────────────────────────────────────────────────────
 
   async function handleToggleStatus(ch: Channel) {
-    const token = await getToken();
-    if (!token) return;
     setBusyId(ch.id);
     try {
       const newStatus = ch.status === "active" ? "inactive" : "active";
-      const updated = await api.channels.update(token, ch.id, { status: newStatus });
+      const updated = await api.channels.update(ch.id, { status: newStatus });
       setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Erro ao alterar status.");
@@ -824,11 +814,9 @@ export function ImplantarTab({
 
   async function handleArchive(ch: Channel) {
     if (!confirm(`Arquivar "${ch.name}"? Esta ação não pode ser desfeita facilmente.`)) return;
-    const token = await getToken();
-    if (!token) return;
     setBusyId(ch.id);
     try {
-      await api.channels.archive(token, ch.id);
+      await api.channels.archive(ch.id);
       setChannels((prev) => prev.filter((c) => c.id !== ch.id));
       showSuccess("Widget arquivado.");
     } catch (e) {

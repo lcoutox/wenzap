@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -24,29 +23,24 @@ function parseTab(raw: string | null): Tab {
 // ── Tab: Geral ────────────────────────────────────────────────────────────────
 
 function TabGeral() {
-  const { getToken } = useAuth();
   const [workspace, setWorkspace] = useState<UserMe["workspace"] | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    getToken().then((token) => {
-      if (token) api.me(token).then((me) => {
-        setWorkspace(me.workspace);
-        setName(me.workspace.name);
-      });
-    });
-  }, [getToken]);
+    api.me().then((me) => {
+      setWorkspace(me.workspace);
+      setName(me.workspace.name);
+    }).catch(() => {});
+  }, []);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setMessage("");
     try {
-      const token = await getToken();
-      if (!token) return;
-      const updated = await api.workspace.update(token, { name });
+      const updated = await api.workspace.update({ name });
       setWorkspace(updated);
       setMessage("Salvo com sucesso.");
     } catch (err: unknown) {

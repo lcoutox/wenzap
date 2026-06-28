@@ -27,11 +27,9 @@ function KbStatusBadge({ status }: { status: string }) {
 export function ConfigConhecimento({
   agentId,
   role,
-  getToken,
 }: {
   agentId: string;
   role: MemberRole | null;
-  getToken: () => Promise<string | null>;
 }) {
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [connections, setConnections] = useState<AgentKnowledgeBase[]>([]);
@@ -41,12 +39,11 @@ export function ConfigConhecimento({
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
+    (async () => {
       try {
         const [allKbs, agentKbs] = await Promise.all([
-          api.knowledgeBases.list(token),
-          api.agents.knowledgeBases.list(token, agentId),
+          api.knowledgeBases.list(),
+          api.agents.knowledgeBases.list(agentId),
         ]);
         setKbs(allKbs);
         setConnections(agentKbs);
@@ -55,8 +52,8 @@ export function ConfigConhecimento({
       } finally {
         setLoading(false);
       }
-    });
-  }, [agentId, getToken]);
+    })();
+  }, [agentId]);
 
   function getConnection(kbId: string): AgentKnowledgeBase | undefined {
     return connections.find((c) => c.knowledge_base_id === kbId);
@@ -66,9 +63,7 @@ export function ConfigConhecimento({
     setBusy((p) => ({ ...p, [kbId]: true }));
     setActionErrors((p) => ({ ...p, [kbId]: "" }));
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const conn = await api.agents.knowledgeBases.connect(token, agentId, kbId);
+      const conn = await api.agents.knowledgeBases.connect(agentId, kbId);
       setConnections((prev) => {
         const existing = prev.find((c) => c.knowledge_base_id === kbId);
         if (existing) return prev.map((c) => (c.knowledge_base_id === kbId ? conn : c));
@@ -77,11 +72,8 @@ export function ConfigConhecimento({
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         try {
-          const token2 = await getToken();
-          if (token2) {
-            const refreshed = await api.agents.knowledgeBases.list(token2, agentId);
-            setConnections(refreshed);
-          }
+          const refreshed = await api.agents.knowledgeBases.list(agentId);
+          setConnections(refreshed);
         } catch { /* ignore */ }
       } else {
         const msg = e instanceof Error ? e.message : "Erro ao conectar.";
@@ -96,9 +88,7 @@ export function ConfigConhecimento({
     setBusy((p) => ({ ...p, [kbId]: true }));
     setActionErrors((p) => ({ ...p, [kbId]: "" }));
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      await api.agents.knowledgeBases.disconnect(token, agentId, kbId);
+      await api.agents.knowledgeBases.disconnect(agentId, kbId);
       setConnections((prev) => prev.filter((c) => c.knowledge_base_id !== kbId));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao desconectar.";

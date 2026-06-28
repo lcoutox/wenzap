@@ -88,13 +88,11 @@ export function AgentChat({
   activeModel,
   modelExecutable,
   role,
-  getToken,
 }: {
   agent: Agent;
   activeModel: AiModel | null;
   modelExecutable: boolean;
   role: MemberRole | null;
-  getToken: () => Promise<string | null>;
 }) {
   const [sessions, setSessions] = useState<PlaygroundSession[]>([]);
   const [activeSession, setActiveSession] = useState<PlaygroundSession | null>(null);
@@ -112,12 +110,12 @@ export function AgentChat({
   const isBlocked = blockReason !== null;
 
   const loadSession = useCallback(
-    async (token: string, session: PlaygroundSession) => {
+    async (session: PlaygroundSession) => {
       setMessagesLoading(true);
       setLastRunMeta(null);
       setChatError(null);
       try {
-        const data = await api.agents.playground.getSession(token, agent.id, session.id);
+        const data = await api.agents.playground.getSession(agent.id, session.id);
         setActiveSession(session);
         setMessages(data.messages);
       } catch {
@@ -132,21 +130,20 @@ export function AgentChat({
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      const token = await getToken();
-      if (!token || cancelled) return;
+      if (cancelled) return;
       setSessionsLoading(true);
       try {
         const [sessionsList, usageData] = await Promise.all([
-          api.agents.playground.listSessions(token, agent.id),
-          api.plans.usage(token),
+          api.agents.playground.listSessions(agent.id),
+          api.plans.usage(),
         ]);
         if (cancelled) return;
         setSessions(sessionsList);
         setUsage(usageData);
         if (sessionsList.length > 0) {
-          await loadSession(token, sessionsList[0]);
+          await loadSession(sessionsList[0]);
         } else {
-          const newSession = await api.agents.playground.createSession(token, agent.id);
+          const newSession = await api.agents.playground.createSession(agent.id);
           if (cancelled) return;
           setSessions([newSession]);
           setActiveSession(newSession);
@@ -163,18 +160,16 @@ export function AgentChat({
     }
     init();
     return () => { cancelled = true; };
-  }, [agent.id, getToken, loadSession]);
+  }, [agent.id, loadSession]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
 
   async function handleNewSession() {
-    const token = await getToken();
-    if (!token) return;
     setChatError(null);
     try {
-      const newSession = await api.agents.playground.createSession(token, agent.id);
+      const newSession = await api.agents.playground.createSession(agent.id);
       setSessions((prev) => [newSession, ...prev]);
       setActiveSession(newSession);
       setMessages([]);
@@ -186,24 +181,20 @@ export function AgentChat({
 
   async function handleSelectSession(session: PlaygroundSession) {
     if (session.id === activeSession?.id) return;
-    const token = await getToken();
-    if (!token) return;
-    await loadSession(token, session);
+    await loadSession(session);
   }
 
   async function handleDeleteSession(session: PlaygroundSession) {
-    const token = await getToken();
-    if (!token) return;
     try {
-      await api.agents.playground.deleteSession(token, agent.id, session.id);
+      await api.agents.playground.deleteSession(agent.id, session.id);
       const remaining = sessions.filter((s) => s.id !== session.id);
       setSessions(remaining);
       if (activeSession?.id === session.id) {
         setLastRunMeta(null);
         if (remaining.length > 0) {
-          await loadSession(token, remaining[0]);
+          await loadSession(remaining[0]);
         } else {
-          const newSession = await api.agents.playground.createSession(token, agent.id);
+          const newSession = await api.agents.playground.createSession(agent.id);
           setSessions([newSession]);
           setActiveSession(newSession);
           setMessages([]);
@@ -221,13 +212,11 @@ export function AgentChat({
     setInput("");
     setSending(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const res = await api.agents.test(token, agent.id, text, activeSession.id);
+      const res = await api.agents.test(agent.id, text, activeSession.id);
       const [updatedSession, updatedSessions, usageData] = await Promise.all([
-        api.agents.playground.getSession(token, agent.id, res.session_id),
-        api.agents.playground.listSessions(token, agent.id),
-        api.plans.usage(token),
+        api.agents.playground.getSession(agent.id, res.session_id),
+        api.agents.playground.listSessions(agent.id),
+        api.plans.usage(),
       ]);
       setMessages(updatedSession.messages);
       setLastRunMeta(res);
@@ -238,9 +227,8 @@ export function AgentChat({
     } catch (e) {
       setChatError(testErrorMessage(e));
       try {
-        const token = await getToken();
-        if (token && activeSession) {
-          const data = await api.agents.playground.getSession(token, agent.id, activeSession.id);
+        if (activeSession) {
+          const data = await api.agents.playground.getSession(agent.id, activeSession.id);
           setMessages(data.messages);
         }
       } catch { /* ignore */ }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import type { AiProvider } from "@/lib/api";
 
@@ -12,21 +11,14 @@ interface ModelSelectProps {
 }
 
 export function ModelSelect({ aiModelId, disabled = false, onChange }: ModelSelectProps) {
-  const { getToken } = useAuth();
   const [providers, setProviders] = useState<AiProvider[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
-      try {
-        const catalog = await api.aiModels.list(token);
-        setProviders(catalog.providers);
-      } catch {
-        setCatalogError("Não foi possível carregar os modelos disponíveis.");
-      }
-    });
-  }, [getToken]);
+    api.aiModels.list()
+      .then((catalog) => setProviders(catalog.providers))
+      .catch(() => setCatalogError("Não foi possível carregar os modelos disponíveis."));
+  }, []);
 
   const allModels = providers.flatMap((p) => p.models);
 

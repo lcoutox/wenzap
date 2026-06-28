@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import type { MemberRole, MessageDirection, MessageSenderType } from "@/lib/api";
 
@@ -43,7 +42,6 @@ export function ConversationComposer({
   userRole: MemberRole | null;
   onSent: () => void;
 }) {
-  const { getToken } = useAuth();
   const [mode, setMode] = useState<Mode>("human");
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
@@ -61,9 +59,7 @@ export function ConversationComposer({
     setSending(true);
     setSendError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada. Recarregue a página.");
-      await api.conversations.messages.create(token, conversationId, {
+      await api.conversations.messages.create(conversationId, {
         content: trimmed,
         direction: activeModeConfig.direction,
         sender_type: activeModeConfig.senderType,

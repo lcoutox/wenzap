@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bot, Plus, Calendar, Cpu } from "lucide-react";
@@ -84,26 +83,20 @@ function EmptyState({ canCreate }: { canCreate: boolean }) {
 }
 
 export default function AgentsPage() {
-  const { getToken } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [role, setRole] = useState<MemberRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
-      try {
-        const [agentList, me] = await Promise.all([api.agents.list(token), api.me(token)]);
+    Promise.all([api.agents.list(), api.me()])
+      .then(([agentList, me]) => {
         setAgents(agentList);
         setRole(me.role);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Erro ao carregar agentes.");
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [getToken]);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar agentes."))
+      .finally(() => setLoading(false));
+  }, []);
 
   if (loading) {
     return (

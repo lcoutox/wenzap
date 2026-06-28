@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Agent, ApiError, Conversation } from "@/lib/api";
@@ -22,7 +21,6 @@ export function NewConversationModal({
   onClose: () => void;
   onCreated: (conversation: Conversation) => void;
 }) {
-  const { getToken } = useAuth();
   const [contactName, setContactName] = useState("");
   const [agentId, setAgentId] = useState<string>("");
   const [aiEnabled, setAiEnabled] = useState(true);
@@ -36,9 +34,7 @@ export function NewConversationModal({
   useEffect(() => {
     (async () => {
       try {
-        const token = await getToken();
-        if (!token) return;
-        const list = await api.agents.list(token, "active");
+        const list = await api.agents.list("active");
         setAgents(list);
       } catch { /* non-blocking */ } finally {
         setLoadingAgents(false);
@@ -62,9 +58,7 @@ export function NewConversationModal({
     if (!trimmedName) { setNameError("O nome do contato é obrigatório."); inputRef.current?.focus(); return; }
     setCreating(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const conv = await api.conversations.create(token, {
+      const conv = await api.conversations.create({
         contact_name: trimmedName,
         agent_id: agentId || undefined,
         channel_type: "internal",

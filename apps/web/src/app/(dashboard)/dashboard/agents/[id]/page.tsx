@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -59,7 +58,6 @@ function isModelExecutable(catalog: AiCatalog | null, activeModel: AiModel | nul
 
 export default function AgentWorkspacePage() {
   const { id } = useParams<{ id: string }>();
-  const { getToken } = useAuth();
   const router = useRouter();
 
   // Remote state
@@ -87,13 +85,12 @@ export default function AgentWorkspacePage() {
 
   // ── Load ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
+    (async () => {
       try {
         const [agentData, me, catalogData] = await Promise.all([
-          api.agents.get(token, id),
-          api.me(token),
-          api.aiModels.list(token),
+          api.agents.get(id),
+          api.me(),
+          api.aiModels.list(),
         ]);
         setAgent(agentData);
         setRole(me.role);
@@ -113,8 +110,8 @@ export default function AgentWorkspacePage() {
       } finally {
         setLoading(false);
       }
-    });
-  }, [id, getToken, router]);
+    })();
+  }, [id, router]);
 
   // ── Save ──────────────────────────────────────────────────────────────────────
   async function handleSave(e: React.FormEvent) {
@@ -133,9 +130,7 @@ export default function AgentWorkspacePage() {
 
     setSaving(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.agents.update(token, id, {
+      const updated = await api.agents.update(id, {
         name: name.trim(),
         description: description.trim() || null,
         system_prompt: systemPrompt.trim() || null,
@@ -158,9 +153,7 @@ export default function AgentWorkspacePage() {
     if (!agent) return;
     setActionError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.agents.updateStatus(token, id, newStatus);
+      const updated = await api.agents.updateStatus(id, newStatus);
       setAgent(updated);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Erro ao mudar status.");
@@ -171,9 +164,7 @@ export default function AgentWorkspacePage() {
     if (!agent) return;
     setActionError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.agents.archive(token, id);
+      const updated = await api.agents.archive(id);
       setAgent(updated);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Erro ao arquivar.");
@@ -236,19 +227,18 @@ export default function AgentWorkspacePage() {
             activeModel={activeModel}
             modelExecutable={modelExecutable}
             role={role}
-            getToken={getToken}
           />
         )}
 
         {/* ── Implantar ── */}
         {workspaceTab === "deploy" && (
-          <ImplantarTab agentId={id} role={role} getToken={getToken} />
+          <ImplantarTab agentId={id} role={role} />
         )}
 
         {/* ── Conhecimento ── */}
         {workspaceTab === "knowledge" && (
           <div className="max-w-3xl">
-            <ConfigConhecimento agentId={id} role={role} getToken={getToken} />
+            <ConfigConhecimento agentId={id} role={role} />
           </div>
         )}
 

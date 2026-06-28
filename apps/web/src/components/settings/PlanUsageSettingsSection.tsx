@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Subscription, Usage } from "@/lib/api";
@@ -10,17 +9,13 @@ function fmt(n: number) {
 }
 
 export function PlanUsageSettingsSection() {
-  const { getToken } = useAuth();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
-    getToken().then((token) => {
-      if (!token) return;
-      api.plans.current(token).then(setSub);
-      api.plans.usage(token).then(setUsage);
-    });
-  }, [getToken]);
+    api.plans.current().then(setSub).catch(() => {});
+    api.plans.usage().then(setUsage).catch(() => {});
+  }, []);
 
   const plan = sub?.plan;
 

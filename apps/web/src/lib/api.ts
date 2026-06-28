@@ -518,30 +518,8 @@ export class ApiError extends Error {
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 
-async function apiFetch<T>(
-  path: string,
-  token: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-    ...(options.headers as Record<string, string>),
-  };
-
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, error.detail ?? "API error");
-  }
-
-  // Handle 204 No Content (e.g. DELETE responses)
-  const text = await res.text();
-  return (text ? JSON.parse(text) : undefined) as T;
-}
-
-// Cookie-based fetch — sends HttpOnly cookie automatically, no Bearer token.
+// All authenticated API calls use the wenzap_session cookie (HttpOnly).
+// No Authorization header is sent — the cookie is transmitted automatically.
 async function cookieFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
@@ -566,7 +544,7 @@ async function cookieFetch<T>(path: string, options: RequestInit = {}): Promise<
 // ── API client ────────────────────────────────────────────────────────────────
 
 export const api = {
-  me: (token: string) => apiFetch<UserMe>("/me", token),
+  me: () => cookieFetch<UserMe>("/me"),
   auth: {
     me: () => cookieFetch<AuthMe>("/auth/me"),
     signup: (input: SignupInput) =>
@@ -587,242 +565,208 @@ export const api = {
       }),
   },
   workspace: {
-    current: (token: string) => apiFetch<UserMe["workspace"]>("/workspaces/current", token),
-    update: (token: string, data: { name?: string; slug?: string }) =>
-      apiFetch<UserMe["workspace"]>("/workspaces/current", token, {
+    current: () => cookieFetch<UserMe["workspace"]>("/workspaces/current"),
+    update: (data: { name?: string; slug?: string }) =>
+      cookieFetch<UserMe["workspace"]>("/workspaces/current", {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
   },
   members: {
-    list: (token: string) => apiFetch<Member[]>("/workspaces/current/members", token),
-    updateRole: (token: string, memberId: string, role: MemberRole) =>
-      apiFetch<Member>(`/workspaces/current/members/${memberId}/role`, token, {
+    list: () => cookieFetch<Member[]>("/workspaces/current/members"),
+    updateRole: (memberId: string, role: MemberRole) =>
+      cookieFetch<Member>(`/workspaces/current/members/${memberId}/role`, {
         method: "PATCH",
         body: JSON.stringify({ role }),
       }),
   },
   plans: {
-    list: (token: string) => apiFetch<Plan[]>("/plans", token),
-    current: (token: string) => apiFetch<Subscription>("/workspaces/current/plan", token),
-    usage: (token: string) => apiFetch<Usage>("/workspaces/current/usage", token),
+    list: () => cookieFetch<Plan[]>("/plans"),
+    current: () => cookieFetch<Subscription>("/workspaces/current/plan"),
+    usage: () => cookieFetch<Usage>("/workspaces/current/usage"),
   },
   aiModels: {
-    list: (token: string) => apiFetch<AiCatalog>("/ai-models", token),
+    list: () => cookieFetch<AiCatalog>("/ai-models"),
   },
   contacts: {
-    list: (token: string, params?: { skip?: number; limit?: number }) => {
+    list: (params?: { skip?: number; limit?: number }) => {
       const qs = new URLSearchParams();
       if (params?.skip != null) qs.set("skip", String(params.skip));
       if (params?.limit != null) qs.set("limit", String(params.limit));
       const q = qs.toString();
-      return apiFetch<Contact[]>(q ? `/contacts?${q}` : "/contacts", token);
+      return cookieFetch<Contact[]>(q ? `/contacts?${q}` : "/contacts");
     },
-    get: (token: string, contactId: string) =>
-      apiFetch<Contact>(`/contacts/${contactId}`, token),
-    create: (token: string, data: ContactCreateInput) =>
-      apiFetch<Contact>("/contacts", token, {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    update: (token: string, contactId: string, data: ContactUpdateInput) =>
-      apiFetch<Contact>(`/contacts/${contactId}`, token, {
+    get: (contactId: string) => cookieFetch<Contact>(`/contacts/${contactId}`),
+    create: (data: ContactCreateInput) =>
+      cookieFetch<Contact>("/contacts", { method: "POST", body: JSON.stringify(data) }),
+    update: (contactId: string, data: ContactUpdateInput) =>
+      cookieFetch<Contact>(`/contacts/${contactId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
   },
   conversations: {
-    list: (token: string, params?: { status?: string; skip?: number; limit?: number }) => {
+    list: (params?: { status?: string; skip?: number; limit?: number }) => {
       const qs = new URLSearchParams();
       if (params?.status) qs.set("status", params.status);
       if (params?.skip != null) qs.set("skip", String(params.skip));
       if (params?.limit != null) qs.set("limit", String(params.limit));
       const q = qs.toString();
-      return apiFetch<Conversation[]>(q ? `/conversations?${q}` : "/conversations", token);
+      return cookieFetch<Conversation[]>(q ? `/conversations?${q}` : "/conversations");
     },
-    get: (token: string, conversationId: string) =>
-      apiFetch<Conversation>(`/conversations/${conversationId}`, token),
-    create: (token: string, data: ConversationCreateInput) =>
-      apiFetch<Conversation>("/conversations", token, {
+    get: (conversationId: string) =>
+      cookieFetch<Conversation>(`/conversations/${conversationId}`),
+    create: (data: ConversationCreateInput) =>
+      cookieFetch<Conversation>("/conversations", {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    update: (token: string, conversationId: string, data: ConversationUpdateInput) =>
-      apiFetch<Conversation>(`/conversations/${conversationId}`, token, {
+    update: (conversationId: string, data: ConversationUpdateInput) =>
+      cookieFetch<Conversation>(`/conversations/${conversationId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
-    takeOver: (token: string, conversationId: string) =>
-      apiFetch<Conversation>(`/conversations/${conversationId}/take-over`, token, {
+    takeOver: (conversationId: string) =>
+      cookieFetch<Conversation>(`/conversations/${conversationId}/take-over`, {
         method: "POST",
       }),
-    returnToAI: (token: string, conversationId: string) =>
-      apiFetch<Conversation>(`/conversations/${conversationId}/return-to-ai`, token, {
+    returnToAI: (conversationId: string) =>
+      cookieFetch<Conversation>(`/conversations/${conversationId}/return-to-ai`, {
         method: "POST",
       }),
     messages: {
-      list: (
-        token: string,
-        conversationId: string,
-        params?: { skip?: number; limit?: number },
-      ) => {
+      list: (conversationId: string, params?: { skip?: number; limit?: number }) => {
         const qs = new URLSearchParams();
         if (params?.skip != null) qs.set("skip", String(params.skip));
         if (params?.limit != null) qs.set("limit", String(params.limit));
         const q = qs.toString();
-        return apiFetch<ConversationMessage[]>(
+        return cookieFetch<ConversationMessage[]>(
           q
             ? `/conversations/${conversationId}/messages?${q}`
             : `/conversations/${conversationId}/messages`,
-          token,
         );
       },
-      create: (
-        token: string,
-        conversationId: string,
-        data: ConversationMessageCreateInput,
-      ) =>
-        apiFetch<ConversationMessage>(
-          `/conversations/${conversationId}/messages`,
-          token,
-          { method: "POST", body: JSON.stringify(data) },
-        ),
+      create: (conversationId: string, data: ConversationMessageCreateInput) =>
+        cookieFetch<ConversationMessage>(`/conversations/${conversationId}/messages`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
     },
   },
   channels: {
-    list: (
-      token: string,
-      params?: { channel_type?: string; agent_id?: string; include_archived?: boolean },
-    ) => {
+    list: (params?: { channel_type?: string; agent_id?: string; include_archived?: boolean }) => {
       const qs = new URLSearchParams();
       if (params?.channel_type) qs.set("channel_type", params.channel_type);
       if (params?.agent_id) qs.set("agent_id", params.agent_id);
       if (params?.include_archived) qs.set("include_archived", "true");
       const q = qs.toString();
-      return apiFetch<Channel[]>(q ? `/channels?${q}` : "/channels", token);
+      return cookieFetch<Channel[]>(q ? `/channels?${q}` : "/channels");
     },
-    get: (token: string, id: string) => apiFetch<Channel>(`/channels/${id}`, token),
-    create: (token: string, data: ChannelCreateInput) =>
-      apiFetch<Channel>("/channels", token, {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    update: (token: string, id: string, data: ChannelUpdateInput) =>
-      apiFetch<Channel>(`/channels/${id}`, token, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      }),
-    archive: (token: string, id: string) =>
-      apiFetch<Channel>(`/channels/${id}/archive`, token, { method: "POST" }),
+    get: (id: string) => cookieFetch<Channel>(`/channels/${id}`),
+    create: (data: ChannelCreateInput) =>
+      cookieFetch<Channel>("/channels", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: ChannelUpdateInput) =>
+      cookieFetch<Channel>(`/channels/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    archive: (id: string) =>
+      cookieFetch<Channel>(`/channels/${id}/archive`, { method: "POST" }),
   },
   onboarding: {
-    get: (token: string) => apiFetch<OnboardingStatus>("/onboarding", token),
-    // Cookie-based variant — used after first-party login when no Bearer token exists yet.
+    get: () => cookieFetch<OnboardingStatus>("/onboarding"),
     status: () => cookieFetch<OnboardingStatus>("/onboarding"),
-    submit: (token: string, data: OnboardingSubmitInput) =>
-      apiFetch<OnboardingStatus>("/onboarding", token, {
+    submit: (data: OnboardingSubmitInput) =>
+      cookieFetch<OnboardingStatus>("/onboarding", {
         method: "POST",
         body: JSON.stringify(data),
       }),
   },
   agents: {
-    list: (token: string, status?: AgentStatus) =>
-      apiFetch<Agent[]>(status ? `/agents?status=${status}` : "/agents", token),
-    get: (token: string, id: string) => apiFetch<Agent>(`/agents/${id}`, token),
-    create: (token: string, data: AgentCreateInput) =>
-      apiFetch<Agent>("/agents", token, { method: "POST", body: JSON.stringify(data) }),
-    update: (token: string, id: string, data: AgentUpdateInput) =>
-      apiFetch<Agent>(`/agents/${id}`, token, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      }),
-    updateStatus: (token: string, id: string, status: AgentStatus) =>
-      apiFetch<Agent>(`/agents/${id}/status`, token, {
+    list: (status?: AgentStatus) =>
+      cookieFetch<Agent[]>(status ? `/agents?status=${status}` : "/agents"),
+    get: (id: string) => cookieFetch<Agent>(`/agents/${id}`),
+    create: (data: AgentCreateInput) =>
+      cookieFetch<Agent>("/agents", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: AgentUpdateInput) =>
+      cookieFetch<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    updateStatus: (id: string, status: AgentStatus) =>
+      cookieFetch<Agent>(`/agents/${id}/status`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
-    archive: (token: string, id: string) =>
-      apiFetch<Agent>(`/agents/${id}`, token, { method: "DELETE" }),
-    test: (token: string, id: string, message: string, sessionId?: string) =>
-      apiFetch<AgentTestResponse>(`/agents/${id}/test`, token, {
+    archive: (id: string) => cookieFetch<Agent>(`/agents/${id}`, { method: "DELETE" }),
+    test: (id: string, message: string, sessionId?: string) =>
+      cookieFetch<AgentTestResponse>(`/agents/${id}/test`, {
         method: "POST",
         body: JSON.stringify({ message, ...(sessionId ? { session_id: sessionId } : {}) }),
       }),
     knowledgeBases: {
-      list: (token: string, agentId: string) =>
-        apiFetch<AgentKnowledgeBase[]>(`/agents/${agentId}/knowledge-bases`, token),
-      connect: (token: string, agentId: string, kbId: string) =>
-        apiFetch<AgentKnowledgeBase>(`/agents/${agentId}/knowledge-bases`, token, {
+      list: (agentId: string) =>
+        cookieFetch<AgentKnowledgeBase[]>(`/agents/${agentId}/knowledge-bases`),
+      connect: (agentId: string, kbId: string) =>
+        cookieFetch<AgentKnowledgeBase>(`/agents/${agentId}/knowledge-bases`, {
           method: "POST",
           body: JSON.stringify({ knowledge_base_id: kbId }),
         }),
-      update: (token: string, agentId: string, kbId: string, data: { is_active: boolean }) =>
-        apiFetch<AgentKnowledgeBase>(`/agents/${agentId}/knowledge-bases/${kbId}`, token, {
+      update: (agentId: string, kbId: string, data: { is_active: boolean }) =>
+        cookieFetch<AgentKnowledgeBase>(`/agents/${agentId}/knowledge-bases/${kbId}`, {
           method: "PATCH",
           body: JSON.stringify(data),
         }),
-      disconnect: (token: string, agentId: string, kbId: string) =>
-        apiFetch<void>(`/agents/${agentId}/knowledge-bases/${kbId}`, token, {
-          method: "DELETE",
-        }),
+      disconnect: (agentId: string, kbId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/knowledge-bases/${kbId}`, { method: "DELETE" }),
     },
     playground: {
-      listSessions: (token: string, agentId: string) =>
-        apiFetch<PlaygroundSession[]>(`/agents/${agentId}/playground/sessions`, token),
-      createSession: (token: string, agentId: string) =>
-        apiFetch<PlaygroundSession>(`/agents/${agentId}/playground/sessions`, token, {
+      listSessions: (agentId: string) =>
+        cookieFetch<PlaygroundSession[]>(`/agents/${agentId}/playground/sessions`),
+      createSession: (agentId: string) =>
+        cookieFetch<PlaygroundSession>(`/agents/${agentId}/playground/sessions`, {
           method: "POST",
           body: JSON.stringify({}),
         }),
-      getSession: (token: string, agentId: string, sessionId: string) =>
-        apiFetch<PlaygroundSessionWithMessages>(
+      getSession: (agentId: string, sessionId: string) =>
+        cookieFetch<PlaygroundSessionWithMessages>(
           `/agents/${agentId}/playground/sessions/${sessionId}`,
-          token,
         ),
-      deleteSession: (token: string, agentId: string, sessionId: string) =>
-        apiFetch<void>(`/agents/${agentId}/playground/sessions/${sessionId}`, token, {
+      deleteSession: (agentId: string, sessionId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/playground/sessions/${sessionId}`, {
           method: "DELETE",
         }),
     },
   },
   knowledgeBases: {
-    list: (token: string) => apiFetch<KnowledgeBase[]>("/knowledge-bases", token),
-    create: (token: string, data: KnowledgeBaseCreateInput) =>
-      apiFetch<KnowledgeBase>("/knowledge-bases", token, {
+    list: () => cookieFetch<KnowledgeBase[]>("/knowledge-bases"),
+    create: (data: KnowledgeBaseCreateInput) =>
+      cookieFetch<KnowledgeBase>("/knowledge-bases", {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    get: (token: string, kbId: string) =>
-      apiFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, token),
-    update: (token: string, kbId: string, data: KnowledgeBaseUpdateInput) =>
-      apiFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, token, {
+    get: (kbId: string) => cookieFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`),
+    update: (kbId: string, data: KnowledgeBaseUpdateInput) =>
+      cookieFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
-    archive: (token: string, kbId: string) =>
-      apiFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, token, { method: "DELETE" }),
+    archive: (kbId: string) =>
+      cookieFetch<KnowledgeBase>(`/knowledge-bases/${kbId}`, { method: "DELETE" }),
     sources: {
-      list: (token: string, kbId: string) =>
-        apiFetch<KnowledgeSource[]>(`/knowledge-bases/${kbId}/sources`, token),
-      create: (token: string, kbId: string, data: KnowledgeSourceCreateInput) =>
-        apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources`, token, {
+      list: (kbId: string) =>
+        cookieFetch<KnowledgeSource[]>(`/knowledge-bases/${kbId}/sources`),
+      create: (kbId: string, data: KnowledgeSourceCreateInput) =>
+        cookieFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources`, {
           method: "POST",
           body: JSON.stringify(data),
         }),
-      get: (token: string, kbId: string, sourceId: string) =>
-        apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`, token),
-      archive: (token: string, kbId: string, sourceId: string) =>
-        apiFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`, token, {
+      get: (kbId: string, sourceId: string) =>
+        cookieFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`),
+      archive: (kbId: string, sourceId: string) =>
+        cookieFetch<KnowledgeSource>(`/knowledge-bases/${kbId}/sources/${sourceId}`, {
           method: "DELETE",
         }),
-      reprocess: (token: string, kbId: string, sourceId: string) =>
-        apiFetch<KnowledgeSource>(
+      reprocess: (kbId: string, sourceId: string) =>
+        cookieFetch<KnowledgeSource>(
           `/knowledge-bases/${kbId}/sources/${sourceId}/reprocess`,
-          token,
           { method: "POST" },
         ),
       upload: async (
-        token: string,
         kbId: string,
         file: File,
         data?: { title?: string; source_category?: string },
@@ -832,10 +776,10 @@ export const api = {
         if (data?.title?.trim()) form.append("title", data.title.trim());
         if (data?.source_category?.trim())
           form.append("source_category", data.source_category.trim());
-        // Do NOT set Content-Type — browser must set the multipart boundary automatically.
+        // Do NOT set Content-Type — browser sets multipart boundary automatically.
         const res = await fetch(`${API_URL}/knowledge-bases/${kbId}/sources/upload`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           body: form,
         });
         if (!res.ok) {

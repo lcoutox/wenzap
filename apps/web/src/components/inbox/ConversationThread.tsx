@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import type { Conversation, ConversationMessage, MemberRole } from "@/lib/api";
 import { MessageBubble } from "./MessageBubble";
@@ -54,7 +53,6 @@ export function ConversationThread({
   onMessageSent: () => void;
   onConversationUpdated: () => void;
 }) {
-  const { getToken } = useAuth();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
@@ -70,12 +68,10 @@ export function ConversationThread({
     setLoading(true);
     setError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada. Recarregue a página.");
       const [conv, msgs, me] = await Promise.all([
-        api.conversations.get(token, id),
-        api.conversations.messages.list(token, id, { limit: 200 }),
-        api.me(token),
+        api.conversations.get(id),
+        api.conversations.messages.list(id, { limit: 200 }),
+        api.me(),
       ]);
       setConversation(conv);
       setMessages(msgs);
@@ -93,13 +89,12 @@ export function ConversationThread({
   );
 
   const reloadMessages = useCallback(async () => {
-    const token = await getToken();
-    if (!token || !conversation) return;
+    if (!conversation) return;
     try {
-      const msgs = await api.conversations.messages.list(token, conversationId, { limit: 200 });
+      const msgs = await api.conversations.messages.list(conversationId, { limit: 200 });
       setMessages(msgs);
     } catch { /* ignore */ }
-  }, [getToken, conversationId, conversation]);
+  }, [conversationId, conversation]);
 
   const handleSent = useCallback(async () => {
     await reloadMessages();

@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, Calendar, Plus, X } from "lucide-react";
@@ -92,7 +91,6 @@ function CreateKbModal({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { getToken } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -108,9 +106,7 @@ function CreateKbModal({
     setSaving(true);
     setError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const kb = await api.knowledgeBases.create(token, {
+      const kb = await api.knowledgeBases.create({
         name: name.trim(),
         description: description.trim() || undefined,
       });
@@ -199,7 +195,6 @@ function CreateKbModal({
 }
 
 export default function KnowledgeBasesPage() {
-  const { getToken } = useAuth();
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [role, setRole] = useState<MemberRole | null>(null);
   const [loading, setLoading] = useState(true);
@@ -207,19 +202,11 @@ export default function KnowledgeBasesPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
-      try {
-        const [kbList, me] = await Promise.all([api.knowledgeBases.list(token), api.me(token)]);
-        setKbs(kbList);
-        setRole(me.role);
-      } catch (e) {
-        setLoadError(e instanceof Error ? e.message : "Erro ao carregar bases de conhecimento.");
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [getToken]);
+    Promise.all([api.knowledgeBases.list(), api.me()])
+      .then(([kbList, me]) => { setKbs(kbList); setRole(me.role); })
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar bases de conhecimento."))
+      .finally(() => setLoading(false));
+  }, []);
 
   function handleCreated(kb: KnowledgeBase) {
     setKbs((prev) => [kb, ...prev]);

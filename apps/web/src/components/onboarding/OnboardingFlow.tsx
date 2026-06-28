@@ -95,7 +95,7 @@ function validateStep(step: number, data: OnboardingFormData): FieldErrors {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function OnboardingFlow({ token }: { token: string }) {
+export function OnboardingFlow() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [data, setData] = useState<OnboardingFormData>(EMPTY_FORM);
@@ -140,7 +140,7 @@ export function OnboardingFlow({ token }: { token: string }) {
     setGlobalError("");
 
     try {
-      await api.onboarding.submit(token, {
+      await api.onboarding.submit({
         full_name: data.full_name.trim(),
         phone: data.phone.trim(),
         main_objective: data.main_objective,
@@ -156,7 +156,7 @@ export function OnboardingFlow({ token }: { token: string }) {
 
       // Decide redirect: no agents → create first; otherwise → dashboard.
       try {
-        const agents = await api.agents.list(token);
+        const agents = await api.agents.list();
         router.push(agents.length === 0 ? "/dashboard/agents/new" : "/dashboard");
       } catch {
         router.push("/dashboard");

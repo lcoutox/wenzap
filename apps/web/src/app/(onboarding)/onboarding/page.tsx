@@ -1,16 +1,14 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import { api } from "@/lib/api";
+import { useAppAuth } from "@/contexts/AuthContext";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 
 export default function OnboardingPage() {
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAppAuth();
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -20,27 +18,15 @@ export default function OnboardingPage() {
       return;
     }
 
-    void (async () => {
-      const t = await getToken();
-      if (!t) {
-        router.replace("/sign-in");
-        return;
-      }
-      try {
-        const status = await api.onboarding.get(t);
-        if (status.completed) {
-          router.replace("/dashboard");
-          return;
-        }
-      } catch {
-        // If check fails, show the form anyway — backend will handle duplicates.
-      }
-      setToken(t);
-      setChecking(false);
-    })();
-  }, [isLoaded, isSignedIn, getToken, router]);
+    void api.onboarding.status()
+      .then((status) => {
+        if (status.completed) router.replace("/dashboard");
+        else setChecking(false);
+      })
+      .catch(() => setChecking(false));
+  }, [isLoaded, isSignedIn, router]);
 
-  if (checking || !token) {
+  if (checking) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen">
         <div className="w-6 h-6 rounded-full border-2 border-nb-primary border-t-transparent animate-spin" />
@@ -48,5 +34,5 @@ export default function OnboardingPage() {
     );
   }
 
-  return <OnboardingFlow token={token} />;
+  return <OnboardingFlow />;
 }

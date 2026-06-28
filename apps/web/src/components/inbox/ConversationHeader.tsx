@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import type { Conversation, ConversationStatus, MemberRole } from "@/lib/api";
 
@@ -34,7 +33,6 @@ export function ConversationHeader({
   userRole: MemberRole | null;
   onUpdate: (updated: Conversation) => void;
 }) {
-  const { getToken } = useAuth();
   const [patching, setPatching] = useState(false);
   const [patchError, setPatchError] = useState<string | null>(null);
 
@@ -44,9 +42,7 @@ export function ConversationHeader({
     setPatchError(null);
     setPatching(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.conversations.update(token, conversation.id, data);
+      const updated = await api.conversations.update(conversation.id, data);
       onUpdate(updated);
     } catch {
       setPatchError("Não foi possível atualizar a conversa.");
@@ -63,9 +59,7 @@ export function ConversationHeader({
     setPatchError(null);
     setPatching(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.conversations.takeOver(token, conversation.id);
+      const updated = await api.conversations.takeOver(conversation.id);
       onUpdate(updated);
     } catch {
       setPatchError("Não foi possível assumir a conversa.");
@@ -78,9 +72,7 @@ export function ConversationHeader({
     setPatchError(null);
     setPatching(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.conversations.returnToAI(token, conversation.id);
+      const updated = await api.conversations.returnToAI(conversation.id);
       onUpdate(updated);
     } catch {
       setPatchError("Não foi possível devolver para a IA.");

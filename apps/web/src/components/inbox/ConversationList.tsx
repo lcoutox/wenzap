@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import type { Conversation } from "@/lib/api";
 import { ConversationItem } from "./ConversationItem";
@@ -48,7 +47,6 @@ export function ConversationList({
   canCreate?: boolean;
   onNewConversation?: () => void;
 }) {
-  const { getToken } = useAuth();
   const [activeFilter, setActiveFilter] = useState<Filter>("all");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,10 +56,8 @@ export function ConversationList({
     setLoading(true);
     setError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada. Recarregue a página.");
       const status = filter === "all" ? undefined : filter;
-      const data = await api.conversations.list(token, { status, limit: 50 });
+      const data = await api.conversations.list({ status, limit: 50 });
       setConversations(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar conversas.");

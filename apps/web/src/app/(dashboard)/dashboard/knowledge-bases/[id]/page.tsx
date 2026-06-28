@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -121,7 +120,6 @@ function EditKbModal({ kb, onClose, onSave }: {
   const [description, setDescription] = useState(kb.description ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { getToken } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -131,9 +129,7 @@ function EditKbModal({ kb, onClose, onSave }: {
     if (!name.trim()) { setError("Nome é obrigatório."); return; }
     setSaving(true); setError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.knowledgeBases.update(token, kb.id, {
+      const updated = await api.knowledgeBases.update(kb.id, {
         name: name.trim(),
         description: description.trim() || null,
       });
@@ -236,7 +232,6 @@ const UPLOAD_ERROR_MAP: Record<number, string> = {
 };
 
 function AddSourceModal({ kbId, onClose, onCreated }: { kbId: string; onClose: () => void; onCreated: (source: KnowledgeSource) => void }) {
-  const { getToken } = useAuth();
   const [tab, setTab] = useState<SourceTypeTab>("manual_text");
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
@@ -257,14 +252,12 @@ function AddSourceModal({ kbId, onClose, onCreated }: { kbId: string; onClose: (
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const token = await getToken();
-    if (!token) { setError("Sessão expirada."); return; }
 
     if (tab === "file") {
       if (!file) { setError("Selecione um arquivo."); return; }
       setSaving(true);
       try {
-        const source = await api.knowledgeBases.sources.upload(token, kbId, file, {
+        const source = await api.knowledgeBases.sources.upload(kbId, file, {
           title: title.trim() || undefined,
           source_category: category.trim() || undefined,
         });
@@ -302,7 +295,7 @@ function AddSourceModal({ kbId, onClose, onCreated }: { kbId: string; onClose: (
           },
         };
       }
-      const source = await api.knowledgeBases.sources.create(token, kbId, payload);
+      const source = await api.knowledgeBases.sources.create(kbId, payload);
       onCreated(source);
     } catch (e) {
       if (e instanceof ApiError) {
@@ -582,7 +575,6 @@ function SourceCard({ source, onArchive, onReprocess, canArchive: archive, canRe
 
 export default function KnowledgeBaseDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { getToken } = useAuth();
   const router = useRouter();
 
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
@@ -601,13 +593,12 @@ export default function KnowledgeBaseDetailPage() {
   const [reprocessingSourceId, setReprocessingSourceId] = useState<string | null>(null);
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
+    (async () => {
       try {
         const [kbData, sourcesList, me] = await Promise.all([
-          api.knowledgeBases.get(token, id),
-          api.knowledgeBases.sources.list(token, id),
-          api.me(token),
+          api.knowledgeBases.get(id),
+          api.knowledgeBases.sources.list(id),
+          api.me(),
         ]);
         setKb(kbData);
         setSources(sourcesList);
@@ -621,16 +612,14 @@ export default function KnowledgeBaseDetailPage() {
       } finally {
         setLoading(false);
       }
-    });
-  }, [id, getToken, router]);
+    })();
+  }, [id, router]);
 
   async function handleArchiveKb() {
     if (!kb) return;
     setArchivingKb(true); setArchiveKbError(null);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      await api.knowledgeBases.archive(token, kb.id);
+      await api.knowledgeBases.archive(kb.id);
       router.push("/dashboard/knowledge-bases");
     } catch (e) {
       setArchiveKbError(e instanceof Error ? e.message : "Erro ao arquivar base.");
@@ -642,9 +631,7 @@ export default function KnowledgeBaseDetailPage() {
     if (!kb || reprocessingSourceId) return;
     setReprocessingSourceId(source.id);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      const updated = await api.knowledgeBases.sources.reprocess(token, kb.id, source.id);
+      const updated = await api.knowledgeBases.sources.reprocess(kb.id, source.id);
       setSources((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     } catch { /* ignore */ } finally {
       setReprocessingSourceId(null);
@@ -655,9 +642,7 @@ export default function KnowledgeBaseDetailPage() {
     if (!sourceToArchive || !kb) return;
     setArchivingSource(true);
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Sessão expirada.");
-      await api.knowledgeBases.sources.archive(token, kb.id, sourceToArchive.id);
+      await api.knowledgeBases.sources.archive(kb.id, sourceToArchive.id);
       setSources((prev) => prev.filter((s) => s.id !== sourceToArchive.id));
       setSourceToArchive(null);
     } catch { /* keep modal open */ } finally {

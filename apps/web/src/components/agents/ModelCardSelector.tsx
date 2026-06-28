@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import {
   CheckCircle2,
   Zap,
@@ -181,17 +180,15 @@ export function ModelCardSelector({
   disabled = false,
   onChange,
 }: ModelCardSelectorProps) {
-  const { getToken } = useAuth();
   const [providers, setProviders] = useState<AiProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const didInit = useRef(false);
 
   useEffect(() => {
-    getToken().then(async (token) => {
-      if (!token) return;
+    (async () => {
       try {
-        const catalog = await api.aiModels.list(token);
+        const catalog = await api.aiModels.list();
         setProviders(catalog.providers);
         if (!aiModelId && !didInit.current) {
           didInit.current = true;
@@ -207,9 +204,8 @@ export function ModelCardSelector({
       } finally {
         setLoading(false);
       }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken]);
+    })();
+  }, []);
 
   const allModels = providers.flatMap((p) => p.models.map((m) => ({ model: m, provider: p })));
   const selected  = allModels.find(({ model }) => model.id === aiModelId) ?? null;

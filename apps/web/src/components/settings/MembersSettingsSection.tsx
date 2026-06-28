@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Member } from "@/lib/api";
@@ -20,14 +19,11 @@ const ROLE_CLS: Record<string, string> = {
 };
 
 export function MembersSettingsSection() {
-  const { getToken } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
 
   useEffect(() => {
-    getToken().then((token) => {
-      if (token) api.members.list(token).then(setMembers);
-    });
-  }, [getToken]);
+    api.members.list().then(setMembers).catch(() => {});
+  }, []);
 
   return (
     <div>
