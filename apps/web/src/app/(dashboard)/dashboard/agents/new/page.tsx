@@ -26,8 +26,9 @@ import { StepBehavior }   from "@/components/agents/create/StepBehavior";
 import { StepKnowledge }  from "@/components/agents/create/StepKnowledge";
 import { StepModel }      from "@/components/agents/create/StepModel";
 import { StepReview }     from "@/components/agents/create/StepReview";
+import { StepSuccess }    from "@/components/agents/create/StepSuccess";
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 6; // wizard steps (success is outside the numbered flow)
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -37,6 +38,11 @@ export default function NewAgentPage() {
   const [errors,      setErrors]      = useState<Record<string, string>>({});
   const [saving,      setSaving]      = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // Post-creation success state
+  const [createdAgentId,      setCreatedAgentId]      = useState<string | null>(null);
+  const [connectedKbNames,    setConnectedKbNames]    = useState<string[]>([]);
+  const [kbWarning,           setKbWarning]           = useState(false);
 
   // Shared data fetched once — passed to steps that need them
   const [catalog,     setCatalog]     = useState<AiCatalog | null>(null);
@@ -118,15 +124,30 @@ export default function NewAgentPage() {
         temperature,
       });
 
+      // Connect KBs and track which succeeded
+      let hasKbFailure = false;
+      const successfulKbNames: string[] = [];
       if (state.selectedKbIds.length > 0) {
-        await Promise.allSettled(
+        const kbMap: Record<string, string> = {};
+        kbs.forEach((kb) => { kbMap[kb.id] = kb.name; });
+
+        const results = await Promise.allSettled(
           state.selectedKbIds.map((kbId) =>
             api.agents.knowledgeBases.connect(agent.id, kbId)
           )
         );
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            successfulKbNames.push(kbMap[state.selectedKbIds[i]] ?? state.selectedKbIds[i]);
+          } else {
+            hasKbFailure = true;
+          }
+        });
       }
 
-      router.push(`/dashboard/agents/${agent.id}`);
+      setConnectedKbNames(successfulKbNames);
+      setKbWarning(hasKbFailure);
+      setCreatedAgentId(agent.id);
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Erro ao criar agente.");
     } finally {
@@ -135,6 +156,43 @@ export default function NewAgentPage() {
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  // Resolve model display name for success screen
+  function findModelDisplayName(): string | null {
+    if (!catalog || !state.aiModelId) return null;
+    for (const p of catalog.providers) {
+      const m = p.models.find((m) => m.id === state.aiModelId);
+      if (m) return m.display_name;
+    }
+    return null;
+  }
+
+  // Success screen — replaces wizard after creation
+  if (createdAgentId) {
+    return (
+      <div className="max-w-2xl space-y-6 pb-24">
+        <nav className="flex items-center gap-1 text-sm text-nb-muted">
+          <Link href="/dashboard/agents" className="hover:text-nb-secondary transition-colors">
+            Agentes
+          </Link>
+          <ChevronRight className="w-3.5 h-3.5 text-nb-border-strong" />
+          <span className="text-nb-secondary font-medium">Novo agente</span>
+        </nav>
+
+        <div className="bg-nb-panel border border-nb-border rounded-2xl p-6">
+          <StepSuccess
+            agentId={createdAgentId}
+            agentName={state.name}
+            description={state.description}
+            modelDisplayName={findModelDisplayName()}
+            connectedKbNames={connectedKbNames}
+            kbWarning={kbWarning}
+            agentType={state.agentType}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl space-y-6 pb-24">
