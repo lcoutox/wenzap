@@ -57,10 +57,17 @@ function validateStep(step: number, data: OnboardingFormData): FieldErrors {
     } else if (t(data.full_name).length < 2) {
       errors.full_name = "O nome deve ter pelo menos 2 caracteres.";
     }
-    if (!t(data.phone)) {
+    if (!data.phone) {
       errors.phone = "Informe um telefone válido.";
-    } else if (t(data.phone).length < 8) {
-      errors.phone = "Informe um telefone válido.";
+    } else {
+      // phone is stored as E.164, e.g. "+5537999999999"
+      const allDigits = data.phone.replace(/\D/g, ""); // total digits incl. country code
+      const isBR = data.phone.startsWith("+55");
+      const nationalDigits = isBR ? allDigits.slice(2) : allDigits.slice(1); // rough: drop leading country code
+      const valid = isBR
+        ? nationalDigits.length >= 10 && nationalDigits.length <= 11
+        : allDigits.length >= 7 && allDigits.length <= 15;
+      if (!valid) errors.phone = "Informe um telefone válido.";
     }
   }
 

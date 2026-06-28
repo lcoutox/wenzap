@@ -1,5 +1,6 @@
 "use client";
 
+import { PhoneInput } from "@/components/ui/PhoneInput";
 import type { OnboardingFormData } from "./OnboardingFlow";
 
 type Props = {
@@ -37,23 +38,13 @@ export function StepPersonal({ data, onChange, errors }: Props) {
           )}
         </div>
 
-        <div>
-          <label htmlFor="phone" className="block text-xs font-medium text-nb-secondary mb-1.5">
-            Telefone / WhatsApp <span className="text-nb-danger">*</span>
-          </label>
-          <input
-            id="phone"
-            type="tel"
-            autoComplete="tel"
-            value={data.phone}
-            onChange={(e) => onChange({ phone: e.target.value })}
-            placeholder="55 11 9 8888-7777"
-            className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors"
-          />
-          {errors.phone && (
-            <p role="alert" className="text-nb-danger text-xs mt-1">{errors.phone}</p>
-          )}
-        </div>
+        <PhoneInput
+          label="Telefone / WhatsApp"
+          value={data.phone}
+          onChange={(normalized) => onChange({ phone: normalized })}
+          required
+          error={errors.phone}
+        />
       </div>
     </div>
   );
