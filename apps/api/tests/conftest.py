@@ -19,6 +19,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
+from app.auth.sessions import create_session
 from app.config import settings
 from app.database import Base, get_db
 from app.enums import MemberRole, MemberStatus, WorkspaceStatus
@@ -68,7 +69,7 @@ def db() -> Generator[Session, None, None]:
 # ── Factories ─────────────────────────────────────────────────────────────────
 
 def _make_user(db: Session, email: str, name: str) -> User:
-    u = User(external_id=f"clerk_{uuid.uuid4().hex}", email=email, name=name)
+    u = User(external_id=None, email=email, name=name)
     db.add(u)
     db.commit()
     db.refresh(u)
@@ -138,6 +139,13 @@ def _make_subscription(db: Session, workspace: Workspace, plan: Plan) -> Workspa
     return sub
 
 
+def _make_auth_session(db: Session, user: User) -> str:
+    """Create a real auth session for user and return the raw session token."""
+    _, token = create_session(db, user.id)
+    db.commit()
+    return token
+
+
 # ── Common fixtures ────────────────────────────────────────────────────────────
 
 @pytest.fixture()
@@ -192,7 +200,7 @@ def subscription_a(db: Session, workspace_a: Workspace, plan: Plan) -> Workspace
     return _make_subscription(db, workspace_a, plan)
 
 
-# ── Client factory ─────────────────────────────────────────────────────────────
+# ── Client factories ──────────────────────────────────────────────────────────
 
 @contextmanager
 def _make_client(
@@ -200,6 +208,7 @@ def _make_client(
 ) -> Generator[TestClient, None, None]:
     """
     Context manager that yields a TestClient with auth and workspace dependencies overridden.
+    Used by most existing tests that don't need to exercise the real auth stack.
     Always clears overrides on exit to prevent state leakage between tests.
     """
     app.dependency_overrides[get_db] = lambda: db
@@ -207,6 +216,21 @@ def _make_client(
     app.dependency_overrides[get_current_workspace] = lambda: workspace
     try:
         yield TestClient(app, raise_server_exceptions=True)
+    finally:
+        app.dependency_overrides.clear()
+
+
+@contextmanager
+def _make_cookie_client(db: Session, token: str) -> Generator[TestClient, None, None]:
+    """
+    Context manager that yields a TestClient authenticated via the real cookie-based
+    auth stack (no dependency overrides). Use this to test the full auth path.
+    """
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app, raise_server_exceptions=True)
+        client.cookies.set(settings.auth_cookie_name, token)
+        yield client
     finally:
         app.dependency_overrides.clear()
 
@@ -239,7 +263,7 @@ def unauthenticated_client() -> Generator[TestClient, None, None]:
 @pytest.fixture()
 def public_client(db: Session) -> Generator[TestClient, None, None]:
     """
-    TestClient for public endpoints (no Clerk auth).
+    TestClient for public endpoints (no auth).
     Overrides only get_db so that the test database is used.
     Does NOT set get_current_user or get_current_workspace.
     """

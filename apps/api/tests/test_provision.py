@@ -2,27 +2,20 @@
 Tests for the auto-provisioning flow (provision_service.py).
 
 Strategy:
-- Tests that exercise the HTTP layer use a dedicated client factory
-  (_provision_client) that runs the real get_current_user dependency but
-  mocks verify_clerk_token (to skip Clerk JWKS) and _fetch_clerk_user
-  (to skip the Clerk REST API call).
+- Tests that exercise the HTTP layer create a session cookie via _make_auth_session
+  and use _make_cookie_client to call real endpoints.
 - Tests for provision_user() directly call the function with the DB session
   and a mocked _fetch_clerk_user.
 
 All tests assert on the actual database state to guarantee atomicity.
 """
 
-from collections.abc import Generator
-from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.main import app
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
@@ -30,7 +23,7 @@ from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.services.provision_service import provision_user
-from tests.conftest import _make_user
+from tests.conftest import _make_auth_session, _make_cookie_client
 
 # ── Test data ─────────────────────────────────────────────────────────────────
 
@@ -43,38 +36,6 @@ FAKE_PROFILE = {
     "last_name": "User",
     "image_url": "https://example.com/avatar.jpg",
 }
-
-
-# ── Client factory ────────────────────────────────────────────────────────────
-
-@contextmanager
-def _provision_client(
-    db: Session,
-    external_id: str = EXTERNAL_ID,
-    profile: dict | None = None,
-) -> Generator[TestClient, None, None]:
-    """
-    Yields a TestClient that exercises the full get_current_user → provision_user path.
-
-    - get_db is overridden with the test session.
-    - verify_clerk_token is mocked to return {sub: external_id}.
-    - _fetch_clerk_user is mocked to return profile without calling Clerk API.
-    - get_current_user and get_current_workspace run normally.
-    """
-    resolved_profile = profile if profile is not None else FAKE_PROFILE
-    app.dependency_overrides[get_db] = lambda: db
-    with (
-        patch(
-            "app.auth.dependencies.verify_clerk_token",
-            return_value={"sub": external_id},
-        ),
-        patch(
-            "app.services.provision_service._fetch_clerk_user",
-            return_value=resolved_profile,
-        ),
-    ):
-        yield TestClient(app, raise_server_exceptions=True)
-    app.dependency_overrides.clear()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -214,10 +175,19 @@ def test_second_login_does_not_duplicate(db: Session):
 
 
 def test_provisioned_user_can_call_me(db: Session):
-    """After provisioning, GET /me returns 200 with correct user and workspace data."""
+    """After provisioning (via provision_user), GET /me works with a real cookie session."""
     _seed_starter(db)
-    with _provision_client(db) as client:
-        response = client.get("/me", headers={"Authorization": "Bearer fake-token"})
+    with patch(
+        "app.services.provision_service._fetch_clerk_user", return_value=FAKE_PROFILE
+    ):
+        user = provision_user(EXTERNAL_ID, db)
+
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_user_id == user.id))
+    assert workspace is not None
+
+    token = _make_auth_session(db, user)
+    with _make_cookie_client(db, token) as client:
+        response = client.get("/me")
 
     assert response.status_code == 200
     body = response.json()
@@ -247,12 +217,15 @@ def test_no_starter_plan_returns_503(db: Session):
 def test_existing_user_is_not_reprovisioned(db: Session):
     """A user that already exists in DB is returned directly without calling Clerk API."""
     _seed_starter(db)
-    existing = _make_user(db, "existing@example.com", "Existing User")
-    existing_external_id = existing.external_id
+    # Create a user with a real external_id (as would exist from a prior Clerk provision)
+    existing = User(external_id=EXTERNAL_ID, email="existing@example.com", name="Existing User")
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
 
     fetch_mock = patch("app.services.provision_service._fetch_clerk_user")
     with fetch_mock as mock_fetch:
-        result = provision_user(existing_external_id, db)
+        result = provision_user(EXTERNAL_ID, db)
 
     mock_fetch.assert_not_called()
     assert result.id == existing.id

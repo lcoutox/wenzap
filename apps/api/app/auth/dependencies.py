@@ -1,11 +1,19 @@
+"""
+Authentication and workspace resolution dependencies.
+
+Auth.3: get_current_user now reads the wenzap_session cookie and resolves
+the session from auth_sessions. The Clerk-based flow is no longer used by
+these dependencies — clerk.py is preserved for rollback purposes only.
+"""
+
 import uuid
 
-import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.clerk import verify_clerk_token
+from app.auth.sessions import get_session_by_token
+from app.config import settings
 from app.database import get_db
 from app.enums import MemberStatus, WorkspaceStatus
 from app.models.user import User
@@ -13,29 +21,30 @@ from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 
 
-def _extract_bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
-    return authorization.removeprefix("Bearer ")
-
-
 def get_current_user(
-    authorization: str | None = Header(default=None),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    token = _extract_bearer_token(authorization)
-    try:
-        claims = verify_clerk_token(token)
-    except jwt.InvalidTokenError as exc:
+    token = request.cookies.get(settings.auth_cookie_name)
+    if not token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        ) from exc
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+        )
 
-    external_id: str = claims["sub"]
-    user = db.scalar(select(User).where(User.external_id == external_id))
+    session = get_session_by_token(db, token)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or revoked"
+        )
+
+    # Commit here so last_seen_at is persisted even on read-only routes
+    # that never call db.commit() themselves.
+    db.commit()
+
+    user = db.scalar(select(User).where(User.id == session.user_id))
     if user is None:
-        from app.services.provision_service import provision_user
-        user = provision_user(external_id, db)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
     return user
 
 
@@ -63,7 +72,6 @@ def get_current_workspace(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid workspace id"
             )
 
-        # Membership must be active — inactive members cannot select workspaces.
         member = db.scalar(
             select(WorkspaceMember).where(
                 WorkspaceMember.workspace_id == ws_id,
@@ -84,7 +92,9 @@ def get_current_workspace(
             )
         )
         if workspace is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found"
+            )
         return workspace
 
     # No header — use the first active workspace the user actively belongs to.
