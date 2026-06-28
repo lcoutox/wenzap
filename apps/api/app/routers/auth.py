@@ -284,7 +284,7 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)) 
                 expires_at=expires_at,
             ))
             db.commit()
-            # Dev stub: log the reset link. Replace with SMTP in Auth.5.
+            # Dev stub: log the reset link. Replace with SMTP when email delivery is implemented.
             logger.info(
                 "[DEV] Password reset link for %s: /auth/reset-password?token=%s",
                 body.email,
