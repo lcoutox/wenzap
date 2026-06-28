@@ -1,72 +1,144 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Bot } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { AgentFormSection } from "@/components/agents/AgentFormSection";
-import { ModelCardSelector } from "@/components/agents/ModelCardSelector";
+import type { AiCatalog, KnowledgeBase } from "@/lib/api";
 
-const baseInput =
-  "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
+import {
+  INITIAL_WIZARD_STATE,
+  CREATIVITY_TEMPERATURE,
+  AGENT_TYPE_DEFAULTS,
+} from "@/components/agents/create/wizard-types";
+import type {
+  WizardState,
+  AgentTypeId,
+  ToneOption,
+  CreativityLevel,
+} from "@/components/agents/create/wizard-types";
+import { buildSystemPrompt, buildPersona } from "@/components/agents/create/buildSystemPrompt";
+import { WizardProgress } from "@/components/agents/create/WizardProgress";
+import { StepAgentType }  from "@/components/agents/create/StepAgentType";
+import { StepIdentity }   from "@/components/agents/create/StepIdentity";
+import { StepBehavior }   from "@/components/agents/create/StepBehavior";
+import { StepKnowledge }  from "@/components/agents/create/StepKnowledge";
+import { StepModel }      from "@/components/agents/create/StepModel";
+import { StepReview }     from "@/components/agents/create/StepReview";
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-nb-secondary">{label}</label>
-      {children}
-      {hint && <p className="text-xs text-nb-muted">{hint}</p>}
-    </div>
-  );
-}
+const TOTAL_STEPS = 6;
 
 export default function NewAgentPage() {
   const router = useRouter();
 
-  const [name,         setName]         = useState("");
-  const [description,  setDescription]  = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [persona,      setPersona]      = useState("");
-  const [aiModelId,    setAiModelId]    = useState<string | null>(null);
-  const [temperature,  setTemperature]  = useState("0.7");
-  const [error,        setError]        = useState<string | null>(null);
-  const [saving,       setSaving]       = useState(false);
+  const [step,        setStep]        = useState(1);
+  const [state,       setState]       = useState<WizardState>(INITIAL_WIZARD_STATE);
+  const [errors,      setErrors]      = useState<Record<string, string>>({});
+  const [saving,      setSaving]      = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
+  // Shared data fetched once — passed to steps that need them
+  const [catalog,     setCatalog]     = useState<AiCatalog | null>(null);
+  const [kbs,         setKbs]         = useState<KnowledgeBase[]>([]);
+  const [catalogLoad, setCatalogLoad] = useState(false);
+  const [kbsLoad,     setKbsLoad]     = useState(false);
 
-    if (!aiModelId) { setError("Selecione um modelo de IA."); return; }
-
-    const tempNum = parseFloat(temperature);
-    if (isNaN(tempNum) || tempNum < 0 || tempNum > 1) {
-      setError("Temperatura deve ser entre 0.0 e 1.0.");
-      return;
+  // Fetch catalog when reaching step 5
+  useEffect(() => {
+    if (step === 5 && !catalog && !catalogLoad) {
+      setCatalogLoad(true);
+      api.aiModels.list().then(setCatalog).catch(() => {}).finally(() => setCatalogLoad(false));
     }
+  }, [step, catalog, catalogLoad]);
 
+  // Fetch KBs when reaching step 4
+  useEffect(() => {
+    if (step === 4 && kbs.length === 0 && !kbsLoad) {
+      setKbsLoad(true);
+      api.knowledgeBases.list().then(setKbs).catch(() => {}).finally(() => setKbsLoad(false));
+    }
+  }, [step, kbs.length, kbsLoad]);
+
+  function update(patch: Partial<WizardState>) {
+    setState((prev) => ({ ...prev, ...patch }));
+  }
+
+  function handleAgentTypeChange(type: AgentTypeId) {
+    const defaults = AGENT_TYPE_DEFAULTS[type];
+    setState((prev) => ({
+      ...prev,
+      agentType:   type,
+      description: prev.description || defaults.descriptionHint,
+      tones:       prev.tones.length > 0 ? prev.tones : (defaults.tones as ToneOption[]),
+      rules:       prev.rules.length > 0 ? prev.rules : defaults.rules,
+    }));
+  }
+
+  // ── Validation ────────────────────────────────────────────────────────────
+
+  function validate(): boolean {
+    const e: Record<string, string> = {};
+    if (step === 1 && !state.agentType)           e.agentType   = "Selecione um tipo de agente.";
+    if (step === 2 && !state.name.trim())          e.name        = "Informe o nome do agente.";
+    if (step === 2 && !state.description.trim())   e.description = "Informe o objetivo do agente.";
+    if (step === 3 && state.tones.length === 0)    e.tones       = "Selecione ao menos um tom de voz.";
+    if (step === 5 && !state.aiModelId)            e.aiModelId   = "Selecione um modelo de IA.";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  function handleNext() {
+    if (!validate()) return;
+    setStep((s) => Math.min(s + 1, TOTAL_STEPS));
+  }
+
+  function handleBack() {
+    setErrors({});
+    setStep((s) => Math.max(s - 1, 1));
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────────
+
+  async function handleCreate() {
+    setGlobalError(null);
     setSaving(true);
+
+    const systemPrompt = buildSystemPrompt(state);
+    const persona      = buildPersona(state.tones);
+    const temperature  = CREATIVITY_TEMPERATURE[state.creativity];
+
     try {
       const agent = await api.agents.create({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        system_prompt: systemPrompt.trim() || undefined,
-        persona: persona.trim() || undefined,
-        ai_model_id: aiModelId,
-        temperature: tempNum,
+        name:          state.name.trim(),
+        description:   state.description.trim() || undefined,
+        system_prompt: systemPrompt || undefined,
+        persona:       persona || undefined,
+        ai_model_id:   state.aiModelId!,
+        temperature,
       });
+
+      if (state.selectedKbIds.length > 0) {
+        await Promise.allSettled(
+          state.selectedKbIds.map((kbId) =>
+            api.agents.knowledgeBases.connect(agent.id, kbId)
+          )
+        );
+      }
+
       router.push(`/dashboard/agents/${agent.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao criar agente.");
+      setGlobalError(e instanceof Error ? e.message : "Erro ao criar agente.");
     } finally {
       setSaving(false);
     }
   }
 
-  return (
-    <div className="max-w-4xl space-y-6">
+  // ── Render ──────────────────────────────────────────────────────────────────
 
-      {/* Breadcrumb */}
+  return (
+    <div className="max-w-2xl space-y-6 pb-24">
+
       <nav className="flex items-center gap-1 text-sm text-nb-muted">
         <Link href="/dashboard/agents" className="hover:text-nb-secondary transition-colors">
           Agentes
@@ -75,108 +147,122 @@ export default function NewAgentPage() {
         <span className="text-nb-secondary font-medium">Novo agente</span>
       </nav>
 
-      {/* Page header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center">
-          <Bot className="w-5 h-5 text-nb-primary-strong" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-nb-text">Novo agente</h1>
-          <p className="text-sm text-nb-muted">Configure a identidade, o prompt e o modelo do agente.</p>
-        </div>
+      <WizardProgress current={step} />
+
+      <div className="bg-nb-panel border border-nb-border rounded-2xl p-6">
+        {step === 1 && (
+          <StepAgentType
+            value={state.agentType}
+            onChange={handleAgentTypeChange}
+          />
+        )}
+        {step === 2 && (
+          <StepIdentity
+            name={state.name}
+            description={state.description}
+            onNameChange={(v) => update({ name: v })}
+            onDescriptionChange={(v) => update({ description: v })}
+            errors={errors}
+          />
+        )}
+        {step === 3 && (
+          <StepBehavior
+            tones={state.tones}
+            rules={state.rules}
+            avoidText={state.avoidText}
+            additionalInstructions={state.additionalInstructions}
+            onTonesChange={(v) => update({ tones: v })}
+            onRulesChange={(v) => update({ rules: v })}
+            onAvoidTextChange={(v) => update({ avoidText: v })}
+            onAdditionalInstructionsChange={(v) => update({ additionalInstructions: v })}
+            errors={errors}
+          />
+        )}
+        {step === 4 && (
+          <StepKnowledge
+            kbs={kbs}
+            loading={kbsLoad}
+            selectedKbIds={state.selectedKbIds}
+            onSelectionChange={(v) => update({ selectedKbIds: v })}
+          />
+        )}
+        {step === 5 && (
+          <StepModel
+            catalog={catalog}
+            loading={catalogLoad}
+            aiModelId={state.aiModelId}
+            creativity={state.creativity}
+            onModelChange={(id) => update({ aiModelId: id })}
+            onCreativityChange={(v: CreativityLevel) => update({ creativity: v })}
+            errors={errors}
+          />
+        )}
+        {step === 6 && (
+          <StepReview
+            state={state}
+            catalog={catalog}
+            kbs={kbs}
+          />
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      {globalError && (
+        <p className="text-sm text-nb-danger px-1">{globalError}</p>
+      )}
 
-        <AgentFormSection title="Informações básicas" description="Nome e descrição exibidos na plataforma.">
-          <Field label="Nome *">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              maxLength={100}
-              placeholder="Ex: Agente de Suporte"
-              className={baseInput}
-            />
-          </Field>
-          <Field label="Descrição" hint="Visível na listagem de agentes.">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              placeholder="Descreva o propósito deste agente"
-              className={baseInput}
-            />
-          </Field>
-        </AgentFormSection>
-
-        <AgentFormSection title="Prompt inicial" description="Instrução base e persona do agente.">
-          <Field label="System prompt" hint={`${systemPrompt.length} / 8000 caracteres — obrigatório para ativar o agente.`}>
-            <textarea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              rows={7}
-              maxLength={8000}
-              placeholder="Você é um agente de suporte da empresa Acme. Responda de forma..."
-              className={baseInput}
-            />
-          </Field>
-          <Field label="Persona / Tom" hint="Máximo de 1000 caracteres.">
-            <textarea
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              rows={2}
-              maxLength={1000}
-              placeholder="Comunicativo, empático, direto ao ponto"
-              className={baseInput}
-            />
-          </Field>
-          <Field label="Temperatura" hint="Controla a criatividade. 0 = mais preciso, 1 = mais criativo.">
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
-                value={temperature}
-                onChange={(e) => setTemperature(e.target.value)}
-                step="0.1"
-                min="0"
-                max="1"
-                className="flex-1 accent-nb-primary"
-              />
-              <span className="w-10 text-sm font-mono text-center text-nb-secondary bg-nb-elevated border border-nb-border rounded-lg px-2 py-1">
-                {parseFloat(temperature).toFixed(1)}
-              </span>
-            </div>
-          </Field>
-        </AgentFormSection>
-
-        <AgentFormSection title="Modelo do agente" description="Escolha o modelo de IA que alimentará este agente.">
-          <ModelCardSelector
-            aiModelId={aiModelId}
-            onChange={(id) => setAiModelId(id)}
-          />
-        </AgentFormSection>
-
-        {error && (
-          <p className="text-sm text-nb-danger">{error}</p>
-        )}
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={saving || !aiModelId}
-            className="px-5 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong disabled:opacity-40 transition-colors"
-          >
-            {saving ? "Criando..." : "Criar agente"}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/agents")}
-            className="px-4 py-2 text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors"
-          >
-            Cancelar
-          </button>
+      <div className="flex items-center justify-between">
+        <div>
+          {step > 1 ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              disabled={saving}
+              className="px-4 py-2 text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors disabled:opacity-40"
+            >
+              Voltar
+            </button>
+          ) : (
+            <Link
+              href="/dashboard/agents"
+              className="px-4 py-2 text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors"
+            >
+              Cancelar
+            </Link>
+          )}
         </div>
-      </form>
+
+        <div className="flex items-center gap-3">
+          {step === 4 && (
+            <button
+              type="button"
+              onClick={() => { setErrors({}); setStep(5); }}
+              className="px-4 py-2 text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors"
+            >
+              Pular
+            </button>
+          )}
+
+          {step < TOTAL_STEPS ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              className="px-5 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
+            >
+              Continuar
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong disabled:opacity-50 transition-colors"
+            >
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saving ? "Criando agente…" : "Criar agente"}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
