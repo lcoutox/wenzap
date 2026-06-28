@@ -16,10 +16,6 @@ import { ImplantarTab } from "@/components/agents/workspace/tabs/ImplantarTab";
 import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
 import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
-import { ConfigAvancado }       from "@/components/agents/workspace/tabs/ConfigAvancado";
-import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
-import { ConfigSeguranca }      from "@/components/agents/workspace/tabs/ConfigSeguranca";
-import { ConfigWebhooks }       from "@/components/agents/workspace/tabs/ConfigWebhooks";
 import { ConfigConhecimento }   from "@/components/agents/workspace/tabs/ConfigConhecimento";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,7 +195,7 @@ export default function AgentWorkspacePage() {
   const readonly    = isArchived || !canWrite;
 
   // Config tabs that have real save functionality
-  const isSaveable = ["geral", "prompt", "modelo", "avancado"].includes(configTab);
+  const isSaveable = ["geral", "instrucoes", "modelo"].includes(configTab);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -263,7 +259,7 @@ export default function AgentWorkspacePage() {
                 />
               )}
 
-              {configTab === "prompt" && (
+              {configTab === "instrucoes" && (
                 <ConfigPrompt
                   systemPrompt={systemPrompt}
                   persona={persona}
@@ -279,28 +275,15 @@ export default function AgentWorkspacePage() {
               {configTab === "modelo" && (
                 <ConfigModelo
                   aiModelId={aiModelId}
-                  readonly={readonly}
-                  saving={saving}
-                  saveError={saveError}
-                  saveSuccess={saveSuccess}
-                  onModelChange={(modelId) => setAiModelId(modelId)}
-                />
-              )}
-
-              {configTab === "avancado" && (
-                <ConfigAvancado
                   temperature={temperature}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
+                  onModelChange={(modelId) => setAiModelId(modelId)}
                   onTemperatureChange={setTemperature}
                 />
               )}
-
-              {configTab === "ferramentas" && <ConfigFerramentas />}
-              {configTab === "seguranca"   && <ConfigSeguranca />}
-              {configTab === "webhooks"    && <ConfigWebhooks />}
             </form>
           </div>
         )}

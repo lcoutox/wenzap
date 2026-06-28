@@ -65,13 +65,13 @@ export function ConfigGeral({
             className={readonly ? disabledInput : baseInput}
           />
         </Field>
-        <Field label="Descrição" hint="Visível na listagem de agentes.">
+        <Field label="Objetivo do agente" hint="Diga o que este agente deve fazer.">
           <textarea
             value={description}
             onChange={(e) => onDescriptionChange(e.target.value)}
             rows={2}
             disabled={readonly}
-            placeholder="Descreva o propósito deste agente"
+            placeholder="Ex: Qualificar leads interessados nos serviços da empresa"
             className={readonly ? disabledInput : baseInput}
           />
         </Field>

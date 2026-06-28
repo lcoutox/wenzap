@@ -1,20 +1,9 @@
-export type ConfigTab =
-  | "geral"
-  | "prompt"
-  | "modelo"
-  | "avancado"
-  | "ferramentas"
-  | "seguranca"
-  | "webhooks";
+export type ConfigTab = "geral" | "instrucoes" | "modelo";
 
-const TABS: { id: ConfigTab; label: string; placeholder?: true }[] = [
-  { id: "geral",       label: "Geral" },
-  { id: "prompt",      label: "Prompt" },
-  { id: "modelo",      label: "Modelo" },
-  { id: "avancado",    label: "Avançado" },
-  { id: "ferramentas", label: "Ferramentas", placeholder: true },
-  { id: "seguranca",   label: "Segurança",   placeholder: true },
-  { id: "webhooks",    label: "Webhooks",    placeholder: true },
+const TABS: { id: ConfigTab; label: string }[] = [
+  { id: "geral",      label: "Geral" },
+  { id: "instrucoes", label: "Instruções" },
+  { id: "modelo",     label: "Modelo" },
 ];
 
 export function ConfigTabs({
@@ -27,7 +16,7 @@ export function ConfigTabs({
   return (
     <div className="border-b border-nb-border">
       <nav className="flex gap-0 -mb-px overflow-x-auto">
-        {TABS.map(({ id, label, placeholder }) => (
+        {TABS.map(({ id, label }) => (
           <button
             key={id}
             type="button"
@@ -40,11 +29,6 @@ export function ConfigTabs({
             `}
           >
             {label}
-            {placeholder && (
-              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-nb-elevated text-nb-muted border border-nb-border leading-none tracking-wide">
-                EM BREVE
-              </span>
-            )}
           </button>
         ))}
       </nav>

@@ -46,34 +46,34 @@ export function ConfigPrompt({
   return (
     <div className="space-y-5">
       <AgentFormSection
-        title="System Prompt"
-        description="Instrução base que define o comportamento do agente. Obrigatório para ativar."
+        title="Instruções do agente"
+        description="Explique como o agente deve se comportar, quais regras deve seguir e o que deve evitar. Obrigatório para ativar o agente."
       >
-        <Field label="Prompt" hint={`${systemPrompt.length} / 8000 caracteres`}>
+        <Field label="Instruções" hint={`${systemPrompt.length} / 8000 caracteres`}>
           <textarea
             value={systemPrompt}
             onChange={(e) => onSystemPromptChange(e.target.value)}
             rows={10}
             maxLength={8000}
             disabled={readonly}
-            placeholder={readonly ? "" : "Você é um agente de suporte da empresa Acme. Seu objetivo é ajudar clientes a resolver problemas com nossos produtos de forma rápida e amigável..."}
+            placeholder={readonly ? "" : "Ex: Responda de forma objetiva, não invente informações e peça para falar com um humano quando não souber responder."}
             className={readonly ? disabledInput : baseInput}
           />
         </Field>
       </AgentFormSection>
 
       <AgentFormSection
-        title="Persona e Tom"
-        description="Define a personalidade e o estilo de comunicação do agente."
+        title="Tom de voz"
+        description="Defina o estilo de comunicação do agente."
       >
-        <Field label="Persona" hint={`${persona.length} / 1000 caracteres`}>
+        <Field label="Tom de voz" hint={`${persona.length} / 1000 caracteres`}>
           <textarea
             value={persona}
             onChange={(e) => onPersonaChange(e.target.value)}
             rows={4}
             maxLength={1000}
             disabled={readonly}
-            placeholder={readonly ? "" : "Comunicativo, empático, direto ao ponto. Usa linguagem simples e evita jargões técnicos."}
+            placeholder={readonly ? "" : "Ex: Profissional, simpático e direto ao ponto"}
             className={readonly ? disabledInput : baseInput}
           />
         </Field>
