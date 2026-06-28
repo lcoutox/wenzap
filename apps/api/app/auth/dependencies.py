@@ -1,9 +1,9 @@
 """
 Authentication and workspace resolution dependencies.
 
-Auth.3: get_current_user now reads the wenzap_session cookie and resolves
-the session from auth_sessions. The Clerk-based flow is no longer used by
-these dependencies — clerk.py is preserved for rollback purposes only.
+get_current_user reads the wenzap_session cookie and resolves the session
+from auth_sessions. get_current_workspace resolves workspace context from
+the authenticated user.
 """
 
 import uuid

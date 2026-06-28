@@ -2,8 +2,7 @@
 First-party authentication router.
 
 Provides signup, login, logout, /me, forgot-password and reset-password.
-Clerk-based auth (app/auth/clerk.py and app/auth/dependencies.py) is
-untouched during Auth.2 — both auth paths coexist until Auth.3.
+Authentication uses wenzap_session HttpOnly cookies backed by auth_sessions table.
 """
 
 import hashlib
