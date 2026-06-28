@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     auth_cookie_name: str = "wenzap_session"
     # Set to True in production (requires HTTPS). False in dev so localhost works.
     auth_cookie_secure: bool = False
+    # Set to ".wenzap.com.br" (with leading dot) when frontend and API are on
+    # different subdomains of the same root domain. Empty string means no Domain
+    # attribute (cookie scoped to the exact host that set it).
+    auth_cookie_domain: str = ""
 
     # Comma-separated list of allowed CORS origins.
     # Example: "http://localhost:3000,https://app.nexbrain.com"
