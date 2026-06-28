@@ -467,6 +467,46 @@ export type ChannelUpdateInput = {
   allowed_origins?: string[];
 };
 
+// ── First-party auth types ────────────────────────────────────────────────────
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url: string | null;
+};
+
+export type AuthWorkspace = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export type AuthMe = {
+  user: AuthUser;
+  workspace: AuthWorkspace;
+};
+
+export type SignupInput = {
+  email: string;
+  password: string;
+  name?: string;
+};
+
+export type LoginInput = {
+  email: string;
+  password: string;
+};
+
+export type ForgotPasswordInput = {
+  email: string;
+};
+
+export type ResetPasswordInput = {
+  token: string;
+  new_password: string;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -476,7 +516,7 @@ export class ApiError extends Error {
   }
 }
 
-// ── Fetch helper ──────────────────────────────────────────────────────────────
+// ── Fetch helpers ─────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
   path: string,
@@ -501,10 +541,51 @@ async function apiFetch<T>(
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+// Cookie-based fetch — sends HttpOnly cookie automatically, no Bearer token.
+async function cookieFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    ...(options.headers as Record<string, string>),
+  };
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, error.detail ?? "API error");
+  }
+
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 // ── API client ────────────────────────────────────────────────────────────────
 
 export const api = {
   me: (token: string) => apiFetch<UserMe>("/me", token),
+  auth: {
+    me: () => cookieFetch<AuthMe>("/auth/me"),
+    signup: (input: SignupInput) =>
+      cookieFetch<AuthMe>("/auth/signup", { method: "POST", body: JSON.stringify(input) }),
+    login: (input: LoginInput) =>
+      cookieFetch<AuthMe>("/auth/login", { method: "POST", body: JSON.stringify(input) }),
+    logout: () =>
+      cookieFetch<void>("/auth/logout", { method: "POST" }),
+    forgotPassword: (input: ForgotPasswordInput) =>
+      cookieFetch<{ message: string }>("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    resetPassword: (input: ResetPasswordInput) =>
+      cookieFetch<{ message: string }>("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  },
   workspace: {
     current: (token: string) => apiFetch<UserMe["workspace"]>("/workspaces/current", token),
     update: (token: string, data: { name?: string; slug?: string }) =>
