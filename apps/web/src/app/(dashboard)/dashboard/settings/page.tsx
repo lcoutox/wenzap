@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import type { UserMe } from "@/lib/api";
@@ -109,7 +109,7 @@ function TabGeral() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function SettingsPage() {
+function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const activeTab = parseTab(searchParams.get("tab"));
@@ -125,13 +125,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-nb-text">Configurações</h1>
-        <p className="text-sm text-nb-muted mt-0.5">Gerencie o workspace, membros e plano da conta.</p>
-      </div>
-
+    <>
       {/* Tabs */}
       <div className="border-b border-nb-border">
         <nav className="flex gap-0 -mb-px">
@@ -159,6 +153,21 @@ export default function SettingsPage() {
         {activeTab === "members" && <MembersSettingsSection />}
         {activeTab === "plan"    && <PlanUsageSettingsSection />}
       </div>
+    </>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-nb-text">Configurações</h1>
+        <p className="text-sm text-nb-muted mt-0.5">Gerencie o workspace, membros e plano da conta.</p>
+      </div>
+
+      <Suspense>
+        <SettingsContent />
+      </Suspense>
     </div>
   );
 }

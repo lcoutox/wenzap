@@ -1,7 +1,7 @@
 "use client";
 
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Conversation, MemberRole } from "@/lib/api";
 import { ConversationList } from "@/components/inbox/ConversationList";
@@ -44,7 +44,7 @@ function EmptyPanel() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function InboxPage() {
+function InboxContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("conv");
@@ -53,7 +53,6 @@ export default function InboxPage() {
   const [listRefreshKey, setListRefreshKey] = useState(0);
   const [showModal, setShowModal] = useState(false);
 
-  // Fetch the current user's role once on mount (used for the Nova conversa button).
   useEffect(() => {
     api.me().then((me) => setUserRole(me.role)).catch(() => {});
   }, []);
@@ -67,12 +66,10 @@ export default function InboxPage() {
     [router, searchParams],
   );
 
-  // Both message sends and conversation updates (status/AI) refresh the list.
   const handleListRefresh = useCallback(() => {
     setListRefreshKey((k) => k + 1);
   }, []);
 
-  // Called after a new conversation is created in the modal.
   const handleConversationCreated = useCallback(
     (conv: Conversation) => {
       setShowModal(false);
@@ -112,5 +109,13 @@ export default function InboxPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function InboxPage() {
+  return (
+    <Suspense>
+      <InboxContent />
+    </Suspense>
   );
 }
