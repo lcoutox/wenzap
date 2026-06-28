@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, Loader2 } from "lucide-react";
@@ -49,22 +49,26 @@ export default function NewAgentPage() {
   const [kbs,         setKbs]         = useState<KnowledgeBase[]>([]);
   const [catalogLoad, setCatalogLoad] = useState(false);
   const [kbsLoad,     setKbsLoad]     = useState(false);
+  const catalogFetched = useRef(false);
+  const kbsFetched     = useRef(false);
 
-  // Fetch catalog when reaching step 5
+  // Fetch catalog when reaching step 5 — ref prevents re-fetch on re-render
   useEffect(() => {
-    if (step === 5 && !catalog && !catalogLoad) {
+    if (step === 5 && !catalogFetched.current) {
+      catalogFetched.current = true;
       setCatalogLoad(true);
       api.aiModels.list().then(setCatalog).catch(() => {}).finally(() => setCatalogLoad(false));
     }
-  }, [step, catalog, catalogLoad]);
+  }, [step]);
 
-  // Fetch KBs when reaching step 4
+  // Fetch KBs when reaching step 4 — ref prevents re-fetch on re-render
   useEffect(() => {
-    if (step === 4 && kbs.length === 0 && !kbsLoad) {
+    if (step === 4 && !kbsFetched.current) {
+      kbsFetched.current = true;
       setKbsLoad(true);
       api.knowledgeBases.list().then(setKbs).catch(() => {}).finally(() => setKbsLoad(false));
     }
-  }, [step, kbs.length, kbsLoad]);
+  }, [step]);
 
   function update(patch: Partial<WizardState>) {
     setState((prev) => ({ ...prev, ...patch }));
