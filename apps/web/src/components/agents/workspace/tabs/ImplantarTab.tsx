@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   AlertTriangle,
   Check,
@@ -11,13 +11,22 @@ import {
   Copy,
   Globe,
   Loader2,
+  MessageCircle,
   Plus,
   Power,
   Trash2,
   X,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Channel, ChannelCreateInput, ChannelUpdateInput, MemberRole, WebWidgetConfig } from "@/lib/api";
+import type {
+  WebWidgetChannel,
+  WhatsAppChannel,
+  WebWidgetChannelCreateInput,
+  WhatsAppChannelCreateInput,
+  ChannelUpdateInput,
+  MemberRole,
+  WebWidgetConfig,
+} from "@/lib/api";
 
 // ── Permissions ───────────────────────────────────────────────────────────────
 
@@ -53,8 +62,8 @@ function Field({
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: Channel["status"] }) {
-  const map: Record<Channel["status"], { label: string; cls: string }> = {
+function StatusBadge({ status }: { status: "active" | "inactive" | "archived" }) {
+  const map = {
     active:   { label: "Ativo",     cls: "bg-nb-success/10 text-nb-success border-nb-success/20" },
     inactive: { label: "Inativo",   cls: "bg-nb-elevated text-nb-muted border-nb-border" },
     archived: { label: "Arquivado", cls: "bg-nb-danger/10 text-nb-danger border-nb-danger/20" },
@@ -83,7 +92,6 @@ function buildScript(publicKey: string): string {
 
 function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
-
   const handleCopy = useCallback(() => {
     if (!navigator?.clipboard) return;
     navigator.clipboard.writeText(text).then(() => {
@@ -99,15 +107,9 @@ function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }
       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:border-nb-border-strong hover:text-nb-text transition-colors"
     >
       {copied ? (
-        <>
-          <Check className="w-3.5 h-3.5 text-nb-success" />
-          Copiado
-        </>
+        <><Check className="w-3.5 h-3.5 text-nb-success" />Copiado</>
       ) : (
-        <>
-          <Copy className="w-3.5 h-3.5" />
-          {label}
-        </>
+        <><Copy className="w-3.5 h-3.5" />{label}</>
       )}
     </button>
   );
@@ -127,7 +129,7 @@ function OriginsWarning() {
   );
 }
 
-// ── Widget form default values ────────────────────────────────────────────────
+// ── Widget form ───────────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: WebWidgetConfig = {
   theme: "dark",
@@ -146,22 +148,7 @@ const DEFAULT_CONFIG: WebWidgetConfig = {
   require_phone: false,
 };
 
-// ── Validation ────────────────────────────────────────────────────────────────
-
-function validateHexColor(v: string): boolean {
-  return /^#[0-9A-Fa-f]{6}$/.test(v);
-}
-
-function parseOrigins(raw: string): string[] {
-  return raw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-}
-
-// ── Widget form state ─────────────────────────────────────────────────────────
-
-type FormState = {
+type WidgetFormState = {
   name: string;
   theme: WebWidgetConfig["theme"];
   primary_color: string;
@@ -174,14 +161,13 @@ type FormState = {
   auto_open: boolean;
   auto_open_delay_seconds: number;
   allowed_origins_raw: string;
-  // Visitor identity / lead capture
   contact_capture_enabled: boolean;
   require_name: boolean;
   require_email: boolean;
   require_phone: boolean;
 };
 
-function channelToForm(ch?: Channel): FormState {
+function channelToWidgetForm(ch?: WebWidgetChannel): WidgetFormState {
   const cfg = ch?.config ?? DEFAULT_CONFIG;
   return {
     name: ch?.name ?? "",
@@ -203,11 +189,19 @@ function channelToForm(ch?: Channel): FormState {
   };
 }
 
-function formToPayload(
-  f: FormState,
+function validateHexColor(v: string): boolean {
+  return /^#[0-9A-Fa-f]{6}$/.test(v);
+}
+
+function parseOrigins(raw: string): string[] {
+  return raw.split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+function widgetFormToPayload(
+  f: WidgetFormState,
   agentId: string,
   isCreate: boolean,
-): ChannelCreateInput | ChannelUpdateInput {
+): WebWidgetChannelCreateInput | ChannelUpdateInput {
   const config: Partial<WebWidgetConfig> = {
     theme: f.theme,
     primary_color: f.primary_color,
@@ -225,20 +219,11 @@ function formToPayload(
     require_phone: f.require_phone,
   };
   const allowed_origins = parseOrigins(f.allowed_origins_raw);
-
   if (isCreate) {
-    return {
-      name: f.name.trim(),
-      channel_type: "web_widget",
-      agent_id: agentId,
-      config,
-      allowed_origins,
-    } satisfies ChannelCreateInput;
+    return { name: f.name.trim(), channel_type: "web_widget", agent_id: agentId, config, allowed_origins };
   }
-  return { name: f.name.trim(), config, allowed_origins } satisfies ChannelUpdateInput;
+  return { name: f.name.trim(), config, allowed_origins };
 }
-
-// ── Widget form ───────────────────────────────────────────────────────────────
 
 function WidgetForm({
   initial,
@@ -247,33 +232,24 @@ function WidgetForm({
   saving,
   saveError,
 }: {
-  initial: FormState;
-  onSave: (f: FormState) => void;
+  initial: WidgetFormState;
+  onSave: (f: WidgetFormState) => void;
   onCancel: () => void;
   saving: boolean;
   saveError: string | null;
 }) {
-  const [form, setForm] = useState<FormState>(initial);
+  const [form, setForm] = useState<WidgetFormState>(initial);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  function set<K extends keyof FormState>(key: K, val: FormState[K]) {
+  function set<K extends keyof WidgetFormState>(key: K, val: WidgetFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) {
-      setValidationError("O nome do widget é obrigatório.");
-      return;
-    }
-    if (!validateHexColor(form.primary_color)) {
-      setValidationError("Cor primária deve estar no formato #RRGGBB (ex: #7167F0).");
-      return;
-    }
-    if (form.auto_open_delay_seconds < 0 || form.auto_open_delay_seconds > 60) {
-      setValidationError("O delay de auto-open deve ser entre 0 e 60 segundos.");
-      return;
-    }
+    if (!form.name.trim()) { setValidationError("O nome do widget é obrigatório."); return; }
+    if (!validateHexColor(form.primary_color)) { setValidationError("Cor primária deve estar no formato #RRGGBB (ex: #7167F0)."); return; }
+    if (form.auto_open_delay_seconds < 0 || form.auto_open_delay_seconds > 60) { setValidationError("O delay de auto-open deve ser entre 0 e 60 segundos."); return; }
     setValidationError(null);
     onSave(form);
   }
@@ -282,242 +258,91 @@ function WidgetForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Name */}
       <Field label="Nome do widget *">
-        <input
-          type="text"
-          value={form.name}
-          onChange={(e) => set("name", e.target.value)}
-          maxLength={100}
-          placeholder="Ex: Widget do Site Principal"
-          className={baseInput}
-        />
+        <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={100} placeholder="Ex: Widget do Site Principal" className={baseInput} />
       </Field>
-
-      {/* Header */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Título do header">
-          <input
-            type="text"
-            value={form.header_title}
-            onChange={(e) => set("header_title", e.target.value)}
-            maxLength={60}
-            placeholder="Atendimento"
-            className={baseInput}
-          />
+          <input type="text" value={form.header_title} onChange={(e) => set("header_title", e.target.value)} maxLength={60} placeholder="Atendimento" className={baseInput} />
         </Field>
         <Field label="Subtítulo do header">
-          <input
-            type="text"
-            value={form.header_subtitle}
-            onChange={(e) => set("header_subtitle", e.target.value)}
-            maxLength={80}
-            placeholder="Resposta em segundos"
-            className={baseInput}
-          />
+          <input type="text" value={form.header_subtitle} onChange={(e) => set("header_subtitle", e.target.value)} maxLength={80} placeholder="Resposta em segundos" className={baseInput} />
         </Field>
       </div>
-
-      {/* Welcome + placeholder */}
       <Field label="Mensagem de boas-vindas">
-        <input
-          type="text"
-          value={form.welcome_message}
-          onChange={(e) => set("welcome_message", e.target.value)}
-          maxLength={200}
-          placeholder="Olá! Como posso ajudar?"
-          className={baseInput}
-        />
+        <input type="text" value={form.welcome_message} onChange={(e) => set("welcome_message", e.target.value)} maxLength={200} placeholder="Olá! Como posso ajudar?" className={baseInput} />
       </Field>
       <Field label="Placeholder do input">
-        <input
-          type="text"
-          value={form.placeholder}
-          onChange={(e) => set("placeholder", e.target.value)}
-          maxLength={80}
-          placeholder="Digite sua mensagem..."
-          className={baseInput}
-        />
+        <input type="text" value={form.placeholder} onChange={(e) => set("placeholder", e.target.value)} maxLength={80} placeholder="Digite sua mensagem..." className={baseInput} />
       </Field>
-
-      {/* Theme + position */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Tema">
-          <select
-            value={form.theme}
-            onChange={(e) => set("theme", e.target.value as WebWidgetConfig["theme"])}
-            className={baseInput}
-          >
+          <select value={form.theme} onChange={(e) => set("theme", e.target.value as WebWidgetConfig["theme"])} className={baseInput}>
             <option value="dark">Escuro</option>
             <option value="light">Claro</option>
             <option value="auto">Automático (sistema)</option>
           </select>
         </Field>
         <Field label="Posição">
-          <select
-            value={form.position}
-            onChange={(e) => set("position", e.target.value as WebWidgetConfig["position"])}
-            className={baseInput}
-          >
+          <select value={form.position} onChange={(e) => set("position", e.target.value as WebWidgetConfig["position"])} className={baseInput}>
             <option value="bottom-right">Inferior direito</option>
             <option value="bottom-left">Inferior esquerdo</option>
           </select>
         </Field>
       </div>
-
-      {/* Primary color */}
       <Field label="Cor primária" hint="Formato hexadecimal: #RRGGBB">
         <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={form.primary_color}
-            onChange={(e) => set("primary_color", e.target.value)}
-            className="w-9 h-9 rounded-lg border border-nb-border bg-nb-elevated cursor-pointer flex-shrink-0"
-          />
-          <input
-            type="text"
-            value={form.primary_color}
-            onChange={(e) => set("primary_color", e.target.value)}
-            maxLength={7}
-            placeholder="#7167F0"
-            className={baseInput}
-          />
+          <input type="color" value={form.primary_color} onChange={(e) => set("primary_color", e.target.value)} className="w-9 h-9 rounded-lg border border-nb-border bg-nb-elevated cursor-pointer flex-shrink-0" />
+          <input type="text" value={form.primary_color} onChange={(e) => set("primary_color", e.target.value)} maxLength={7} placeholder="#7167F0" className={baseInput} />
         </div>
       </Field>
-
-      {/* Auto-open */}
       <div className="flex items-start gap-4">
         <div className="flex items-center gap-2 pt-0.5">
-          <input
-            type="checkbox"
-            id="auto_open"
-            checked={form.auto_open}
-            onChange={(e) => set("auto_open", e.target.checked)}
-            className="w-4 h-4 rounded accent-nb-primary"
-          />
-          <label htmlFor="auto_open" className="text-sm font-medium text-nb-secondary cursor-pointer">
-            Abrir automaticamente
-          </label>
+          <input type="checkbox" id="auto_open" checked={form.auto_open} onChange={(e) => set("auto_open", e.target.checked)} className="w-4 h-4 rounded accent-nb-primary" />
+          <label htmlFor="auto_open" className="text-sm font-medium text-nb-secondary cursor-pointer">Abrir automaticamente</label>
         </div>
         {form.auto_open && (
           <Field label="Delay (segundos)" hint="Entre 0 e 60">
-            <input
-              type="number"
-              value={form.auto_open_delay_seconds}
-              onChange={(e) => set("auto_open_delay_seconds", Number(e.target.value))}
-              min={0}
-              max={60}
-              className={`${baseInput} w-28`}
-            />
+            <input type="number" value={form.auto_open_delay_seconds} onChange={(e) => set("auto_open_delay_seconds", Number(e.target.value))} min={0} max={60} className={`${baseInput} w-28`} />
           </Field>
         )}
       </div>
-
-      {/* Avatar URL */}
       <Field label="URL do avatar" hint="Opcional. Imagem exibida no header do widget.">
-        <input
-          type="url"
-          value={form.avatar_url}
-          onChange={(e) => set("avatar_url", e.target.value)}
-          placeholder="https://exemplo.com/avatar.png"
-          className={baseInput}
-        />
+        <input type="url" value={form.avatar_url} onChange={(e) => set("avatar_url", e.target.value)} placeholder="https://exemplo.com/avatar.png" className={baseInput} />
       </Field>
-
-      {/* Contact capture */}
       <div className="flex flex-col gap-3 p-4 rounded-xl border border-nb-border/60 bg-nb-elevated/30">
         <p className="text-xs font-semibold text-nb-secondary uppercase tracking-wide">Coleta de dados do visitante</p>
         <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            id="contact_capture_enabled"
-            checked={form.contact_capture_enabled}
-            onChange={(e) => {
-              set("contact_capture_enabled", e.target.checked);
-              if (!e.target.checked) {
-                set("require_name", false);
-                set("require_email", false);
-                set("require_phone", false);
-              }
-            }}
-            className="w-4 h-4 accent-nb-primary"
-          />
+          <input type="checkbox" checked={form.contact_capture_enabled} onChange={(e) => { set("contact_capture_enabled", e.target.checked); if (!e.target.checked) { set("require_name", false); set("require_email", false); set("require_phone", false); } }} className="w-4 h-4 accent-nb-primary" />
           <span className="text-sm text-nb-secondary">Exigir dados antes de iniciar o chat</span>
         </label>
         {form.contact_capture_enabled && (
           <div className="flex flex-col gap-2 pl-7">
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
-              <input
-                type="checkbox"
-                checked={form.require_name}
-                onChange={(e) => set("require_name", e.target.checked)}
-                className="w-4 h-4 accent-nb-primary"
-              />
-              Nome
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
-              <input
-                type="checkbox"
-                checked={form.require_email}
-                onChange={(e) => set("require_email", e.target.checked)}
-                className="w-4 h-4 accent-nb-primary"
-              />
-              E-mail
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
-              <input
-                type="checkbox"
-                checked={form.require_phone}
-                onChange={(e) => set("require_phone", e.target.checked)}
-                className="w-4 h-4 accent-nb-primary"
-              />
-              Telefone
-            </label>
+            {(["require_name", "require_email", "require_phone"] as const).map((k) => (
+              <label key={k} className="flex items-center gap-2 cursor-pointer text-sm text-nb-secondary">
+                <input type="checkbox" checked={form[k]} onChange={(e) => set(k, e.target.checked)} className="w-4 h-4 accent-nb-primary" />
+                {k === "require_name" ? "Nome" : k === "require_email" ? "E-mail" : "Telefone"}
+              </label>
+            ))}
           </div>
         )}
       </div>
-
-      {/* Allowed origins */}
-      <Field
-        label="Domínios permitidos"
-        hint="Um domínio por linha. Inclua o protocolo: https://meusite.com.br"
-      >
-        <textarea
-          value={form.allowed_origins_raw}
-          onChange={(e) => set("allowed_origins_raw", e.target.value)}
-          rows={4}
-          placeholder={"https://meusite.com.br\nhttps://www.meusite.com.br\nhttp://localhost:3000"}
-          className={baseInput}
-        />
+      <Field label="Domínios permitidos" hint="Um domínio por linha. Inclua o protocolo: https://meusite.com.br">
+        <textarea value={form.allowed_origins_raw} onChange={(e) => set("allowed_origins_raw", e.target.value)} rows={4} placeholder={"https://meusite.com.br\nhttps://www.meusite.com.br\nhttp://localhost:3000"} className={baseInput} />
         {origins.length === 0 && <OriginsWarning />}
       </Field>
-
-      {/* Errors */}
       {(validationError ?? saveError) && (
         <div className="flex gap-2 p-3 rounded-xl bg-nb-danger/10 border border-nb-danger/30">
           <AlertTriangle className="w-4 h-4 text-nb-danger flex-shrink-0 mt-0.5" />
           <p className="text-xs text-nb-danger">{validationError ?? saveError}</p>
         </div>
       )}
-
-      {/* Actions */}
       <div className="flex items-center gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={saving}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-nb-primary text-white hover:bg-nb-primary-strong disabled:opacity-60 transition-colors"
-        >
+        <button type="submit" disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-nb-primary text-white hover:bg-nb-primary-strong disabled:opacity-60 transition-colors">
           {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           Salvar
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          className="px-4 py-2 rounded-xl text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors"
-        >
-          Cancelar
-        </button>
+        <button type="button" onClick={onCancel} disabled={saving} className="px-4 py-2 rounded-xl text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors">Cancelar</button>
       </div>
     </form>
   );
@@ -528,35 +353,22 @@ function WidgetForm({
 function ScriptPanel({ publicKey }: { publicKey: string }) {
   const [open, setOpen] = useState(false);
   const script = buildScript(publicKey);
-
   return (
     <div className="border border-nb-border rounded-xl overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-nb-elevated hover:bg-nb-soft transition-colors text-sm"
-      >
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 bg-nb-elevated hover:bg-nb-soft transition-colors text-sm">
         <div className="flex items-center gap-2 text-nb-secondary font-medium">
           <Code2 className="w-4 h-4 text-nb-muted" />
           Script de instalação
         </div>
-        {open ? (
-          <ChevronUp className="w-4 h-4 text-nb-muted" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-nb-muted" />
-        )}
+        {open ? <ChevronUp className="w-4 h-4 text-nb-muted" /> : <ChevronDown className="w-4 h-4 text-nb-muted" />}
       </button>
-
       {open && (
         <div className="bg-nb-bg border-t border-nb-border p-4 space-y-3">
           <p className="text-xs text-nb-muted">
             Cole este script no <code className="font-mono bg-nb-elevated px-1 rounded">&lt;head&gt;</code> ou antes do fechamento do{" "}
             <code className="font-mono bg-nb-elevated px-1 rounded">&lt;/body&gt;</code> do seu site.
-            O embed público será publicado na próxima etapa.
           </p>
-          <pre className="bg-nb-panel border border-nb-border rounded-xl p-3 text-xs font-mono text-nb-secondary overflow-x-auto whitespace-pre">
-            {script}
-          </pre>
+          <pre className="bg-nb-panel border border-nb-border rounded-xl p-3 text-xs font-mono text-nb-secondary overflow-x-auto whitespace-pre">{script}</pre>
           <CopyButton text={script} label="Copiar script" />
         </div>
       )}
@@ -574,20 +386,19 @@ function WidgetCard({
   onArchive,
   busy,
 }: {
-  channel: Channel;
+  channel: WebWidgetChannel;
   canEdit: boolean;
-  onEdit: (ch: Channel) => void;
-  onToggleStatus: (ch: Channel) => void;
-  onArchive: (ch: Channel) => void;
+  onEdit: (ch: WebWidgetChannel) => void;
+  onToggleStatus: (ch: WebWidgetChannel) => void;
+  onArchive: (ch: WebWidgetChannel) => void;
   busy: boolean;
 }) {
   return (
     <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4 hover:border-nb-border-strong transition-colors">
-      {/* Top row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
-            <Globe className="w-4.5 h-4.5 text-nb-muted" />
+            <Globe className="w-4 h-4 text-nb-muted" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-nb-text truncate">{channel.name}</p>
@@ -596,8 +407,6 @@ function WidgetCard({
         </div>
         <StatusBadge status={channel.status} />
       </div>
-
-      {/* Meta row */}
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div>
           <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Tema</p>
@@ -610,53 +419,22 @@ function WidgetCard({
         <div className="col-span-2">
           <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Domínios</p>
           {channel.allowed_origins.length === 0 ? (
-            <span className="inline-flex items-center gap-1 text-nb-warning">
-              <AlertTriangle className="w-3 h-3" />
-              Qualquer origem (sem restrição)
-            </span>
+            <span className="inline-flex items-center gap-1 text-nb-warning"><AlertTriangle className="w-3 h-3" />Qualquer origem (sem restrição)</span>
           ) : (
             <p className="text-nb-secondary truncate">{channel.allowed_origins.join(", ")}</p>
           )}
         </div>
       </div>
-
-      {/* Script */}
       <ScriptPanel publicKey={channel.public_key} />
-
-      {/* Actions */}
       {canEdit && (
         <div className="flex items-center gap-2 pt-1 border-t border-nb-border">
-          <button
-            type="button"
-            onClick={() => onEdit(channel)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:text-nb-text hover:border-nb-border-strong transition-colors"
-          >
-            Editar
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleStatus(channel)}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:text-nb-text hover:border-nb-border-strong disabled:opacity-50 transition-colors"
-          >
-            {busy ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Power className="w-3 h-3" />
-            )}
+          <button type="button" onClick={() => onEdit(channel)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:text-nb-text hover:border-nb-border-strong transition-colors">Editar</button>
+          <button type="button" onClick={() => onToggleStatus(channel)} disabled={busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:text-nb-text hover:border-nb-border-strong disabled:opacity-50 transition-colors">
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
             {channel.status === "active" ? "Inativar" : "Ativar"}
           </button>
-          <button
-            type="button"
-            onClick={() => onArchive(channel)}
-            disabled={busy}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors"
-          >
-            {busy ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Trash2 className="w-3 h-3" />
-            )}
+          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
             Arquivar
           </button>
         </div>
@@ -676,8 +454,8 @@ function WidgetFormModal({
   saveError,
 }: {
   title: string;
-  initial: FormState;
-  onSave: (f: FormState) => void;
+  initial: WidgetFormState;
+  onSave: (f: WidgetFormState) => void;
   onClose: () => void;
   saving: boolean;
   saveError: string | null;
@@ -685,27 +463,260 @@ function WidgetFormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-xl bg-nb-surface border border-nb-border rounded-2xl shadow-xl my-8">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-nb-border">
           <h2 className="text-base font-semibold text-nb-text">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="p-1.5 rounded-lg text-nb-muted hover:text-nb-secondary hover:bg-nb-elevated transition-colors"
-          >
+          <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-lg text-nb-muted hover:text-nb-secondary hover:bg-nb-elevated transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
-        {/* Body */}
         <div className="px-6 py-5">
-          <WidgetForm
-            initial={initial}
-            onSave={onSave}
-            onCancel={onClose}
-            saving={saving}
-            saveError={saveError}
-          />
+          <WidgetForm initial={initial} onSave={onSave} onCancel={onClose} saving={saving} saveError={saveError} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── WhatsApp icon ─────────────────────────────────────────────────────────────
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
+
+// ── WhatsApp form ─────────────────────────────────────────────────────────────
+
+type WaFormState = {
+  name: string;
+  display_phone_number: string;
+  phone_number_id: string;
+  waba_id: string;
+  business_id: string;
+  token_env_var: string;
+  status: "testing" | "active";
+};
+
+const INITIAL_WA_FORM: WaFormState = {
+  name: "WhatsApp",
+  display_phone_number: "",
+  phone_number_id: "",
+  waba_id: "",
+  business_id: "",
+  token_env_var: "WHATSAPP_ACCESS_TOKEN",
+  status: "testing",
+};
+
+const TOKEN_LOOKS_REAL_RE = /^EAAG|^EAA/;
+
+function WhatsAppForm({
+  onSave,
+  onCancel,
+  saving,
+  saveError,
+}: {
+  onSave: (f: WaFormState) => void;
+  onCancel: () => void;
+  saving: boolean;
+  saveError: string | null;
+}) {
+  const [form, setForm] = useState<WaFormState>(INITIAL_WA_FORM);
+  const [errors, setErrors] = useState<Partial<Record<keyof WaFormState, string>>>({});
+
+  function set<K extends keyof WaFormState>(key: K, val: WaFormState[K]) {
+    setForm((prev) => ({ ...prev, [key]: val }));
+    setErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });
+  }
+
+  function validate(): boolean {
+    const e: Partial<Record<keyof WaFormState, string>> = {};
+    if (!form.name.trim())            e.name            = "Nome obrigatório.";
+    if (!form.phone_number_id.trim()) e.phone_number_id = "Phone Number ID obrigatório.";
+    else if (!/^\d{5,}$/.test(form.phone_number_id.trim())) e.phone_number_id = "Phone Number ID deve conter apenas dígitos (mínimo 5).";
+    if (!form.waba_id.trim())         e.waba_id         = "WABA ID obrigatório.";
+    else if (!/^\d{5,}$/.test(form.waba_id.trim()))         e.waba_id         = "WABA ID deve conter apenas dígitos (mínimo 5).";
+    if (!form.token_env_var.trim())   e.token_env_var   = "Nome da variável de ambiente obrigatório.";
+    else {
+      const raw = form.token_env_var.trim();
+      const normalized = raw.startsWith("env:") ? raw.slice(4) : raw;
+      if (TOKEN_LOOKS_REAL_RE.test(normalized) || normalized.length > 80) {
+        e.token_env_var = "Não cole o token real. Crie uma variável de ambiente no Railway e informe apenas o nome dela.";
+      }
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (validate()) onSave(form);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Security notice */}
+      <div className="flex gap-2.5 p-3 rounded-xl bg-nb-warning/10 border border-nb-warning/30">
+        <AlertTriangle className="w-4 h-4 text-nb-warning flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-nb-warning leading-relaxed">
+          Por segurança, cole apenas o nome da variável de ambiente do token. Não cole o token real aqui.
+        </p>
+      </div>
+
+      <Field label="Nome do canal *">
+        <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={100} placeholder="Ex: WhatsApp Atendimento" className={errors.name ? baseInput + " border-nb-danger" : baseInput} />
+        {errors.name && <p className="text-xs text-nb-danger">{errors.name}</p>}
+      </Field>
+
+      <Field label="Número de exibição" hint="Visual e informativo — ex: +55 37 99999-9999">
+        <input type="text" value={form.display_phone_number} onChange={(e) => set("display_phone_number", e.target.value)} placeholder="Ex: +55 37 99999-9999" className={baseInput} />
+      </Field>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Phone Number ID *" hint="ID do número no Meta Cloud API. Usado para rotear mensagens recebidas.">
+          <input type="text" value={form.phone_number_id} onChange={(e) => set("phone_number_id", e.target.value.replace(/\D/g, ""))} placeholder="Ex: 123456789012345" className={errors.phone_number_id ? baseInput + " border-nb-danger" : baseInput} />
+          {errors.phone_number_id && <p className="text-xs text-nb-danger">{errors.phone_number_id}</p>}
+        </Field>
+        <Field label="WABA ID *" hint="ID da conta WhatsApp Business na Meta.">
+          <input type="text" value={form.waba_id} onChange={(e) => set("waba_id", e.target.value.replace(/\D/g, ""))} placeholder="Ex: 123456789012345" className={errors.waba_id ? baseInput + " border-nb-danger" : baseInput} />
+          {errors.waba_id && <p className="text-xs text-nb-danger">{errors.waba_id}</p>}
+        </Field>
+      </div>
+
+      <Field label="Business ID" hint="Opcional. ID do Business Manager na Meta.">
+        <input type="text" value={form.business_id} onChange={(e) => set("business_id", e.target.value.replace(/\D/g, ""))} placeholder="Ex: 123456789012345" className={baseInput} />
+      </Field>
+
+      <Field label="Variável de ambiente do token *" hint="Informe o nome da variável configurada no Railway. O token não será salvo no banco.">
+        <input type="text" value={form.token_env_var} onChange={(e) => set("token_env_var", e.target.value)} placeholder="WHATSAPP_ACCESS_TOKEN" className={errors.token_env_var ? baseInput + " border-nb-danger" : baseInput} />
+        {errors.token_env_var && <p className="text-xs text-nb-danger">{errors.token_env_var}</p>}
+      </Field>
+
+      <Field label="Status inicial" hint='Use "testing" enquanto valida o número. Troque para "active" quando estiver pronto.'>
+        <select value={form.status} onChange={(e) => set("status", e.target.value as WaFormState["status"])} className={baseInput}>
+          <option value="testing">testing — Em validação</option>
+          <option value="active">active — Pronto para uso</option>
+        </select>
+      </Field>
+
+      {saveError && (
+        <div className="flex gap-2 p-3 rounded-xl bg-nb-danger/10 border border-nb-danger/30">
+          <AlertTriangle className="w-4 h-4 text-nb-danger flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-nb-danger">{saveError}</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 pt-1">
+        <button type="submit" disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-nb-primary text-white hover:bg-nb-primary-strong disabled:opacity-60 transition-colors">
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Salvar canal
+        </button>
+        <button type="button" onClick={onCancel} disabled={saving} className="px-4 py-2 rounded-xl text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors">Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
+// ── WhatsApp channel card ─────────────────────────────────────────────────────
+
+function WhatsAppCard({
+  channel,
+  canEdit,
+  onArchive,
+  busy,
+}: {
+  channel: WhatsAppChannel;
+  canEdit: boolean;
+  onArchive: (ch: WhatsAppChannel) => void;
+  busy: boolean;
+}) {
+  const cfg = channel.config;
+  const waStatus = cfg.status ?? "—";
+  const statusColor = waStatus === "active" ? "text-nb-success" : waStatus === "disconnected" ? "text-nb-danger" : "text-nb-warning";
+
+  return (
+    <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4 hover:border-nb-border-strong transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center flex-shrink-0">
+            <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-nb-text truncate">{channel.name}</p>
+            <p className="text-xs text-nb-muted mt-0.5">{cfg.display_phone_number || "Sem número de exibição"}</p>
+          </div>
+        </div>
+        <StatusBadge status={channel.status} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Phone Number ID</p>
+          <p className="text-nb-secondary font-mono">{cfg.phone_number_id}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">WABA ID</p>
+          <p className="text-nb-secondary font-mono">{cfg.waba_id}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Status Meta</p>
+          <p className={`font-medium ${statusColor}`}>{waStatus}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Token</p>
+          <p className="text-nb-secondary font-mono truncate">{cfg.access_token_ref ?? "—"}</p>
+        </div>
+        {cfg.last_webhook_at && (
+          <div className="col-span-2">
+            <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Último webhook</p>
+            <p className="text-nb-secondary">{new Date(cfg.last_webhook_at).toLocaleString("pt-BR")}</p>
+          </div>
+        )}
+      </div>
+
+      {canEdit && (
+        <div className="flex items-center gap-2 pt-1 border-t border-nb-border">
+          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            Desconectar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── WhatsApp modal ────────────────────────────────────────────────────────────
+
+function WhatsAppFormModal({
+  onSave,
+  onClose,
+  saving,
+  saveError,
+}: {
+  onSave: (f: WaFormState) => void;
+  onClose: () => void;
+  saving: boolean;
+  saveError: string | null;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+      <div className="relative w-full max-w-xl bg-nb-surface border border-nb-border rounded-2xl shadow-xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-nb-border">
+          <div className="flex items-center gap-2.5">
+            <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+            <h2 className="text-base font-semibold text-nb-text">Conectar WhatsApp</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-lg text-nb-muted hover:text-nb-secondary hover:bg-nb-elevated transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-sm text-nb-muted mb-5">
+            Conecte um número WhatsApp Business usando os dados do Meta Cloud API. Configuração manual.
+          </p>
+          <WhatsAppForm onSave={onSave} onCancel={onClose} saving={saving} saveError={saveError} />
         </div>
       </div>
     </div>
@@ -721,16 +732,19 @@ export function ImplantarTab({
   agentId: string;
   role: MemberRole | null;
 }) {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [widgetChannels, setWidgetChannels] = useState<WebWidgetChannel[]>([]);
+  const [waChannels,     setWaChannels]     = useState<WhatsAppChannel[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [loadError,      setLoadError]      = useState<string | null>(null);
+  const fetchedRef = useRef(false);
 
   // Modal state
-  const [modal, setModal] = useState<"create" | { edit: Channel } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [widgetModal, setWidgetModal] = useState<"create" | { edit: WebWidgetChannel } | null>(null);
+  const [waModal,     setWaModal]     = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [saveError,   setSaveError]   = useState<string | null>(null);
 
-  // Per-card busy state (toggle/archive)
+  // Per-card busy
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // Success feedback
@@ -738,17 +752,17 @@ export function ImplantarTab({
 
   const writable = canWrite(role);
 
-  // ── Load ────────────────────────────────────────────────────────────────────
+  // ── Load ──────────────────────────────────────────────────────────────────
 
   const loadChannels = useCallback(async () => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     try {
-      const data = await api.channels.list({
-        channel_type: "web_widget",
-        agent_id: agentId,
-      });
-      setChannels(data);
+      const data = await api.channels.list({ agent_id: agentId });
+      setWidgetChannels(data.filter((c): c is WebWidgetChannel => c.channel_type === "web_widget"));
+      setWaChannels(data.filter((c): c is WhatsAppChannel => c.channel_type === "whatsapp"));
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Erro ao carregar widgets.");
+      setLoadError(e instanceof Error ? e.message : "Erro ao carregar canais.");
     } finally {
       setLoading(false);
     }
@@ -761,230 +775,242 @@ export function ImplantarTab({
     setTimeout(() => setSuccessMsg(null), 3000);
   }
 
-  // ── Create ──────────────────────────────────────────────────────────────────
+  // ── Widget CRUD ───────────────────────────────────────────────────────────
 
-  async function handleCreate(f: FormState) {
-    setSaving(true);
-    setSaveError(null);
+  async function handleWidgetCreate(f: WidgetFormState) {
+    setSaving(true); setSaveError(null);
     try {
-      const created = await api.channels.create(formToPayload(f, agentId, true) as import("@/lib/api").ChannelCreateInput);
-      setChannels((prev) => [created, ...prev]);
-      setModal(null);
+      const created = await api.channels.create(widgetFormToPayload(f, agentId, true) as WebWidgetChannelCreateInput);
+      setWidgetChannels((prev) => [created as WebWidgetChannel, ...prev]);
+      setWidgetModal(null);
       showSuccess("Widget criado com sucesso.");
     } catch (e) {
       setSaveError(e instanceof ApiError ? e.message : "Erro ao criar widget.");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
-  // ── Edit ────────────────────────────────────────────────────────────────────
-
-  async function handleEdit(ch: Channel, f: FormState) {
-    setSaving(true);
-    setSaveError(null);
+  async function handleWidgetEdit(ch: WebWidgetChannel, f: WidgetFormState) {
+    setSaving(true); setSaveError(null);
     try {
-      const updated = await api.channels.update(ch.id, formToPayload(f, agentId, false) as import("@/lib/api").ChannelUpdateInput);
-      setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      setModal(null);
+      const updated = await api.channels.update(ch.id, widgetFormToPayload(f, agentId, false));
+      setWidgetChannels((prev) => prev.map((c) => (c.id === updated.id ? updated as WebWidgetChannel : c)));
+      setWidgetModal(null);
       showSuccess("Widget atualizado.");
     } catch (e) {
       setSaveError(e instanceof ApiError ? e.message : "Erro ao salvar widget.");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
-  // ── Toggle status ────────────────────────────────────────────────────────────
-
-  async function handleToggleStatus(ch: Channel) {
+  async function handleWidgetToggleStatus(ch: WebWidgetChannel) {
     setBusyId(ch.id);
     try {
       const newStatus = ch.status === "active" ? "inactive" : "active";
       const updated = await api.channels.update(ch.id, { status: newStatus });
-      setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      setWidgetChannels((prev) => prev.map((c) => (c.id === updated.id ? updated as WebWidgetChannel : c)));
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Erro ao alterar status.");
-    } finally {
-      setBusyId(null);
-    }
+    } finally { setBusyId(null); }
   }
 
-  // ── Archive ──────────────────────────────────────────────────────────────────
-
-  async function handleArchive(ch: Channel) {
-    if (!confirm(`Arquivar "${ch.name}"? Esta ação não pode ser desfeita facilmente.`)) return;
+  async function handleWidgetArchive(ch: WebWidgetChannel) {
+    if (!confirm(`Arquivar "${ch.name}"?`)) return;
     setBusyId(ch.id);
     try {
       await api.channels.archive(ch.id);
-      setChannels((prev) => prev.filter((c) => c.id !== ch.id));
+      setWidgetChannels((prev) => prev.filter((c) => c.id !== ch.id));
       showSuccess("Widget arquivado.");
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "Erro ao arquivar widget.");
-    } finally {
-      setBusyId(null);
-    }
+    } finally { setBusyId(null); }
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── WhatsApp CRUD ─────────────────────────────────────────────────────────
+
+  async function handleWaCreate(f: WaFormState) {
+    setSaving(true); setSaveError(null);
+    const rawVar = f.token_env_var.trim();
+    const varName = rawVar.startsWith("env:") ? rawVar.slice(4) : rawVar;
+    const payload: WhatsAppChannelCreateInput = {
+      name: f.name.trim(),
+      channel_type: "whatsapp",
+      agent_id: agentId,
+      config: {
+        provider: "meta_cloud_api",
+        onboarding_type: "manual",
+        waba_id: f.waba_id.trim(),
+        phone_number_id: f.phone_number_id.trim(),
+        display_phone_number: f.display_phone_number.trim() || undefined,
+        business_id: f.business_id.trim() || undefined,
+        access_token_ref: `env:${varName}`,
+        status: f.status,
+      },
+    };
+    try {
+      const created = await api.channels.create(payload);
+      setWaChannels((prev) => [created as WhatsAppChannel, ...prev]);
+      setWaModal(false);
+      showSuccess("Canal WhatsApp conectado com sucesso.");
+    } catch (e) {
+      setSaveError(e instanceof ApiError ? e.message : "Erro ao criar canal WhatsApp.");
+    } finally { setSaving(false); }
+  }
+
+  async function handleWaArchive(ch: WhatsAppChannel) {
+    if (!confirm(`Desconectar "${ch.name}"? O canal deixará de receber mensagens.`)) return;
+    setBusyId(ch.id);
+    try {
+      await api.channels.archive(ch.id);
+      setWaChannels((prev) => prev.filter((c) => c.id !== ch.id));
+      showSuccess("Canal WhatsApp desconectado.");
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : "Erro ao desconectar canal.");
+    } finally { setBusyId(null); }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold text-nb-text">Implantar agente</h2>
-            <p className="text-sm text-nb-muted mt-1">
-              Conecte este agente a canais externos. Comece com um Web Widget para instalar no seu site.
-            </p>
-          </div>
-          {writable && (
-            <button
-              type="button"
-              onClick={() => { setSaveError(null); setModal("create"); }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-nb-primary text-white hover:bg-nb-primary-strong transition-colors flex-shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              Novo Web Widget
-            </button>
-          )}
+        <div>
+          <h2 className="text-base font-semibold text-nb-text">Implantar agente</h2>
+          <p className="text-sm text-nb-muted mt-1">
+            Conecte este agente a canais externos. Comece com um Web Widget para instalar no seu site.
+          </p>
         </div>
 
-        {/* Success toast */}
+        {/* Feedback */}
         {successMsg && (
           <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-nb-success/10 border border-nb-success/30 text-nb-success text-sm">
-            <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            {successMsg}
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />{successMsg}
           </div>
         )}
-
-        {/* Error */}
         {loadError && (
           <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-nb-danger/10 border border-nb-danger/30 text-nb-danger text-sm">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            {loadError}
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />{loadError}
           </div>
         )}
-
-        {/* Loading */}
         {loading && (
           <div className="flex items-center gap-2 text-nb-muted py-8 justify-center">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Carregando widgets...</span>
+            <span className="text-sm">Carregando canais...</span>
           </div>
         )}
 
-        {/* Empty state */}
-        {!loading && !loadError && channels.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-4 bg-nb-panel rounded-2xl border border-nb-border border-dashed">
-            <div className="w-12 h-12 rounded-2xl bg-nb-elevated border border-nb-border flex items-center justify-center">
-              <Globe className="w-6 h-6 text-nb-muted" />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-nb-secondary">Nenhum Web Widget criado ainda</p>
-              <p className="text-xs text-nb-muted mt-1">
-                Crie um widget para instalar este agente no seu site.
-              </p>
-            </div>
-            {writable && (
-              <button
-                type="button"
-                onClick={() => { setSaveError(null); setModal("create"); }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-nb-primary text-white hover:bg-nb-primary-strong transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Criar primeiro widget
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Widget cards */}
-        {!loading && channels.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {channels.map((ch) => (
-              <WidgetCard
-                key={ch.id}
-                channel={ch}
-                canEdit={writable}
-                onEdit={(c) => { setSaveError(null); setModal({ edit: c }); }}
-                onToggleStatus={handleToggleStatus}
-                onArchive={handleArchive}
-                busy={busyId === ch.id}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* WhatsApp channel card — coming soon */}
-        <div className="pt-4 border-t border-nb-border space-y-4">
-          <p className="text-xs text-nb-muted font-medium uppercase tracking-widest">Próximos canais</p>
-
-          {/* WhatsApp card */}
-          <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4 opacity-60">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
-                  {/* WhatsApp icon */}
-                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#25D366]" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
+        {!loading && (
+          <>
+            {/* ── Web Widget section ── */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-nb-muted" />
+                  <h3 className="text-sm font-semibold text-nb-secondary">Web Widget</h3>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-nb-text">WhatsApp</p>
-                  <p className="text-xs text-nb-muted mt-0.5">Meta Cloud API · Embedded Signup</p>
-                </div>
+                {writable && (
+                  <button type="button" onClick={() => { setSaveError(null); setWidgetModal("create"); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:border-nb-border-strong hover:text-nb-text transition-colors">
+                    <Plus className="w-3.5 h-3.5" />Novo widget
+                  </button>
+                )}
               </div>
-              <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-nb-elevated border border-nb-border text-nb-muted">
-                Em preparação
-              </span>
-            </div>
-            <p className="text-xs text-nb-muted leading-relaxed">
-              Conecte este agente a um número oficial do WhatsApp Business. A integração será feita via Meta Embedded Signup — sem necessidade de tokens manuais.
-            </p>
-            <button
-              disabled
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-nb-elevated border border-nb-border text-nb-muted text-sm font-medium cursor-not-allowed"
-            >
-              Conectar WhatsApp — Em breve
-            </button>
-          </div>
 
-          {/* Other future channels */}
-          <div className="flex flex-wrap gap-2">
-            {["Instagram", "Telegram", "Slack", "API"].map((name) => (
-              <span
-                key={name}
-                className="px-3 py-1 rounded-full text-xs font-medium bg-nb-elevated border border-nb-border text-nb-muted"
-              >
-                {name} · Em breve
-              </span>
-            ))}
-          </div>
-        </div>
+              {widgetChannels.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-3 bg-nb-panel rounded-2xl border border-nb-border border-dashed">
+                  <div className="w-10 h-10 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center">
+                    <Globe className="w-5 h-5 text-nb-muted" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-nb-secondary">Nenhum widget criado ainda</p>
+                    <p className="text-xs text-nb-muted mt-0.5">Crie um widget para instalar este agente no seu site.</p>
+                  </div>
+                  {writable && (
+                    <button type="button" onClick={() => { setSaveError(null); setWidgetModal("create"); }} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-nb-primary text-white hover:bg-nb-primary-strong transition-colors">
+                      <Plus className="w-4 h-4" />Criar primeiro widget
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {widgetChannels.map((ch) => (
+                    <WidgetCard key={ch.id} channel={ch} canEdit={writable} onEdit={(c) => { setSaveError(null); setWidgetModal({ edit: c }); }} onToggleStatus={handleWidgetToggleStatus} onArchive={handleWidgetArchive} busy={busyId === ch.id} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── WhatsApp section ── */}
+            <div className="space-y-4 pt-4 border-t border-nb-border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                  <h3 className="text-sm font-semibold text-nb-secondary">WhatsApp</h3>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-nb-elevated border border-nb-border text-nb-muted uppercase tracking-wide">Manual</span>
+                </div>
+                {writable && waChannels.length === 0 && (
+                  <button type="button" onClick={() => { setSaveError(null); setWaModal(true); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:border-nb-border-strong hover:text-nb-text transition-colors">
+                    <Plus className="w-3.5 h-3.5" />Conectar número
+                  </button>
+                )}
+              </div>
+
+              {waChannels.length === 0 ? (
+                <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center flex-shrink-0">
+                      <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-nb-text">WhatsApp Business</p>
+                      <p className="text-xs text-nb-muted mt-0.5">Meta Cloud API · Configuração manual</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-nb-muted leading-relaxed">
+                    Conecte este agente a um número oficial do WhatsApp Business. Use os dados do Meta Cloud API para configurar o canal.
+                  </p>
+                  {writable ? (
+                    <button type="button" onClick={() => { setSaveError(null); setWaModal(true); }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 text-[#25D366] text-sm font-medium hover:bg-[#25D366]/20 transition-colors">
+                      <MessageCircle className="w-4 h-4" />
+                      Conectar WhatsApp
+                    </button>
+                  ) : (
+                    <p className="text-xs text-nb-muted">Apenas administradores podem conectar canais.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {waChannels.map((ch) => (
+                    <WhatsAppCard key={ch.id} channel={ch} canEdit={writable} onArchive={handleWaArchive} busy={busyId === ch.id} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Outros canais (em breve) ── */}
+            <div className="pt-4 border-t border-nb-border">
+              <p className="text-xs text-nb-muted font-medium uppercase tracking-widest mb-3">Outros canais</p>
+              <div className="flex flex-wrap gap-2">
+                {["Instagram", "Telegram", "Slack", "API"].map((name) => (
+                  <span key={name} className="px-3 py-1 rounded-full text-xs font-medium bg-nb-elevated border border-nb-border text-nb-muted">
+                    {name} · Em breve
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Modal */}
-      {modal === "create" && (
-        <WidgetFormModal
-          title="Novo Web Widget"
-          initial={channelToForm()}
-          onSave={handleCreate}
-          onClose={() => setModal(null)}
-          saving={saving}
-          saveError={saveError}
-        />
+      {/* Widget modals */}
+      {widgetModal === "create" && (
+        <WidgetFormModal title="Novo Web Widget" initial={channelToWidgetForm()} onSave={handleWidgetCreate} onClose={() => setWidgetModal(null)} saving={saving} saveError={saveError} />
       )}
-      {modal !== null && modal !== "create" && (
-        <WidgetFormModal
-          title="Editar Web Widget"
-          initial={channelToForm(modal.edit)}
-          onSave={(f) => handleEdit(modal.edit, f)}
-          onClose={() => setModal(null)}
-          saving={saving}
-          saveError={saveError}
-        />
+      {widgetModal !== null && widgetModal !== "create" && (
+        <WidgetFormModal title="Editar Web Widget" initial={channelToWidgetForm(widgetModal.edit)} onSave={(f) => handleWidgetEdit(widgetModal.edit, f)} onClose={() => setWidgetModal(null)} saving={saving} saveError={saveError} />
+      )}
+
+      {/* WhatsApp modal */}
+      {waModal && (
+        <WhatsAppFormModal onSave={handleWaCreate} onClose={() => setWaModal(false)} saving={saving} saveError={saveError} />
       )}
     </>
   );

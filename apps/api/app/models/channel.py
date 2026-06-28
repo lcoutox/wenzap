@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 VALID_CHANNEL_TYPES = {"web_widget", "whatsapp", "instagram", "email", "api"}
-IMPLEMENTED_CHANNEL_TYPES = {"web_widget"}
+IMPLEMENTED_CHANNEL_TYPES = {"web_widget", "whatsapp"}
 VALID_CHANNEL_STATUSES = {"active", "inactive", "archived"}
 
 

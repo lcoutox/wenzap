@@ -438,21 +438,44 @@ export type WebWidgetConfig = {
   require_phone: boolean;
 };
 
-export type Channel = {
+export type WhatsAppChannelConfig = {
+  provider: "meta_cloud_api";
+  onboarding_type: "manual" | "embedded_signup";
+  waba_id: string;
+  phone_number_id: string;
+  display_phone_number?: string | null;
+  business_id?: string | null;
+  access_token_ref?: string | null;
+  status?: "testing" | "active" | "disconnected";
+  connected_at?: string | null;
+  last_webhook_at?: string | null;
+};
+
+type ChannelBase = {
   id: string;
   workspace_id: string;
   agent_id: string;
-  channel_type: "web_widget";
   name: string;
   public_key: string;
   status: ChannelStatus;
-  config: WebWidgetConfig;
   allowed_origins: string[];
   created_at: string;
   updated_at: string;
 };
 
-export type ChannelCreateInput = {
+export type WebWidgetChannel = ChannelBase & {
+  channel_type: "web_widget";
+  config: WebWidgetConfig;
+};
+
+export type WhatsAppChannel = ChannelBase & {
+  channel_type: "whatsapp";
+  config: WhatsAppChannelConfig;
+};
+
+export type Channel = WebWidgetChannel | WhatsAppChannel;
+
+export type WebWidgetChannelCreateInput = {
   name: string;
   channel_type: "web_widget";
   agent_id: string;
@@ -460,10 +483,28 @@ export type ChannelCreateInput = {
   allowed_origins?: string[];
 };
 
+export type WhatsAppChannelCreateInput = {
+  name: string;
+  channel_type: "whatsapp";
+  agent_id: string;
+  config: {
+    provider: "meta_cloud_api";
+    onboarding_type: "manual";
+    waba_id: string;
+    phone_number_id: string;
+    display_phone_number?: string;
+    business_id?: string;
+    access_token_ref: string;
+    status: "testing" | "active";
+  };
+};
+
+export type ChannelCreateInput = WebWidgetChannelCreateInput | WhatsAppChannelCreateInput;
+
 export type ChannelUpdateInput = {
   name?: string;
   status?: "active" | "inactive";
-  config?: Partial<WebWidgetConfig>;
+  config?: Partial<WebWidgetConfig> | Partial<WhatsAppChannelConfig>;
   allowed_origins?: string[];
 };
 
