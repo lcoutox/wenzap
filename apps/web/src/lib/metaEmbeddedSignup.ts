@@ -312,10 +312,26 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
 
     window.FB!.login(
       (response) => {
+        // Always log the full response shape (never log raw token/code values)
+        const authKeys = response.authResponse ? Object.keys(response.authResponse) : [];
+        const rawCode = (response.authResponse as Record<string, unknown> | null | undefined)?.["code"];
+        console.info("[WA-Signup] FB.login response", {
+          status: response?.status,
+          hasAuthResponse: Boolean(response?.authResponse),
+          authResponseKeys: authKeys,
+          hasCode: Boolean(rawCode),
+          hasAccessToken: Boolean((response.authResponse as Record<string, unknown> | null | undefined)?.["accessToken"]),
+          grantedScopes: (response.authResponse as Record<string, unknown> | null | undefined)?.["grantedScopes"],
+          declinedScopes: (response.authResponse as Record<string, unknown> | null | undefined)?.["declinedScopes"],
+          codePreview: rawCode ? `${String(rawCode).slice(0, 8)}...` : null,
+          debugId,
+        });
+
         logSignup("embedded_signup.fb.login.callback", {
           debugId,
           status: response.status,
           hasAuthResponse: response.authResponse != null,
+          authResponseKeys: authKeys,
         });
 
         if (response.status !== "connected" || !response.authResponse) {
@@ -336,13 +352,19 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
           return;
         }
 
-        code = response.authResponse.code ?? null;
+        code = (response.authResponse as Record<string, unknown>)["code"] as string | null ?? null;
 
         if (!code) {
           cleanup();
-          logSignup("embedded_signup.fb.login.no_code", { debugId });
+          logSignup("embedded_signup.fb.login.no_code", {
+            debugId,
+            authResponseKeys: authKeys,
+            hasAccessToken: Boolean((response.authResponse as Record<string, unknown>)["accessToken"]),
+          });
           const err = new Error(
-            "Autorização recebida da Meta, mas o código estava ausente. Tente novamente.",
+            "A Meta concluiu o login, mas não retornou o código de autorização. " +
+            "Verifique se a configuração do Facebook Login for Business está usando " +
+            "response_type=code e override_default_response_type=true.",
           );
           captureSignupError(err, {
             step: "fb_login_no_code",
@@ -438,7 +460,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
         override_default_response_type: true,
         extras: {
           feature: "whatsapp_embedded_signup",
-          sessionInfoVersion: 2,
+          sessionInfoVersion: 3,
         },
       },
     );
