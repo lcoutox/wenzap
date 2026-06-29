@@ -21,7 +21,7 @@ declare global {
       }) => void;
       login: (
         callback: (response: { authResponse?: { code?: string } | null; status: string }) => void,
-        options: { config_id: string; response_type: string; override_default_response_type: boolean },
+        options: { config_id: string; response_type: string; override_default_response_type: boolean; redirect_uri?: string },
       ) => void;
     };
     fbAsyncInit?: () => void;
@@ -30,6 +30,7 @@ declare global {
 
 export interface EmbeddedSignupData {
   code: string;
+  redirect_uri: string;
 }
 
 let sdkLoadPromise: Promise<void> | null = null;
@@ -98,6 +99,11 @@ export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
   }
 
   return new Promise<EmbeddedSignupData>((resolve, reject) => {
+    // The redirect_uri passed to FB.login must match exactly what the backend
+    // sends to Meta during code exchange. We use the origin root so it can be
+    // registered as a valid OAuth redirect URI in the Facebook app settings.
+    const redirect_uri = window.location.origin + "/";
+
     window.FB!.login(
       (response) => {
         if (response.status !== "connected" || !response.authResponse) {
@@ -111,13 +117,14 @@ export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
           return;
         }
 
-        resolve({ code });
+        resolve({ code, redirect_uri });
       },
       {
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
-      },
+        redirect_uri,
+      } as Parameters<NonNullable<typeof window.FB>["login"]>[1],
     );
   });
 }

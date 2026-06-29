@@ -147,21 +147,24 @@ def _require_meta_config() -> tuple[str, str]:
     return app_id, app_secret
 
 
-def exchange_code_for_short_lived_token(code: str) -> str:
-    """Exchange Meta authorization code for a short-lived user access token."""
+def exchange_code_for_short_lived_token(code: str, redirect_uri: str | None = None) -> str:
+    """Exchange Meta authorization code for a short-lived user access token.
+
+    redirect_uri must match exactly what was passed to FB.login() on the frontend.
+    Meta validates this to prevent code interception attacks.
+    """
     app_id, app_secret = _require_meta_config()
     url = f"{_meta_base_url()}/oauth/access_token"
+    params: dict[str, str] = {
+        "client_id": app_id,
+        "client_secret": app_secret,
+        "code": code,
+        "redirect_uri": redirect_uri if redirect_uri is not None else "",
+    }
     try:
         resp = httpx.get(
             url,
-            params={
-                "client_id": app_id,
-                "client_secret": app_secret,
-                "code": code,
-                # JS SDK with response_type="code" requires redirect_uri="" on backend exchange.
-                # Meta validates that this matches the implicit redirect_uri used in FB.login.
-                "redirect_uri": "",
-            },
+            params=params,
             timeout=_META_TIMEOUT,
         )
         resp.raise_for_status()

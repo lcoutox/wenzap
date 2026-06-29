@@ -739,6 +739,7 @@ export const api = {
       exchange: (payload: {
         code: string;
         state: string;
+        redirect_uri?: string | null;
         waba_id?: string | null;
         phone_number_id?: string | null;
         business_id?: string | null;

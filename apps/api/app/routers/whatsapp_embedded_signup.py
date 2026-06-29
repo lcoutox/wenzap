@@ -114,7 +114,7 @@ def exchange(
         "embedded_signup exchange started workspace_id=%s",
         current_workspace.id,
     )
-    short_lived_token = signup_svc.exchange_code_for_short_lived_token(data.code)
+    short_lived_token = signup_svc.exchange_code_for_short_lived_token(data.code, data.redirect_uri)
 
     # 3. Exchange short-lived → long-lived token
     long_lived_token, expires_at = signup_svc.exchange_for_long_lived_token(short_lived_token)

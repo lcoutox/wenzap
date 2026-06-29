@@ -40,6 +40,8 @@ class WhatsAppEmbeddedSignupStateOut(BaseModel):
 class WhatsAppEmbeddedSignupExchangeRequest(BaseModel):
     code: str = Field(min_length=1, max_length=512)
     state: str = Field(min_length=1, max_length=512)
+    # Must match the redirect_uri passed to FB.login() so Meta can validate the code.
+    redirect_uri: str | None = Field(default=None, max_length=512)
     # Optional: when omitted, backend auto-discovers from the token via Meta API.
     # The Facebook Login for Business flow does not return these via postMessage;
     # they are discovered from the token's granular_scopes after code exchange.
