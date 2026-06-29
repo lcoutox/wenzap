@@ -21,6 +21,7 @@ Design decisions:
     RAG context. The run records rag_used=False and the retrieval error message.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -41,6 +42,8 @@ from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.services.agent_guardrails import detect_prompt_injection
 from app.services.conversation_context_builder import build_conversation_context
+
+logger = logging.getLogger(__name__)
 
 # Re-use the same executable model set as the Playground.
 # Inbox replies use the same LLM infrastructure.
@@ -98,13 +101,27 @@ def generate_conversation_agent_reply(
 
     # ── 2. Conversation eligibility ───────────────────────────────────────────
     if not conversation.ai_enabled:
-        return None  # ai_disabled
+        logger.info(
+            "agent_reply_skip reason=ai_disabled conversation_id=%s", conversation.id
+        )
+        return None
     if conversation.agent_id is None:
-        return None  # no_agent — can't create a run without FK
+        logger.info(
+            "agent_reply_skip reason=no_agent conversation_id=%s", conversation.id
+        )
+        return None
     if conversation.status not in _ALLOWED_CONV_STATUSES:
-        return None  # status_not_allowed
+        logger.info(
+            "agent_reply_skip reason=status_%s conversation_id=%s",
+            conversation.status, conversation.id,
+        )
+        return None
     if conversation.assigned_user_id is not None:
-        return None  # human_assigned
+        logger.info(
+            "agent_reply_skip reason=human_assigned conversation_id=%s assigned_user_id=%s",
+            conversation.id, conversation.assigned_user_id,
+        )
+        return None
 
     # ── 3. Load agent (workspace-scoped) ─────────────────────────────────────
     agent = db.scalar(
@@ -114,8 +131,11 @@ def generate_conversation_agent_reply(
         )
     )
     if agent is None:
-        # Agent deleted or belongs to another workspace — can't create a valid run.
-        return None  # agent_not_found
+        logger.info(
+            "agent_reply_skip reason=agent_not_found conversation_id=%s agent_id=%s",
+            conversation.id, conversation.agent_id,
+        )
+        return None
 
     if agent.status != "active":
         return _save_run(
@@ -325,6 +345,11 @@ def generate_conversation_agent_reply(
     db.commit()
     db.refresh(run)
 
+    logger.info(
+        "agent_reply_success conversation_id=%s run_id=%s response_message_id=%s",
+        conversation.id, run.id, response_msg.id,
+    )
+
     # Deliver agent reply to WhatsApp when the conversation came from that channel.
     if conversation.channel_type == "whatsapp":
         try:
@@ -361,6 +386,10 @@ def _save_run(
     retrieval_duration_ms: int | None = None,
 ) -> ConversationAgentRun:
     """Persist a non-success run and commit."""
+    logger.info(
+        "agent_reply_run status=%s error_code=%s conversation_id=%s error=%s",
+        status, error_code, conversation.id, error_message,
+    )
     run = ConversationAgentRun(
         workspace_id=workspace_id,
         conversation_id=conversation.id,

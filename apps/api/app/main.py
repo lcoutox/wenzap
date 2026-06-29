@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -20,6 +22,18 @@ from app.routers import (
     whatsapp_webhooks,
     workspaces,
 )
+
+# Emit INFO-level logs for application code so operational events
+# (webhook processing, auto-reply checks, outbound delivery) are visible
+# in Railway / any log aggregator without extra tooling.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s: %(message)s",
+)
+# Keep noisy third-party loggers quiet.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("anthropic").setLevel(logging.WARNING)
 
 app = FastAPI(title="Nexbrain API", version="0.1.0")
 
