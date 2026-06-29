@@ -147,7 +147,7 @@ def _require_meta_config() -> tuple[str, str]:
     return app_id, app_secret
 
 
-def exchange_code_for_short_lived_token(code: str) -> str:
+def exchange_code_for_short_lived_token(code: str, debug_id: str = "") -> str:
     """Exchange Meta authorization code for a short-lived user access token.
 
     No redirect_uri is sent — the WhatsApp Embedded Signup JS SDK flow uses
@@ -170,7 +170,8 @@ def exchange_code_for_short_lived_token(code: str) -> str:
         data = resp.json()
     except httpx.HTTPStatusError as exc:
         logger.warning(
-            "meta_code_exchange failed status=%s body=%s",
+            "embedded_signup_meta_code_exchange_failed debug_id=%s status=%s error=%s",
+            debug_id,
             exc.response.status_code,
             _safe_meta_error(exc),
         )
@@ -179,7 +180,11 @@ def exchange_code_for_short_lived_token(code: str) -> str:
             detail="meta_token_exchange_failed",
         ) from exc
     except httpx.RequestError as exc:
-        logger.warning("meta_code_exchange request_error type=%s", type(exc).__name__)
+        logger.warning(
+            "embedded_signup_meta_code_exchange_failed debug_id=%s error_type=%s",
+            debug_id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="meta_token_exchange_failed",
@@ -187,7 +192,10 @@ def exchange_code_for_short_lived_token(code: str) -> str:
 
     token = data.get("access_token")
     if not token:
-        logger.warning("meta_code_exchange missing access_token in response")
+        logger.warning(
+            "embedded_signup_meta_code_exchange_failed debug_id=%s error=missing_access_token",
+            debug_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="meta_token_exchange_failed",
@@ -195,7 +203,9 @@ def exchange_code_for_short_lived_token(code: str) -> str:
     return str(token)
 
 
-def exchange_for_long_lived_token(short_lived_token: str) -> tuple[str, datetime | None]:
+def exchange_for_long_lived_token(
+    short_lived_token: str, debug_id: str = ""
+) -> tuple[str, datetime | None]:
     """
     Exchange a short-lived user token for a long-lived one (~60 days).
 
@@ -219,7 +229,8 @@ def exchange_for_long_lived_token(short_lived_token: str) -> tuple[str, datetime
         data = resp.json()
     except httpx.HTTPStatusError as exc:
         logger.warning(
-            "meta_long_lived_exchange failed status=%s body=%s",
+            "embedded_signup_long_token_exchange_failed debug_id=%s status=%s error=%s",
+            debug_id,
             exc.response.status_code,
             _safe_meta_error(exc),
         )
@@ -228,7 +239,11 @@ def exchange_for_long_lived_token(short_lived_token: str) -> tuple[str, datetime
             detail="meta_token_exchange_failed",
         ) from exc
     except httpx.RequestError as exc:
-        logger.warning("meta_long_lived_exchange request_error type=%s", type(exc).__name__)
+        logger.warning(
+            "embedded_signup_long_token_exchange_failed debug_id=%s error_type=%s",
+            debug_id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="meta_token_exchange_failed",
@@ -236,7 +251,10 @@ def exchange_for_long_lived_token(short_lived_token: str) -> tuple[str, datetime
 
     token = data.get("access_token")
     if not token:
-        logger.warning("meta_long_lived_exchange missing access_token in response")
+        logger.warning(
+            "embedded_signup_long_token_exchange_failed debug_id=%s error=missing_access_token",
+            debug_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="meta_token_exchange_failed",
@@ -304,7 +322,9 @@ def fetch_waba_id_from_token(token: str) -> str:
     )
 
 
-def fetch_waba_phone_numbers(waba_id: str, token: str) -> list[dict[str, Any]]:
+def fetch_waba_phone_numbers(
+    waba_id: str, token: str, debug_id: str = ""
+) -> list[dict[str, Any]]:
     """
     Fetch the phone numbers associated with a WhatsApp Business Account.
 
@@ -325,7 +345,8 @@ def fetch_waba_phone_numbers(waba_id: str, token: str) -> list[dict[str, Any]]:
         data = resp.json()
     except httpx.HTTPStatusError as exc:
         logger.warning(
-            "meta_waba_phone_numbers failed waba_id=%s status=%s body=%s",
+            "embedded_signup_phone_numbers_fetch_failed debug_id=%s waba_id=%s status=%s error=%s",
+            debug_id,
             waba_id,
             exc.response.status_code,
             _safe_meta_error(exc),
@@ -336,7 +357,8 @@ def fetch_waba_phone_numbers(waba_id: str, token: str) -> list[dict[str, Any]]:
         ) from exc
     except httpx.RequestError as exc:
         logger.warning(
-            "meta_waba_phone_numbers request_error waba_id=%s type=%s",
+            "embedded_signup_phone_numbers_fetch_failed debug_id=%s waba_id=%s error_type=%s",
+            debug_id,
             waba_id,
             type(exc).__name__,
         )
@@ -385,6 +407,7 @@ def create_or_update_whatsapp_channel(
     business_id: str | None,
     long_lived_token: str,
     expires_at: datetime | None,
+    debug_id: str = "",
 ) -> ChannelOut:
     """
     Create or update the WhatsApp channel and its encrypted credential.

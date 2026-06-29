@@ -731,21 +731,32 @@ export const api = {
     archive: (id: string) =>
       cookieFetch<Channel>(`/channels/${id}/archive`, { method: "POST" }),
     whatsappEmbeddedSignup: {
-      createState: (agentId: string) =>
+      createState: (agentId: string, debugId?: string) =>
         cookieFetch<{ state: string; expires_in: number }>(
           "/channels/whatsapp/embedded-signup/state",
-          { method: "POST", body: JSON.stringify({ agent_id: agentId }) },
+          {
+            method: "POST",
+            body: JSON.stringify({ agent_id: agentId }),
+            headers: debugId ? { "X-Wenzap-Debug-Id": debugId } : {},
+          },
         ),
-      exchange: (payload: {
-        code: string;
-        state: string;
-        waba_id: string;
-        phone_number_id: string;
-        business_id?: string | null;
-      }) =>
+      exchange: (
+        payload: {
+          code: string;
+          state: string;
+          waba_id: string;
+          phone_number_id: string;
+          business_id?: string | null;
+        },
+        debugId?: string,
+      ) =>
         cookieFetch<Channel>(
           "/channels/whatsapp/embedded-signup/exchange",
-          { method: "POST", body: JSON.stringify(payload) },
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+            headers: debugId ? { "X-Wenzap-Debug-Id": debugId } : {},
+          },
         ),
     },
   },
