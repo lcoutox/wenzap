@@ -133,34 +133,45 @@ export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
 
     window.FB!.login(
       (response) => {
-        cleanup();
-
         if (response.status !== "connected" || !response.authResponse) {
+          cleanup();
           reject(new Error("Conexão cancelada. Tente novamente quando quiser."));
           return;
         }
 
         code = response.authResponse.code ?? null;
         if (!code) {
+          cleanup();
           reject(new Error("Código de autorização não recebido da Meta. Tente novamente."));
           return;
         }
 
-        if (!wabaId || !phoneNumberId) {
-          reject(
-            new Error(
-              "Não foi possível obter os dados do WhatsApp Business. Certifique-se de completar o fluxo da Meta.",
-            ),
-          );
-          return;
+        // The WA_EMBEDDED_SIGNUP postMessage may arrive slightly after the FB.login
+        // callback fires. Poll for up to 2 seconds before giving up.
+        const deadline = Date.now() + 2000;
+        function waitForWabaData() {
+          if (wabaId && phoneNumberId) {
+            cleanup();
+            resolve({
+              code: code!,
+              waba_id: wabaId,
+              phone_number_id: phoneNumberId,
+              business_id: businessId,
+            });
+            return;
+          }
+          if (Date.now() >= deadline) {
+            cleanup();
+            reject(
+              new Error(
+                "Não foi possível obter os dados do WhatsApp Business. Certifique-se de completar o fluxo da Meta.",
+              ),
+            );
+            return;
+          }
+          setTimeout(waitForWabaData, 50);
         }
-
-        resolve({
-          code,
-          waba_id: wabaId,
-          phone_number_id: phoneNumberId,
-          business_id: businessId,
-        });
+        waitForWabaData();
       },
       {
         config_id: configId,
