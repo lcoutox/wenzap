@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # ── WhatsApp / Meta ───────────────────────────────────────────────────────
     whatsapp_webhook_verify_token: str = ""
 
+    # Meta App credentials — used by Embedded Signup exchange endpoint.
+    # META_APP_SECRET must never be exposed to the frontend.
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+    meta_graph_api_version: str = "v25.0"
+
     # ── Credential encryption ─────────────────────────────────────────────────
     # Required for encrypted channel credentials (db: token refs).
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # noqa: E501
