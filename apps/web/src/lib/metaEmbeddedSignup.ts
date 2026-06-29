@@ -190,6 +190,11 @@ export function loadMetaSdk(): Promise<void> {
 
     window.fbAsyncInit = () => {
       window.FB!.init({ appId, autoLogAppEvents: true, xfbml: false, version });
+      console.info("[WA-Signup] FB SDK init config", {
+        appIdPresent: Boolean(appId),
+        appIdPreview: appId ? `${appId.slice(0, 6)}...${appId.slice(-4)}` : null,
+        graphVersion: version,
+      });
       resolve();
     };
 
@@ -220,6 +225,15 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
   const appId = process.env.NEXT_PUBLIC_META_APP_ID;
   const graphVersion = process.env.NEXT_PUBLIC_META_GRAPH_API_VERSION ?? "v25.0";
+
+  // Log public env values (safe previews only — no full IDs)
+  console.info("[WA-Signup] public env check", {
+    metaAppIdPresent: Boolean(appId),
+    metaAppIdPreview: appId ? `${appId.slice(0, 6)}...${appId.slice(-4)}` : null,
+    metaConfigIdPresent: Boolean(configId),
+    metaConfigIdPreview: configId ? `${configId.slice(0, 6)}...${configId.slice(-4)}` : null,
+    graphVersion,
+  });
 
   logSignup("embedded_signup.fb.login.start", { debugId, configId: !!configId, appId: !!appId });
 
@@ -310,6 +324,27 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
     window.addEventListener("message", onMessage);
     const cleanup = () => window.removeEventListener("message", onMessage);
 
+    const loginOptions = {
+      config_id: configId,
+      response_type: "code",
+      override_default_response_type: true,
+      extras: {
+        feature: "whatsapp_embedded_signup",
+        sessionInfoVersion: 3,
+      },
+    };
+
+    // Log the exact object being passed — same reference, no copy
+    console.info("[WA-Signup] FB.login options", {
+      config_id: loginOptions.config_id,
+      configIdPreview: loginOptions.config_id
+        ? `${loginOptions.config_id.slice(0, 6)}...${loginOptions.config_id.slice(-4)}`
+        : null,
+      response_type: loginOptions.response_type,
+      override_default_response_type: loginOptions.override_default_response_type,
+      extras: loginOptions.extras,
+    });
+
     window.FB!.login(
       (response) => {
         // Always log the full response shape (never log raw token/code values)
@@ -360,6 +395,9 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
             debugId,
             authResponseKeys: authKeys,
             hasAccessToken: Boolean((response.authResponse as Record<string, unknown>)["accessToken"]),
+            configIdPreview: configId ? `${configId.slice(0, 6)}...${configId.slice(-4)}` : null,
+            appIdPreview: appId ? `${appId.slice(0, 6)}...${appId.slice(-4)}` : null,
+            graphVersion,
           });
           const err = new Error(
             "A Meta concluiu o login, mas não retornou o código de autorização. " +
@@ -454,15 +492,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
 
         waitForSessionInfo();
       },
-      {
-        config_id: configId,
-        response_type: "code",
-        override_default_response_type: true,
-        extras: {
-          feature: "whatsapp_embedded_signup",
-          sessionInfoVersion: 3,
-        },
-      },
+      loginOptions,
     );
   });
 }
