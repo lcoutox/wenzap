@@ -47,6 +47,7 @@ from app.models.channel import Channel
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
+from app.models.user import User
 from app.models.workspace import Workspace
 from app.services.whatsapp_inbound_service import process_inbound_message
 from app.services.whatsapp_webhook_parser import WhatsAppContact, WhatsAppInboundMessage
@@ -756,22 +757,22 @@ class TestAutoReplyEnabled:
 
         mock_reply.assert_not_called()
 
-    def test_existing_conversation_ai_enabled_preserved(
-        self, db: Session, workspace_a: Workspace
+    def test_human_takeover_preserves_ai_disabled(
+        self, db: Session, workspace_a: Workspace, user_a: User
     ):
-        """Subsequent messages don't override ai_enabled — human takeover is respected."""
+        """Human takeover (assigned_user_id set) prevents AI re-enabling on next message."""
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
             db, workspace_a.id, agent.id,
-            phone_number_id="AR_PID_PRESERVE",
+            phone_number_id="AR_PID_TAKEOVER",
             auto_reply_enabled=True,
         )
         # First message creates conversation with ai_enabled=True.
         process_inbound_message(
-            db, _make_msg(phone_number_id="AR_PID_PRESERVE", wamid="wamid.AR_PRES_001")
+            db, _make_msg(phone_number_id="AR_PID_TAKEOVER", wamid="wamid.AR_TKO_001")
         )
 
-        # Operator manually pauses AI on the conversation.
+        # Human operator takes over (realistic state: both fields set together).
         conv = db.scalar(
             select(Conversation).where(
                 Conversation.workspace_id == workspace_a.id,
@@ -780,16 +781,63 @@ class TestAutoReplyEnabled:
         )
         assert conv is not None
         conv.ai_enabled = False
+        conv.assigned_user_id = user_a.id
         db.commit()
 
-        # Second message arrives — should NOT re-enable AI.
+        # Second message arrives — AI must NOT be re-enabled or triggered.
         with patch(
             "app.services.conversation_agent_reply_service.generate_conversation_agent_reply"
         ) as mock_reply:
             process_inbound_message(
-                db, _make_msg(phone_number_id="AR_PID_PRESERVE", wamid="wamid.AR_PRES_002")
+                db, _make_msg(phone_number_id="AR_PID_TAKEOVER", wamid="wamid.AR_TKO_002")
             )
 
         mock_reply.assert_not_called()
         db.refresh(conv)
         assert conv.ai_enabled is False
+        assert conv.assigned_user_id == user_a.id
+
+    def test_existing_conversation_syncs_ai_enabled_when_channel_enables_auto_reply(
+        self, db: Session, workspace_a: Workspace
+    ):
+        """
+        Production scenario: conversation was created before auto_reply_enabled was
+        toggled on, so it has ai_enabled=False and assigned_user_id=None.
+        When a new message arrives and the channel now has auto_reply_enabled=True,
+        the inbound service must sync ai_enabled=True and trigger the agent reply.
+        """
+        agent = _make_agent(db, workspace_a.id)
+        # Channel starts with auto_reply_enabled=False.
+        ch = _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_SYNC",
+            auto_reply_enabled=False,
+        )
+        # First message: conversation created with ai_enabled=False.
+        process_inbound_message(
+            db, _make_msg(phone_number_id="AR_PID_SYNC", wamid="wamid.AR_SYNC_001")
+        )
+        conv = db.scalar(
+            select(Conversation).where(
+                Conversation.workspace_id == workspace_a.id,
+                Conversation.channel_type == "whatsapp",
+            )
+        )
+        assert conv is not None
+        assert conv.ai_enabled is False
+
+        # Operator enables auto_reply on the channel.
+        ch.config_json = {**ch.config_json, "auto_reply_enabled": True}
+        db.commit()
+
+        # Second message: inbound should sync ai_enabled=True and dispatch reply.
+        with patch(
+            "app.services.conversation_agent_reply_service.generate_conversation_agent_reply"
+        ) as mock_reply:
+            process_inbound_message(
+                db, _make_msg(phone_number_id="AR_PID_SYNC", wamid="wamid.AR_SYNC_002")
+            )
+
+        mock_reply.assert_called_once()
+        db.refresh(conv)
+        assert conv.ai_enabled is True

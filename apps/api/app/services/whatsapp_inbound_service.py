@@ -82,9 +82,31 @@ def _process(db: Session, msg: WhatsAppInboundMessage) -> ConversationMessage | 
     )
     message, is_new = _create_message_idempotent(db, workspace_id, conversation, msg)
 
+    logger.info(
+        "whatsapp_auto_reply_check conversation_id=%s ai_enabled=%s agent_id=%s "
+        "assigned_user_id=%s status=%s is_new=%s auto_reply_enabled=%s",
+        conversation.id,
+        conversation.ai_enabled,
+        conversation.agent_id,
+        conversation.assigned_user_id,
+        conversation.status,
+        is_new,
+        auto_reply_enabled,
+    )
+
     # Only trigger auto-reply for genuinely new messages, never for duplicates.
     if is_new and conversation.ai_enabled:
+        logger.info(
+            "whatsapp_auto_reply_trigger conversation_id=%s message_id=%s",
+            conversation.id,
+            message.id,
+        )
         _trigger_agent_reply(db, workspace_id, conversation, message)
+    elif is_new:
+        logger.info(
+            "whatsapp_auto_reply_skip conversation_id=%s reason=ai_disabled",
+            conversation.id,
+        )
 
     return message
 
@@ -181,7 +203,22 @@ def _get_or_create_conversation(
             contact.id,
             auto_reply_enabled,
         )
-    # Existing conversation: preserve ai_enabled — do not override operator's decision.
+    else:
+        # Existing conversation: respect human takeover (assigned_user_id is set).
+        # If no human has taken over and the channel now has auto_reply_enabled,
+        # sync ai_enabled=True so conversations created before the feature was turned
+        # on can also receive automatic replies.
+        if (
+            auto_reply_enabled
+            and not conversation.ai_enabled
+            and conversation.assigned_user_id is None
+        ):
+            conversation.ai_enabled = True
+            db.flush()
+            logger.info(
+                "whatsapp_inbound synced ai_enabled=True on existing conversation id=%s",
+                conversation.id,
+            )
 
     return conversation
 

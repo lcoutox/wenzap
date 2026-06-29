@@ -74,8 +74,9 @@ export function ConversationThread({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  // Scroll-to-bottom is only automatic on initial load and after the user sends.
-  // Polling updates must NOT scroll, so we track intent with this ref.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Scroll-to-bottom is only automatic on initial load, after the user sends,
+  // or when polling brings new messages and the user was already near the bottom.
   const shouldScrollRef = useRef(false);
 
   function handleMessageUpdated(updated: ConversationMessage) {
@@ -163,7 +164,19 @@ export function ConversationThread({
           api.conversations.messages.list(conversationId, { limit: 200 }),
         ]);
         setConversation(conv);
-        setMessages((prev) => mergeMessages(prev, msgs));
+        // Capture near-bottom state before updating so we can scroll after
+        // new messages are rendered, without disrupting users reading history.
+        const el = scrollContainerRef.current;
+        const nearBottom = el
+          ? el.scrollHeight - el.scrollTop - el.clientHeight < 160
+          : false;
+        setMessages((prev) => {
+          const merged = mergeMessages(prev, msgs);
+          if (merged.length > prev.length && nearBottom) {
+            shouldScrollRef.current = true;
+          }
+          return merged;
+        });
       } catch { /* silent — next tick will retry */ }
     };
     const id = setInterval(() => void poll(), 3000);
@@ -187,7 +200,7 @@ export function ConversationThread({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <ThreadSkeleton />
         ) : error ? (
