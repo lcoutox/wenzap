@@ -544,3 +544,118 @@ def test_messages_from_other_workspace_excluded(
     ctx = _build(db, workspace_a, conv_a, agent_a, trigger)
 
     assert "Workspace B secret." not in ctx.conversation_history
+
+
+# ── Channel-specific prompt rules ─────────────────────────────────────────────
+
+def _conversation_with_channel(
+    db: Session, workspace: Workspace, agent: Agent, channel_type: str
+) -> Conversation:
+    conv = Conversation(
+        workspace_id=workspace.id,
+        agent_id=agent.id,
+        status="open",
+        channel_type=channel_type,
+        ai_enabled=True,
+    )
+    db.add(conv)
+    db.flush()
+    db.refresh(conv)
+    return conv
+
+
+def test_whatsapp_system_prompt_contains_plain_text_rule(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a)
+    conv = _conversation_with_channel(db, workspace_a, agent, "whatsapp")
+    trigger = _message(db, workspace_a, conv, "Olá")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "texto simples" in ctx.system_prompt.lower() or "plain text" in ctx.system_prompt.lower()
+
+
+def test_whatsapp_system_prompt_no_markdown_rule(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a)
+    conv = _conversation_with_channel(db, workspace_a, agent, "whatsapp")
+    trigger = _message(db, workspace_a, conv, "Olá")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "markdown" in ctx.system_prompt.lower()
+
+
+def test_whatsapp_system_prompt_no_asterisks_rule(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a)
+    conv = _conversation_with_channel(db, workspace_a, agent, "whatsapp")
+    trigger = _message(db, workspace_a, conv, "Olá")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "asterisk" in ctx.system_prompt.lower()
+
+
+def test_non_whatsapp_channel_no_plain_text_rule(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a)
+    conv = _conversation_with_channel(db, workspace_a, agent, "internal")
+    trigger = _message(db, workspace_a, conv, "Hello")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Channel rules (WhatsApp)" not in ctx.system_prompt
+
+
+def test_whatsapp_agent_prompt_still_present(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a, system_prompt="Ajude nossos clientes.")
+    conv = _conversation_with_channel(db, workspace_a, agent, "whatsapp")
+    trigger = _message(db, workspace_a, conv, "Preciso de ajuda")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Ajude nossos clientes." in ctx.system_prompt
+    assert "markdown" in ctx.system_prompt.lower()
+
+
+def test_whatsapp_persona_still_present(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a, persona="Tom simpático e direto.")
+    conv = _conversation_with_channel(db, workspace_a, agent, "whatsapp")
+    trigger = _message(db, workspace_a, conv, "Oi")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Tom simpático e direto." in ctx.system_prompt
+    assert "markdown" in ctx.system_prompt.lower()
+
+
+def test_whatsapp_safety_rules_still_present(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent(db, workspace_a)
+    conv = _conversation_with_channel(db, workspace_a, agent, "whatsapp")
+    trigger = _message(db, workspace_a, conv, "Oi")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Mandatory security" in ctx.system_prompt
+    # Channel rules must appear BEFORE safety rules
+    channel_pos = ctx.system_prompt.find("Channel rules (WhatsApp)")
+    safety_pos = ctx.system_prompt.find("Mandatory security")
+    assert channel_pos < safety_pos

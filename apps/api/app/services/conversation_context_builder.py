@@ -133,6 +133,7 @@ def build_conversation_context(
         system_prompt=prompt_settings.system_prompt or "",
         persona=prompt_settings.persona,
         rag_context=rag_context,
+        channel_hint=conversation.channel_type,
     )
 
     return ConversationContext(
