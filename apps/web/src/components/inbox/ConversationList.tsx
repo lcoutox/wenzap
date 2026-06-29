@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Conversation } from "@/lib/api";
 import { ConversationItem } from "./ConversationItem";
@@ -51,6 +51,8 @@ export function ConversationList({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Keep filter in a ref so the polling closure always reads the latest value.
+  const activeFilterRef = useRef<Filter>("all");
 
   const load = async (filter: Filter) => {
     setLoading(true);
@@ -66,10 +68,27 @@ export function ConversationList({
     }
   };
 
+  const silentPoll = async () => {
+    if (document.hidden) return;
+    try {
+      const status = activeFilterRef.current === "all" ? undefined : activeFilterRef.current;
+      const data = await api.conversations.list({ status, limit: 50 });
+      setConversations(data);
+    } catch { /* silent */ }
+  };
+
   useEffect(() => {
+    activeFilterRef.current = activeFilter;
     void load(activeFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFilter, refreshKey]);
+
+  // Polling — silent refresh every 5 s.
+  useEffect(() => {
+    const id = setInterval(() => void silentPoll(), 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const emptyLabel = FILTERS.find((f) => f.value === activeFilter)?.emptyLabel ?? "Nenhuma conversa encontrada.";
 

@@ -31,25 +31,59 @@ function ViewerBanner() {
   );
 }
 
+function AIActiveBanner({ onTakeOver, taking }: { onTakeOver: () => void; taking: boolean }) {
+  return (
+    <div className="px-5 py-4 border-t border-nb-border bg-nb-surface flex-shrink-0 flex flex-col gap-3">
+      <div className="flex items-start gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-nb-primary mt-[5px] flex-shrink-0" />
+        <p className="text-xs text-nb-secondary leading-relaxed">
+          A IA está respondendo automaticamente esta conversa. Para enviar uma resposta manual, assuma a conversa.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onTakeOver}
+        disabled={taking}
+        className="self-start px-3 py-1.5 rounded-xl text-xs font-medium bg-nb-elevated text-nb-secondary hover:bg-nb-soft border border-nb-border disabled:opacity-50 transition-colors"
+      >
+        {taking ? "Assumindo…" : "Assumir conversa"}
+      </button>
+    </div>
+  );
+}
+
 export function ConversationComposer({
   conversationId,
   conversationStatus,
+  aiEnabled,
   userRole,
   onSent,
+  onTakeOver,
 }: {
   conversationId: string;
   conversationStatus: string;
+  aiEnabled: boolean;
   userRole: MemberRole | null;
   onSent: () => void;
+  onTakeOver: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<Mode>("human");
   const [content, setContent] = useState("");
   const [sending, setSending] = useState(false);
+  const [taking, setTaking] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   if (conversationStatus === "archived") return <ArchivedBanner />;
   if (!canSend(userRole)) return <ViewerBanner />;
+
+  if (aiEnabled) {
+    const handleTakeOver = async () => {
+      setTaking(true);
+      try { await onTakeOver(); } finally { setTaking(false); }
+    };
+    return <AIActiveBanner onTakeOver={() => void handleTakeOver()} taking={taking} />;
+  }
 
   const activeModeConfig = MODES.find((m) => m.value === mode)!;
   const trimmed = content.trim();

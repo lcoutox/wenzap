@@ -8,6 +8,20 @@ import { MessageBubble } from "./MessageBubble";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 
+// Merge fresh message list into current state: update delivery status on existing
+// messages without replacing the whole array (prevents flicker), append new ones.
+function mergeMessages(
+  prev: ConversationMessage[],
+  next: ConversationMessage[],
+): ConversationMessage[] {
+  const prevById = new Map(prev.map((m) => [m.id, m]));
+  return next.map((m) => {
+    const existing = prevById.get(m.id);
+    // Prefer fresh data but keep shape stable to avoid unnecessary re-renders.
+    return existing ? { ...existing, ...m } : m;
+  });
+}
+
 function EmptyMessages() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -57,6 +71,12 @@ export function ConversationThread({
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  // Scroll-to-bottom is only automatic on initial load and after the user sends.
+  // Polling updates must NOT scroll, so we track intent with this ref.
+  const shouldScrollRef = useRef(false);
 
   function handleMessageUpdated(updated: ConversationMessage) {
     setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
@@ -68,9 +88,6 @@ export function ConversationThread({
       const d = m.metadata_json?.delivery as MessageDelivery | undefined;
       return m.direction === "outbound" && d?.status === "failed";
     });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "instant" });
@@ -88,6 +105,7 @@ export function ConversationThread({
       setConversation(conv);
       setMessages(msgs);
       setUserRole(me.role);
+      shouldScrollRef.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar conversa.");
     } finally {
@@ -100,28 +118,57 @@ export function ConversationThread({
     [onConversationUpdated],
   );
 
+  const handleTakeOver = useCallback(async () => {
+    const updated = await api.conversations.takeOver(conversationId);
+    handleConversationUpdated(updated);
+  }, [conversationId, handleConversationUpdated]);
+
   const reloadMessages = useCallback(async () => {
-    if (!conversation) return;
+    if (!conversationId) return;
     try {
       const msgs = await api.conversations.messages.list(conversationId, { limit: 200 });
       setMessages(msgs);
     } catch { /* ignore */ }
-  }, [conversationId, conversation]);
+  }, [conversationId]);
 
   const handleSent = useCallback(async () => {
+    shouldScrollRef.current = true;
     await reloadMessages();
     onMessageSent();
     scrollToBottom();
   }, [reloadMessages, onMessageSent, scrollToBottom]);
 
+  // Initial load on conversation change.
   useEffect(() => {
     void load(conversationId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
+  // Scroll only when explicitly requested (initial load or after send).
   useEffect(() => {
-    if (!loading && messages.length > 0) scrollToBottom();
+    if (!loading && shouldScrollRef.current && messages.length > 0) {
+      scrollToBottom();
+      shouldScrollRef.current = false;
+    }
   }, [loading, messages, scrollToBottom]);
+
+  // Polling — silent refresh every 3 s while this conversation is open.
+  useEffect(() => {
+    if (loading) return;
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const [conv, msgs] = await Promise.all([
+          api.conversations.get(conversationId),
+          api.conversations.messages.list(conversationId, { limit: 200 }),
+        ]);
+        setConversation(conv);
+        setMessages((prev) => mergeMessages(prev, msgs));
+      } catch { /* silent — next tick will retry */ }
+    };
+    const id = setInterval(() => void poll(), 3000);
+    return () => clearInterval(id);
+  }, [conversationId, loading]);
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-nb-bg">
@@ -175,8 +222,10 @@ export function ConversationThread({
         <ConversationComposer
           conversationId={conversationId}
           conversationStatus={conversation.status}
+          aiEnabled={conversation.ai_enabled}
           userRole={userRole}
           onSent={() => void handleSent()}
+          onTakeOver={handleTakeOver}
         />
       )}
     </div>
