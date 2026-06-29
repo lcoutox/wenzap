@@ -217,7 +217,7 @@ class TestResolveAccessToken:
             deliver_human_message(db, msg, conv)
 
         mock_post.assert_not_called()
-        assert msg.metadata_json["delivery"]["error_code"] == "missing_token"
+        assert msg.metadata_json["delivery"]["error_type"] == "missing_token"
 
     def test_returns_failed_when_access_token_ref_absent(self):
         ch = _channel(access_token_ref=None)
@@ -230,7 +230,7 @@ class TestResolveAccessToken:
             deliver_human_message(db, msg, conv)
 
         mock_post.assert_not_called()
-        assert msg.metadata_json["delivery"]["error_code"] == "missing_token"
+        assert msg.metadata_json["delivery"]["error_type"] == "missing_token"
 
 
 # ── deliver_human_message — failure modes ─────────────────────────────────────
@@ -247,8 +247,12 @@ class TestDeliverHumanMessageFailures:
 
         deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["status"] == "failed"
-        assert msg.metadata_json["delivery"]["error_code"] == "channel_not_found"
+        delivery = msg.metadata_json["delivery"]
+        assert delivery["status"] == "failed"
+        assert delivery["error_type"] == "channel_not_found"
+        assert delivery["channel"] == "whatsapp"
+        assert delivery["provider"] == "meta_cloud_api"
+        assert "failed_at" in delivery
 
     def test_missing_recipient_saves_failed(self, monkeypatch):
         monkeypatch.setenv("WHATSAPP_TEMP_ACCESS_TOKEN", "tok_abc")
@@ -262,7 +266,7 @@ class TestDeliverHumanMessageFailures:
             deliver_human_message(db, msg, conv)
 
         mock_post.assert_not_called()
-        assert msg.metadata_json["delivery"]["error_code"] == "missing_recipient"
+        assert msg.metadata_json["delivery"]["error_type"] == "missing_recipient"
 
     def test_missing_token_saves_failed(self, monkeypatch):
         monkeypatch.delenv("WHATSAPP_TEMP_ACCESS_TOKEN", raising=False)
@@ -274,9 +278,9 @@ class TestDeliverHumanMessageFailures:
 
         deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["error_code"] == "missing_token"
+        assert msg.metadata_json["delivery"]["error_type"] == "missing_token"
 
-    def test_http_400_saves_failed(self, monkeypatch):
+    def test_http_400_saves_failed_with_status(self, monkeypatch):
         monkeypatch.setenv("WHATSAPP_TEMP_ACCESS_TOKEN", "tok_abc")
         ch = _channel()
         contact = _contact(external_id="whatsapp:5511999111333")
@@ -287,12 +291,37 @@ class TestDeliverHumanMessageFailures:
         http_resp = MagicMock()
         http_resp.status_code = 400
         http_resp.text = "Bad Request"
+        http_resp.json.return_value = {}
         exc = httpx.HTTPStatusError("400", request=MagicMock(), response=http_resp)
         with patch("httpx.post", side_effect=exc):
             deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["status"] == "failed"
-        assert msg.metadata_json["delivery"]["error_code"] == "http_error"
+        delivery = msg.metadata_json["delivery"]
+        assert delivery["status"] == "failed"
+        assert delivery["error_type"] == "http_error"
+        assert delivery["error_status"] == 400
+        assert "failed_at" in delivery
+
+    def test_http_401_saves_error_status_401(self, monkeypatch):
+        monkeypatch.setenv("WHATSAPP_TEMP_ACCESS_TOKEN", "tok_expired")
+        ch = _channel()
+        contact = _contact(external_id="whatsapp:5511999111334")
+        conv = _conversation(channel_id=ch.id, contact_id=contact.id)
+        msg = _message()
+        db = _mock_db(channel=ch, contact=contact)
+
+        http_resp = MagicMock()
+        http_resp.status_code = 401
+        http_resp.text = "Unauthorized"
+        http_resp.json.return_value = {"error": {"message": "Invalid OAuth access token."}}
+        exc = httpx.HTTPStatusError("401", request=MagicMock(), response=http_resp)
+        with patch("httpx.post", side_effect=exc):
+            deliver_human_message(db, msg, conv)
+
+        delivery = msg.metadata_json["delivery"]
+        assert delivery["error_type"] == "http_error"
+        assert delivery["error_status"] == 401
+        assert delivery["error_message"] == "Invalid OAuth access token."
 
     def test_timeout_saves_failed(self, monkeypatch):
         monkeypatch.setenv("WHATSAPP_TEMP_ACCESS_TOKEN", "tok_abc")
@@ -305,7 +334,7 @@ class TestDeliverHumanMessageFailures:
         with patch("httpx.post", side_effect=httpx.TimeoutException("timeout")):
             deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["error_code"] == "timeout"
+        assert msg.metadata_json["delivery"]["error_type"] == "timeout"
 
     def test_request_error_saves_failed(self, monkeypatch):
         monkeypatch.setenv("WHATSAPP_TEMP_ACCESS_TOKEN", "tok_abc")
@@ -318,7 +347,7 @@ class TestDeliverHumanMessageFailures:
         with patch("httpx.post", side_effect=httpx.ConnectError("conn refused")):
             deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["error_code"] == "request_error"
+        assert msg.metadata_json["delivery"]["error_type"] == "request_error"
 
     def test_response_missing_wamid_saves_failed(self, monkeypatch):
         monkeypatch.setenv("WHATSAPP_TEMP_ACCESS_TOKEN", "tok_abc")
@@ -334,7 +363,7 @@ class TestDeliverHumanMessageFailures:
         with patch("httpx.post", return_value=resp):
             deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["error_code"] == "missing_wamid"
+        assert msg.metadata_json["delivery"]["error_type"] == "missing_wamid"
 
     def test_unexpected_exception_does_not_raise(self):
         conv = _conversation()
@@ -345,7 +374,7 @@ class TestDeliverHumanMessageFailures:
         # Must not raise.
         deliver_human_message(db, msg, conv)
 
-        assert msg.metadata_json["delivery"]["error_code"] == "unexpected_error"
+        assert msg.metadata_json["delivery"]["error_type"] == "unexpected_error"
 
 
 # ── deliver_human_message — success ───────────────────────────────────────────
@@ -388,11 +417,13 @@ class TestDeliverHumanMessageSuccess:
         assert self.msg.external_message_id == "wamid.OUT_SUCCESS_001"
 
     def test_saves_delivery_status_sent(self):
-        with patch("httpx.post", return_value=_meta_success_response()):
+        with patch("httpx.post", return_value=_meta_success_response("wamid.SENT_01")):
             deliver_human_message(self.db, self.msg, self.conv)
         delivery = self.msg.metadata_json["delivery"]
         assert delivery["status"] == "sent"
         assert delivery["channel"] == "whatsapp"
+        assert delivery["provider"] == "meta_cloud_api"
+        assert delivery["external_message_id"] == "wamid.SENT_01"
         assert delivery["phone_number_id"] == "PID_OUT_PROD"
         assert delivery["recipient"] == "5537888777666"
         assert "sent_at" in delivery

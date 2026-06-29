@@ -352,6 +352,20 @@ export type ConversationUpdateInput = {
 export type MessageDirection = "inbound" | "outbound" | "internal";
 export type MessageSenderType = "customer" | "human" | "agent" | "system";
 
+export type MessageDelivery = {
+  channel?: string;
+  provider?: string;
+  status?: "queued" | "sending" | "sent" | "delivered" | "read" | "failed" | string;
+  external_message_id?: string | null;
+  error_type?: string | null;
+  error_status?: number | null;
+  error_message?: string | null;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
+};
+
 export type ConversationMessage = {
   id: string;
   workspace_id: string;
@@ -363,7 +377,7 @@ export type ConversationMessage = {
   content: string;
   content_type: string;
   external_message_id: string | null;
-  metadata_json: Record<string, unknown> | null;
+  metadata_json: { delivery?: MessageDelivery; [key: string]: unknown } | null;
   created_at: string;
 };
 
@@ -692,6 +706,11 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data),
         }),
+      retryDelivery: (conversationId: string, messageId: string) =>
+        cookieFetch<ConversationMessage>(
+          `/conversations/${conversationId}/messages/${messageId}/retry-delivery`,
+          { method: "POST" },
+        ),
     },
   },
   channels: {

@@ -40,7 +40,7 @@ def deliver_human_message(
     conversation: Conversation,
 ) -> None:
     """
-    Attempt to deliver an outbound/human message via WhatsApp Cloud API.
+    Attempt to deliver an outbound message via WhatsApp Cloud API.
 
     Updates message.external_message_id and message.metadata_json with the
     delivery outcome. Never raises — all errors are caught and recorded.
@@ -55,7 +55,7 @@ def deliver_human_message(
         )
         _save_delivery_failure(
             db, message,
-            error_code="unexpected_error",
+            error_type="unexpected_error",
             error_message="An unexpected error occurred during delivery.",
             phone_number_id=None,
             recipient=None,
@@ -102,7 +102,7 @@ def _deliver(
         )
         _save_delivery_failure(
             db, message,
-            error_code="channel_not_found",
+            error_type="channel_not_found",
             error_message="No active WhatsApp channel found for this conversation.",
             phone_number_id=None,
             recipient=None,
@@ -120,7 +120,7 @@ def _deliver(
         )
         _save_delivery_failure(
             db, message,
-            error_code="missing_recipient",
+            error_type="missing_recipient",
             error_message="Contact has no usable WhatsApp number.",
             phone_number_id=phone_number_id,
             recipient=None,
@@ -134,7 +134,7 @@ def _deliver(
         )
         _save_delivery_failure(
             db, message,
-            error_code="missing_token",
+            error_type="missing_token",
             error_message="WhatsApp access token not configured for this channel.",
             phone_number_id=phone_number_id,
             recipient=recipient,
@@ -154,22 +154,24 @@ def _deliver(
         )
         _save_delivery_failure(
             db, message,
-            error_code="timeout",
+            error_type="timeout",
             error_message="Meta Cloud API request timed out.",
             phone_number_id=phone_number_id,
             recipient=recipient,
         )
         return
     except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
         logger.warning(
             "whatsapp_outbound http_error status=%s message_id=%s",
-            exc.response.status_code,
+            status_code,
             message.id,
         )
         _save_delivery_failure(
             db, message,
-            error_code="http_error",
-            error_message=f"{exc.response.status_code} {exc.response.text[:200]}",
+            error_type="http_error",
+            error_status=status_code,
+            error_message=_safe_meta_error_message(exc),
             phone_number_id=phone_number_id,
             recipient=recipient,
         )
@@ -182,7 +184,7 @@ def _deliver(
         )
         _save_delivery_failure(
             db, message,
-            error_code="request_error",
+            error_type="request_error",
             error_message=type(exc).__name__,
             phone_number_id=phone_number_id,
             recipient=recipient,
@@ -198,7 +200,7 @@ def _deliver(
         )
         _save_delivery_failure(
             db, message,
-            error_code="missing_wamid",
+            error_type="missing_wamid",
             error_message="Meta response did not include a message id.",
             phone_number_id=phone_number_id,
             recipient=recipient,
@@ -277,6 +279,18 @@ def _call_meta_cloud_api(
     return response.json()
 
 
+def _safe_meta_error_message(exc: httpx.HTTPStatusError) -> str:
+    """Extract a safe, readable error message from a Meta API HTTP error response."""
+    try:
+        body = exc.response.json()
+        msg = (body.get("error") or {}).get("message", "")
+        if msg:
+            return str(msg)[:300]
+    except Exception:
+        pass
+    return exc.response.text[:200]
+
+
 def _save_delivery_success(
     db: Session,
     message: ConversationMessage,
@@ -290,7 +304,9 @@ def _save_delivery_success(
         **existing,
         "delivery": {
             "channel": "whatsapp",
+            "provider": "meta_cloud_api",
             "status": "sent",
+            "external_message_id": wamid,
             "sent_at": datetime.now(timezone.utc).isoformat(),
             "phone_number_id": phone_number_id,
             "recipient": recipient,
@@ -302,19 +318,23 @@ def _save_delivery_success(
 def _save_delivery_failure(
     db: Session,
     message: ConversationMessage,
-    error_code: str,
+    error_type: str,
     error_message: str,
     phone_number_id: str | None,
     recipient: str | None,
+    error_status: int | None = None,
 ) -> None:
     existing = message.metadata_json or {}
     message.metadata_json = {
         **existing,
         "delivery": {
             "channel": "whatsapp",
+            "provider": "meta_cloud_api",
             "status": "failed",
-            "error_code": error_code,
+            "error_type": error_type,
+            "error_status": error_status,
             "error_message": error_message,
+            "failed_at": datetime.now(timezone.utc).isoformat(),
             "phone_number_id": phone_number_id,
             "recipient": recipient,
         },

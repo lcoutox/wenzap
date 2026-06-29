@@ -1,11 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
 from app.database import get_db
 from app.enums import MemberRole
+from app.models.conversation_message import ConversationMessage
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.conversation import ConversationCreate, ConversationOut, ConversationUpdate
@@ -144,3 +146,54 @@ def create_message(
     return conversation_message_service.create_message(
         db, current_workspace.id, conversation_id, current_user.id, data
     )
+
+
+@router.post(
+    "/{conversation_id}/messages/{message_id}/retry-delivery",
+    response_model=ConversationMessageOut,
+)
+def retry_message_delivery(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ConversationMessageOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+
+    conv = conversation_service.get_conversation_or_404(
+        db, current_workspace.id, conversation_id
+    )
+    if conv.channel_type != "whatsapp":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Retry only supported for WhatsApp conversations.",
+        )
+
+    msg = db.scalar(
+        select(ConversationMessage).where(
+            ConversationMessage.id == message_id,
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.workspace_id == current_workspace.id,
+        )
+    )
+    if msg is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found.")
+
+    if msg.direction != "outbound" or msg.sender_type not in {"human", "agent"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only outbound messages can be retried.",
+        )
+
+    delivery = (msg.metadata_json or {}).get("delivery", {})
+    if delivery.get("status") != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Message delivery is not in failed state.",
+        )
+
+    from app.services.whatsapp_outbound_service import deliver_human_message  # noqa: PLC0415
+    deliver_human_message(db, msg, conv)
+    db.refresh(msg)
+    return msg

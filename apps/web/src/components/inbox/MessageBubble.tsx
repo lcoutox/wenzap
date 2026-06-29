@@ -1,6 +1,9 @@
 "use client";
 
-import type { ConversationMessage } from "@/lib/api";
+import { useState } from "react";
+import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
+import type { ConversationMessage, MessageDelivery } from "@/lib/api";
+import { api } from "@/lib/api";
 
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -10,6 +13,78 @@ function senderLabel(msg: ConversationMessage, contactName: string | null): stri
   if (msg.direction === "inbound")  return contactName ?? "Cliente";
   if (msg.direction === "outbound") return msg.sender_type === "agent" ? "Agente" : "Humano";
   return msg.sender_type === "system" ? "Sistema" : "Nota interna";
+}
+
+function getDelivery(msg: ConversationMessage): MessageDelivery | null {
+  return (msg.metadata_json?.delivery as MessageDelivery) ?? null;
+}
+
+function deliveryErrorHint(delivery: MessageDelivery): string {
+  if (delivery.error_status === 401) return "Token do WhatsApp inválido ou expirado.";
+  if (delivery.error_status === 400) return "A Meta recusou a mensagem. Verifique o número ou a janela de atendimento.";
+  return "Falha ao enviar pelo WhatsApp.";
+}
+
+function DeliveryBadge({
+  msg,
+  onRetried,
+}: {
+  msg: ConversationMessage;
+  onRetried: (updated: ConversationMessage) => void;
+}) {
+  const delivery = getDelivery(msg);
+  if (!delivery || delivery.channel !== "whatsapp") return null;
+
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  if (delivery.status === "failed") {
+    const hint = deliveryErrorHint(delivery);
+
+    async function handleRetry() {
+      setRetryError(null);
+      setRetrying(true);
+      try {
+        const updated = await api.conversations.messages.retryDelivery(
+          msg.conversation_id,
+          msg.id,
+        );
+        onRetried(updated);
+      } catch {
+        setRetryError("Não foi possível reenviar.");
+      } finally {
+        setRetrying(false);
+      }
+    }
+
+    return (
+      <div className="flex flex-col items-end gap-1 mt-0.5">
+        <div className="flex items-center gap-1 text-[10px] text-nb-danger">
+          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+          <span>Não entregue</span>
+        </div>
+        <p className="text-[10px] text-nb-muted/70">{hint}</p>
+        <button
+          type="button"
+          onClick={handleRetry}
+          disabled={retrying}
+          className="flex items-center gap-1 text-[10px] text-nb-primary hover:text-nb-primary-strong transition-colors disabled:opacity-50"
+        >
+          {retrying ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RotateCcw className="w-3 h-3" />
+          )}
+          {retrying ? "Reenviando…" : "Tentar novamente"}
+        </button>
+        {retryError && (
+          <p className="text-[10px] text-nb-danger">{retryError}</p>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function InboundBubble({ msg, contactName }: { msg: ConversationMessage; contactName: string | null }) {
@@ -31,7 +106,15 @@ function InboundBubble({ msg, contactName }: { msg: ConversationMessage; contact
   );
 }
 
-function OutboundBubble({ msg, contactName }: { msg: ConversationMessage; contactName: string | null }) {
+function OutboundBubble({
+  msg,
+  contactName,
+  onMessageUpdated,
+}: {
+  msg: ConversationMessage;
+  contactName: string | null;
+  onMessageUpdated: (updated: ConversationMessage) => void;
+}) {
   const isAgent = msg.sender_type === "agent";
   return (
     <div className="flex items-end gap-2 max-w-[75%] self-end flex-row-reverse">
@@ -44,6 +127,7 @@ function OutboundBubble({ msg, contactName }: { msg: ConversationMessage; contac
           {msg.content}
         </div>
         <span className="text-[10px] text-nb-muted/50 px-1">{formatTimestamp(msg.created_at)}</span>
+        <DeliveryBadge msg={msg} onRetried={onMessageUpdated} />
       </div>
     </div>
   );
@@ -69,8 +153,17 @@ function InternalBubble({ msg, contactName }: { msg: ConversationMessage; contac
   );
 }
 
-export function MessageBubble({ msg, contactName }: { msg: ConversationMessage; contactName: string | null }) {
+export function MessageBubble({
+  msg,
+  contactName,
+  onMessageUpdated,
+}: {
+  msg: ConversationMessage;
+  contactName: string | null;
+  onMessageUpdated?: (updated: ConversationMessage) => void;
+}) {
+  const noop = (_: ConversationMessage) => {};
   if (msg.direction === "inbound")  return <InboundBubble  msg={msg} contactName={contactName} />;
-  if (msg.direction === "outbound") return <OutboundBubble msg={msg} contactName={contactName} />;
+  if (msg.direction === "outbound") return <OutboundBubble msg={msg} contactName={contactName} onMessageUpdated={onMessageUpdated ?? noop} />;
   return <InternalBubble msg={msg} contactName={contactName} />;
 }

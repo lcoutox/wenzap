@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Conversation, ConversationMessage, MemberRole } from "@/lib/api";
+import type { Conversation, ConversationMessage, MemberRole, MessageDelivery } from "@/lib/api";
 import { MessageBubble } from "./MessageBubble";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
@@ -56,6 +57,17 @@ export function ConversationThread({
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
+
+  function handleMessageUpdated(updated: ConversationMessage) {
+    setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  }
+
+  const hasFailedOutbound =
+    conversation?.channel_type === "whatsapp" &&
+    messages.some((m) => {
+      const d = m.metadata_json?.delivery as MessageDelivery | undefined;
+      return m.direction === "outbound" && d?.status === "failed";
+    });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -119,6 +131,15 @@ export function ConversationThread({
         <HeaderSkeleton />
       )}
 
+      {hasFailedOutbound && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-nb-danger/5 border-b border-nb-danger/20 flex-shrink-0">
+          <AlertTriangle className="w-3.5 h-3.5 text-nb-danger flex-shrink-0" />
+          <p className="text-xs text-nb-danger">
+            Algumas mensagens não foram entregues pelo WhatsApp. Verifique a configuração do canal ou tente reenviar.
+          </p>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <ThreadSkeleton />
@@ -138,7 +159,12 @@ export function ConversationThread({
         ) : (
           <div className="flex flex-col gap-4 px-5 py-5">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} msg={msg} contactName={conversation?.contact_name ?? null} />
+              <MessageBubble
+                key={msg.id}
+                msg={msg}
+                contactName={conversation?.contact_name ?? null}
+                onMessageUpdated={handleMessageUpdated}
+              />
             ))}
             <div ref={bottomRef} />
           </div>
