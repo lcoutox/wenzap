@@ -40,18 +40,25 @@ class WhatsAppEmbeddedSignupStateOut(BaseModel):
 class WhatsAppEmbeddedSignupExchangeRequest(BaseModel):
     code: str = Field(min_length=1, max_length=512)
     state: str = Field(min_length=1, max_length=512)
-    waba_id: str = Field(min_length=1, max_length=100)
-    phone_number_id: str = Field(min_length=1, max_length=100)
+    # Optional: when omitted, backend auto-discovers from the token via Meta API.
+    # The Facebook Login for Business flow does not return these via postMessage;
+    # they are discovered from the token's granular_scopes after code exchange.
+    waba_id: str | None = Field(default=None, max_length=100)
+    phone_number_id: str | None = Field(default=None, max_length=100)
     business_id: str | None = Field(default=None, max_length=100)
 
     @field_validator("waba_id")
     @classmethod
-    def validate_waba_id(cls, v: str) -> str:
+    def validate_waba_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         return _validate_numeric_id(v, "waba_id")
 
     @field_validator("phone_number_id")
     @classmethod
-    def validate_phone_number_id(cls, v: str) -> str:
+    def validate_phone_number_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         return _validate_numeric_id(v, "phone_number_id")
 
     @field_validator("business_id")

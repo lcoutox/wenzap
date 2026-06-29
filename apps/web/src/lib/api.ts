@@ -739,8 +739,8 @@ export const api = {
       exchange: (payload: {
         code: string;
         state: string;
-        waba_id: string;
-        phone_number_id: string;
+        waba_id?: string | null;
+        phone_number_id?: string | null;
         business_id?: string | null;
       }) =>
         cookieFetch<Channel>(

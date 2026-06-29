@@ -46,19 +46,14 @@ export function EmbeddedSignupButton({ agentId, onSuccess }: Props) {
       setStep("loading_sdk");
       await loadMetaSdk();
 
-      // 3. Launch Meta popup and capture code + WABA data
+      // 3. Launch Meta popup and capture authorization code
       setStep("waiting_meta");
-      const signupData = await runEmbeddedSignup();
+      const { code } = await runEmbeddedSignup();
 
-      // 4. Exchange with backend
+      // 4. Exchange with backend — WABA and phone number are auto-discovered
+      //    from the token's granular_scopes (Facebook Login for Business flow)
       setStep("exchanging");
-      const channel = await api.channels.whatsappEmbeddedSignup.exchange({
-        code: signupData.code,
-        state,
-        waba_id: signupData.waba_id,
-        phone_number_id: signupData.phone_number_id,
-        business_id: signupData.business_id,
-      });
+      const channel = await api.channels.whatsappEmbeddedSignup.exchange({ code, state });
 
       setStep("done");
       onSuccess(channel as WhatsAppChannel);

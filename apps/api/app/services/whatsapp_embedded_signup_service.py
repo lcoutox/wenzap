@@ -248,6 +248,57 @@ def exchange_for_long_lived_token(short_lived_token: str) -> tuple[str, datetime
     return str(token), expires_at
 
 
+def fetch_waba_id_from_token(token: str) -> str:
+    """
+    Discover the WABA ID authorized by a user token via Meta's granular_scopes.
+
+    Used when the frontend (Facebook Login for Business flow) does not provide
+    waba_id via postMessage. The token's granular_scopes contain the WABA ID
+    that the user explicitly selected during the popup flow.
+
+    Raises HTTPException 422 if no WABA is found in the token scopes.
+    Raises HTTPException 502 on Meta API errors.
+    """
+    url = f"{_meta_base_url()}/me"
+    try:
+        resp = httpx.get(
+            url,
+            params={"fields": "granular_scopes", "access_token": token},
+            timeout=_META_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "fetch_waba_id_from_token failed status=%s body=%s",
+            exc.response.status_code,
+            _safe_meta_error(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="meta_waba_discovery_failed",
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.warning("fetch_waba_id_from_token request_error type=%s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="meta_waba_discovery_failed",
+        ) from exc
+
+    for scope_entry in data.get("granular_scopes", []):
+        if scope_entry.get("scope") == "whatsapp_business_management":
+            target_ids = scope_entry.get("target_ids", [])
+            if target_ids:
+                logger.info("fetch_waba_id_from_token discovered waba_id=%s", target_ids[0])
+                return str(target_ids[0])
+
+    logger.warning("fetch_waba_id_from_token no waba_id in granular_scopes data=%s", data)
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="waba_not_found_in_token",
+    )
+
+
 def fetch_waba_phone_numbers(waba_id: str, token: str) -> list[dict[str, Any]]:
     """
     Fetch the phone numbers associated with a WhatsApp Business Account.

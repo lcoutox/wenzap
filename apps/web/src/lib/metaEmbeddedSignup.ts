@@ -3,6 +3,11 @@
  *
  * The SDK is loaded lazily — only when the user initiates the flow.
  * Multiple calls to loadMetaSdk() are safe; the script is injected once.
+ *
+ * This implementation targets the "Facebook Login for Business" flow, where
+ * the popup returns only an authorization code. waba_id and phone_number_id
+ * are NOT available via postMessage in this flow — the backend discovers them
+ * from the token's granular_scopes after code exchange.
  */
 
 declare global {
@@ -23,18 +28,8 @@ declare global {
   }
 }
 
-const META_TRUSTED_ORIGINS = new Set([
-  "https://www.facebook.com",
-  "https://web.facebook.com",
-  "https://facebook.com",
-  "https://business.facebook.com",
-]);
-
 export interface EmbeddedSignupData {
   code: string;
-  waba_id: string;
-  phone_number_id: string;
-  business_id?: string | null;
 }
 
 let sdkLoadPromise: Promise<void> | null = null;
@@ -71,7 +66,6 @@ export function loadMetaSdk(): Promise<void> {
     };
 
     if (document.getElementById("facebook-jssdk")) {
-      // Script tag exists but FB not ready yet — resolve will fire via fbAsyncInit
       return;
     }
 
@@ -88,106 +82,36 @@ export function loadMetaSdk(): Promise<void> {
 }
 
 /**
- * Run the full Embedded Signup flow.
+ * Run the Facebook Login for Business flow and return the authorization code.
  *
- * Returns a promise that resolves with { code, waba_id, phone_number_id, business_id }
- * or rejects with an Error containing a user-facing message.
+ * The backend will use this code to:
+ *  1. Exchange it for a user access token
+ *  2. Discover the WABA and phone number from the token's granular_scopes
+ *  3. Create the WhatsApp channel
  */
 export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
-  if (!configId) {
-    return Promise.reject(
-      new Error("A conexão com a Meta ainda não está configurada neste ambiente."),
-    );
-  }
-  if (!process.env.NEXT_PUBLIC_META_APP_ID) {
+  if (!configId || !process.env.NEXT_PUBLIC_META_APP_ID) {
     return Promise.reject(
       new Error("A conexão com a Meta ainda não está configurada neste ambiente."),
     );
   }
 
   return new Promise<EmbeddedSignupData>((resolve, reject) => {
-    let code: string | null = null;
-    let wabaId: string | null = null;
-    let phoneNumberId: string | null = null;
-    let businessId: string | null = null;
-
-    function onMessage(event: MessageEvent) {
-      // Log every message from any Meta/Facebook origin for debugging
-      if (
-        typeof event.origin === "string" &&
-        (event.origin.includes("facebook.com") || event.origin.includes("meta.com"))
-      ) {
-        console.debug("[WenzapES] postMessage from", event.origin, event.data);
-      }
-
-      if (!META_TRUSTED_ORIGINS.has(event.origin)) return;
-      try {
-        const data =
-          typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-
-        console.debug("[WenzapES] parsed message", data);
-
-        if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
-
-        if (data.event === "FINISH" && data.data) {
-          wabaId = data.data.waba_id ?? null;
-          phoneNumberId = data.data.phone_number_id ?? null;
-          businessId = data.data.business_id ?? null;
-          console.debug("[WenzapES] FINISH captured", { wabaId, phoneNumberId, businessId });
-        } else if (data.event === "CANCEL") {
-          console.debug("[WenzapES] CANCEL received", data);
-        }
-      } catch {
-        // not a JSON message — ignore
-      }
-    }
-
-    window.addEventListener("message", onMessage);
-
-    const cleanup = () => window.removeEventListener("message", onMessage);
-
     window.FB!.login(
       (response) => {
         if (response.status !== "connected" || !response.authResponse) {
-          cleanup();
           reject(new Error("Conexão cancelada. Tente novamente quando quiser."));
           return;
         }
 
-        code = response.authResponse.code ?? null;
+        const code = response.authResponse.code ?? null;
         if (!code) {
-          cleanup();
           reject(new Error("Código de autorização não recebido da Meta. Tente novamente."));
           return;
         }
 
-        // The WA_EMBEDDED_SIGNUP postMessage may arrive slightly after the FB.login
-        // callback fires. Poll for up to 2 seconds before giving up.
-        const deadline = Date.now() + 2000;
-        function waitForWabaData() {
-          if (wabaId && phoneNumberId) {
-            cleanup();
-            resolve({
-              code: code!,
-              waba_id: wabaId,
-              phone_number_id: phoneNumberId,
-              business_id: businessId,
-            });
-            return;
-          }
-          if (Date.now() >= deadline) {
-            cleanup();
-            reject(
-              new Error(
-                "Não foi possível obter os dados do WhatsApp Business. Certifique-se de completar o fluxo da Meta.",
-              ),
-            );
-            return;
-          }
-          setTimeout(waitForWabaData, 50);
-        }
-        waitForWabaData();
+        resolve({ code });
       },
       {
         config_id: configId,
