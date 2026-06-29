@@ -87,8 +87,9 @@ export function ConversationHeader({
   const isHumanAssigned = conversation.assigned_user_id !== null;
   const isAIPaused = !conversation.ai_enabled;
 
-  // Show "Assumir" when AI is active or nobody is assigned.
-  const showTakeOver = !isHumanAssigned || conversation.ai_enabled;
+  // Show "Assumir" only in the limbo state: AI paused and no human assigned.
+  // When AI is active, the composer banner already provides this action.
+  const showTakeOver = !isHumanAssigned && isAIPaused;
   // Show "Devolver para IA" when human is assigned or AI is paused.
   const showReturnToAI = isHumanAssigned || isAIPaused;
 
