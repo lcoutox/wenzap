@@ -9,6 +9,7 @@ import {
   Cpu,
   Database,
   MessageSquare,
+  PackageSearch,
   Send,
   Sparkles,
 } from "lucide-react";
@@ -79,6 +80,66 @@ function testErrorMessage(e: unknown): string {
     }
   }
   return e instanceof Error ? e.message : "Erro desconhecido.";
+}
+
+// ── Catalog info (Playground) ─────────────────────────────────────────────────
+
+function PlaygroundCatalogInfo({ meta }: { meta: AgentTestResponse }) {
+  const [open, setOpen] = useState(false);
+  const count = meta.catalog_items_count;
+  const method = meta.catalog_retrieval_method;
+  const items = meta.catalog_items_used ?? [];
+
+  const methodLabel = (m: string | null) => {
+    if (m === "hybrid") return "híbrido";
+    if (m === "lexical_fallback") return "lexical";
+    if (m === "semantic") return "semântico";
+    if (m === "lexical") return "lexical";
+    return m ?? "—";
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 text-[11px] text-nb-muted hover:text-nb-secondary transition-colors"
+      >
+        <PackageSearch className="w-3 h-3" />
+        Catálogo consultado
+        {count > 0 && ` · ${count} item${count !== 1 ? "s" : ""}`}
+        {count === 0 && " · sem itens"}
+        {method && ` · ${methodLabel(method)}`}
+      </button>
+
+      {open && (
+        <div className="mt-1.5 rounded-xl border border-nb-border bg-nb-bg px-3 py-2.5 space-y-2 text-[11px] text-nb-secondary">
+          {count === 0 ? (
+            <p className="text-nb-muted">Nenhum item relevante encontrado.</p>
+          ) : (
+            <ol className="space-y-1.5">
+              {items.map((item, idx) => (
+                <li key={item.id ?? idx}>
+                  <p className="font-medium text-nb-text">{idx + 1}. {item.name ?? "Item sem nome"}</p>
+                  <div className="flex flex-wrap gap-x-3 text-nb-muted">
+                    {item.score != null && (
+                      <span>Score: <span className="text-nb-secondary">{item.score.toFixed(2)}</span></span>
+                    )}
+                    {item.semantic_score != null && (
+                      <span>Semântico: <span className="text-nb-secondary">{item.semantic_score.toFixed(2)}</span></span>
+                    )}
+                    {item.lexical_score != null && (
+                      <span>Lexical: <span className="text-nb-secondary">{item.lexical_score.toFixed(2)}</span></span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -356,6 +417,9 @@ export function AgentChat({
                             ? "1 trecho"
                             : `${lastRunMeta.retrieved_chunks_count} trechos`}
                         </span>
+                      )}
+                      {lastRunMeta.catalog_retrieval_attempted && (
+                        <PlaygroundCatalogInfo meta={lastRunMeta} />
                       )}
                     </div>
                   )}

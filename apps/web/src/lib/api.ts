@@ -157,6 +157,10 @@ export type AgentTestResponse = {
   session_id: string;
   rag_used: boolean;
   retrieved_chunks_count: number;
+  catalog_retrieval_attempted: boolean;
+  catalog_items_count: number;
+  catalog_items_used: CatalogRetrievalItem[];
+  catalog_retrieval_method: string | null;
 };
 
 // ── Playground Sessions ───────────────────────────────────────────────────────
@@ -368,6 +372,22 @@ export type MessageDelivery = {
   failed_at?: string | null;
 };
 
+export type CatalogRetrievalItem = {
+  id?: string;
+  name?: string;
+  score?: number | null;
+  semantic_score?: number | null;
+  lexical_score?: number | null;
+  retrieval_method?: string;
+};
+
+export type CatalogRetrieval = {
+  query?: string;
+  retrieval_method?: string;
+  embedding_used?: boolean;
+  items_considered?: CatalogRetrievalItem[];
+};
+
 export type CatalogMediaDelivery = {
   attempted?: boolean;
   sent?: boolean;
@@ -395,6 +415,7 @@ export type ConversationMessage = {
   metadata_json:
     | {
         delivery?: MessageDelivery;
+        catalog_retrieval?: CatalogRetrieval;
         catalog_media_delivery?: CatalogMediaDelivery;
         [key: string]: unknown;
       }

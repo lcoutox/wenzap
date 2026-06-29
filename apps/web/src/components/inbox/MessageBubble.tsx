@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, ImageOff, Loader2, RotateCcw } from "lucide-react";
-import type { CatalogMediaDelivery, ConversationMessage, MessageDelivery } from "@/lib/api";
+import { AlertTriangle, BookOpen, ChevronDown, ChevronUp, ImageOff, Loader2, RotateCcw } from "lucide-react";
+import type { CatalogMediaDelivery, CatalogRetrieval, CatalogRetrievalItem, ConversationMessage, MessageDelivery } from "@/lib/api";
 import { api } from "@/lib/api";
 
 function formatTimestamp(iso: string): string {
@@ -23,6 +23,92 @@ function getCatalogMediaDelivery(msg: ConversationMessage): CatalogMediaDelivery
   const raw = msg.metadata_json?.catalog_media_delivery;
   if (!raw || typeof raw !== "object") return null;
   return raw as CatalogMediaDelivery;
+}
+
+function getCatalogRetrieval(msg: ConversationMessage): CatalogRetrieval | null {
+  const raw = msg.metadata_json?.catalog_retrieval;
+  if (!raw || typeof raw !== "object") return null;
+  return raw as CatalogRetrieval;
+}
+
+function scoreLabel(item: CatalogRetrievalItem): string {
+  if (item.score != null) return item.score.toFixed(2);
+  return "—";
+}
+
+function methodLabel(method: string | undefined): string {
+  if (method === "hybrid") return "híbrido";
+  if (method === "lexical_fallback") return "lexical";
+  if (method === "semantic") return "semântico";
+  if (method === "lexical") return "lexical";
+  return method ?? "—";
+}
+
+function CatalogRetrievalBadge({ msg }: { msg: ConversationMessage }) {
+  const [open, setOpen] = useState(false);
+  const retrieval = getCatalogRetrieval(msg);
+  if (!retrieval) return null;
+
+  const items = Array.isArray(retrieval.items_considered) ? retrieval.items_considered : [];
+  const count = items.length;
+  const label = count === 0
+    ? "Catálogo consultado · sem itens"
+    : count === 1
+    ? "Catálogo consultado · 1 item"
+    : `Catálogo consultado · ${count} itens`;
+
+  return (
+    <div className="mt-1 w-full max-w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-[10px] text-nb-muted/70 hover:text-nb-muted transition-colors"
+      >
+        <BookOpen className="w-3 h-3 flex-shrink-0" />
+        <span>{label}</span>
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {open && (
+        <div className="mt-1.5 rounded-xl border border-nb-border bg-nb-bg px-3 py-2.5 space-y-2 text-[11px] text-nb-secondary">
+          {retrieval.query && (
+            <p className="text-nb-muted italic break-words">
+              Consulta: &ldquo;{retrieval.query}&rdquo;
+            </p>
+          )}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-nb-muted">
+            {retrieval.retrieval_method && (
+              <span>Método: <span className="text-nb-secondary">{methodLabel(retrieval.retrieval_method)}</span></span>
+            )}
+            {retrieval.embedding_used != null && (
+              <span>Embedding: <span className="text-nb-secondary">{retrieval.embedding_used ? "usado" : "não usado"}</span></span>
+            )}
+          </div>
+
+          {count === 0 ? (
+            <p className="text-nb-muted">Nenhum item relevante encontrado.</p>
+          ) : (
+            <ol className="space-y-1.5">
+              {items.map((item, idx) => (
+                <li key={item.id ?? idx} className="space-y-0.5">
+                  <p className="font-medium text-nb-text">{idx + 1}. {item.name ?? "Item sem nome"}</p>
+                  <div className="flex flex-wrap gap-x-3 text-nb-muted">
+                    <span>Score: <span className="text-nb-secondary">{scoreLabel(item)}</span></span>
+                    {item.semantic_score != null && (
+                      <span>Semântico: <span className="text-nb-secondary">{item.semantic_score.toFixed(2)}</span></span>
+                    )}
+                    {item.lexical_score != null && (
+                      <span>Lexical: <span className="text-nb-secondary">{item.lexical_score.toFixed(2)}</span></span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CatalogMediaMessageCard({ delivery }: { delivery: CatalogMediaDelivery }) {
@@ -188,6 +274,7 @@ function OutboundBubble({
         )}
         <span className="text-[10px] text-nb-muted/50 px-1">{formatTimestamp(msg.created_at)}</span>
         <DeliveryBadge msg={msg} onRetried={onMessageUpdated} />
+        {isAgent && <CatalogRetrievalBadge msg={msg} />}
       </div>
     </div>
   );
