@@ -1,8 +1,12 @@
 import logging
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from app.config import settings
 from app.routers import (
@@ -22,6 +26,17 @@ from app.routers import (
     whatsapp_webhooks,
     workspaces,
 )
+
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        send_default_pii=True,
+        integrations=[
+            StarletteIntegration(),
+            FastApiIntegration(),
+            SqlalchemyIntegration(),
+        ],
+    )
 
 # Emit INFO-level logs for application code so operational events
 # (webhook processing, auto-reply checks, outbound delivery) are visible

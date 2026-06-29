@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # ── WhatsApp / Meta ───────────────────────────────────────────────────────
     whatsapp_webhook_verify_token: str = ""
 
+    # ── Observability ─────────────────────────────────────────────────────────
+    sentry_dsn: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
