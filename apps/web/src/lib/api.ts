@@ -463,6 +463,7 @@ export type WhatsAppChannelConfig = {
   status?: "testing" | "active" | "disconnected";
   connected_at?: string | null;
   last_webhook_at?: string | null;
+  auto_reply_enabled?: boolean;
 };
 
 type ChannelBase = {

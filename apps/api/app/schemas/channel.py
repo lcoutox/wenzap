@@ -75,6 +75,8 @@ class WhatsAppChannelConfig(BaseModel):
     status: Literal["testing", "active", "disconnected"] = "testing"
     connected_at: datetime | None = None
     last_webhook_at: datetime | None = None
+    # When true, new inbound messages will trigger an automatic AI reply.
+    auto_reply_enabled: bool = False
     # TODO: add partial index on config_json->>'phone_number_id' when volume warrants it:
     # CREATE INDEX ON channels ((config_json->>'phone_number_id')) WHERE channel_type = 'whatsapp';
 

@@ -620,20 +620,48 @@ function WhatsAppForm({
 
 // ── WhatsApp channel card ─────────────────────────────────────────────────────
 
+function AutoReplyToggle({
+  enabled,
+  busy,
+  onChange,
+}: {
+  enabled: boolean;
+  busy: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      onClick={onChange}
+      disabled={busy}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${enabled ? "bg-nb-primary" : "bg-nb-border-strong"}`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-4" : "translate-x-0"}`}
+      />
+    </button>
+  );
+}
+
 function WhatsAppCard({
   channel,
   canEdit,
   onArchive,
+  onToggleAutoReply,
   busy,
 }: {
   channel: WhatsAppChannel;
   canEdit: boolean;
   onArchive: (ch: WhatsAppChannel) => void;
+  onToggleAutoReply: (ch: WhatsAppChannel) => void;
   busy: boolean;
 }) {
   const cfg = channel.config;
   const waStatus = cfg.status ?? "—";
   const statusColor = waStatus === "active" ? "text-nb-success" : waStatus === "disconnected" ? "text-nb-danger" : "text-nb-warning";
+  const autoReplyEnabled = cfg.auto_reply_enabled ?? false;
 
   return (
     <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4 hover:border-nb-border-strong transition-colors">
@@ -675,14 +703,35 @@ function WhatsAppCard({
         )}
       </div>
 
-      {canEdit && (
-        <div className="flex items-center gap-2 pt-1 border-t border-nb-border">
-          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
+      {/* Auto-reply toggle */}
+      <div className="pt-3 border-t border-nb-border space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-nb-secondary">Resposta automática da IA</p>
+            <p className="text-[10px] text-nb-muted mt-0.5 leading-relaxed">
+              Quando ativado, novas mensagens recebidas neste número serão respondidas automaticamente pelo agente vinculado.
+            </p>
+          </div>
+          {canEdit ? (
+            <AutoReplyToggle
+              enabled={autoReplyEnabled}
+              busy={busy}
+              onChange={() => onToggleAutoReply(channel)}
+            />
+          ) : (
+            <span className={`text-[10px] font-semibold ${autoReplyEnabled ? "text-nb-success" : "text-nb-muted"}`}>
+              {autoReplyEnabled ? "Ativo" : "Inativo"}
+            </span>
+          )}
+        </div>
+
+        {canEdit && (
+          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
             {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
             Desconectar
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -867,6 +916,20 @@ export function ImplantarTab({
     } finally { setBusyId(null); }
   }
 
+  async function handleWaToggleAutoReply(ch: WhatsAppChannel) {
+    setBusyId(ch.id);
+    try {
+      const newValue = !(ch.config.auto_reply_enabled ?? false);
+      const updated = await api.channels.update(ch.id, {
+        config: { ...ch.config, auto_reply_enabled: newValue },
+      });
+      setWaChannels((prev) => prev.map((c) => c.id === ch.id ? updated as WhatsAppChannel : c));
+      showSuccess(newValue ? "Resposta automática ativada." : "Resposta automática desativada.");
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : "Erro ao atualizar canal.");
+    } finally { setBusyId(null); }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -979,7 +1042,7 @@ export function ImplantarTab({
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {waChannels.map((ch) => (
-                    <WhatsAppCard key={ch.id} channel={ch} canEdit={writable} onArchive={handleWaArchive} busy={busyId === ch.id} />
+                    <WhatsAppCard key={ch.id} channel={ch} canEdit={writable} onArchive={handleWaArchive} onToggleAutoReply={handleWaToggleAutoReply} busy={busyId === ch.id} />
                   ))}
                 </div>
               )}

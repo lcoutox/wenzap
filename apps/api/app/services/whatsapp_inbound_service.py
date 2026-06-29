@@ -1,7 +1,8 @@
 """
 WhatsApp inbound processing service.
 
-Orchestrates: Channel lookup → Contact upsert → Conversation upsert → Message creation.
+Orchestrates: Channel lookup → Contact upsert → Conversation upsert → Message creation
+→ (optional) AI auto-reply.
 
 Design notes:
 - Never raises — all exceptions are caught and logged so the webhook endpoint
@@ -10,9 +11,13 @@ Design notes:
   create_message() service, because:
     (a) there is no authenticated user in the webhook context;
     (b) we need to persist external_message_id for idempotency;
-    (c) ai_enabled=False must be set unconditionally (no outbound delivery yet).
+    (c) ai_enabled follows channel.config_json.auto_reply_enabled, not a fixed default.
 - Idempotency: duplicate wamid within the same conversation is detected via
-  external_message_id and silently returns the existing message.
+  external_message_id and silently returns the existing message without triggering
+  auto-reply a second time.
+- Auto-reply: triggered only for new messages when conversation.ai_enabled=True.
+  Existing conversations preserve their ai_enabled value so that a human takeover
+  is respected across subsequent messages.
 """
 
 import logging
@@ -67,12 +72,21 @@ def _process(db: Session, msg: WhatsAppInboundMessage) -> ConversationMessage | 
 
     workspace_id: uuid.UUID = channel.workspace_id
     agent_id: uuid.UUID | None = channel.agent_id
+    auto_reply_enabled: bool = bool((channel.config_json or {}).get("auto_reply_enabled", False))
 
     contact = _get_or_create_contact(db, workspace_id, msg)
     conversation = _get_or_create_conversation(
-        db, workspace_id, contact, agent_id, channel_id=channel.id
+        db, workspace_id, contact, agent_id,
+        channel_id=channel.id,
+        auto_reply_enabled=auto_reply_enabled,
     )
-    return _create_message_idempotent(db, workspace_id, conversation, msg)
+    message, is_new = _create_message_idempotent(db, workspace_id, conversation, msg)
+
+    # Only trigger auto-reply for genuinely new messages, never for duplicates.
+    if is_new and conversation.ai_enabled:
+        _trigger_agent_reply(db, workspace_id, conversation, message)
+
+    return message
 
 
 def _get_or_create_contact(
@@ -130,6 +144,7 @@ def _get_or_create_conversation(
     contact: Contact,
     agent_id: uuid.UUID | None,
     channel_id: uuid.UUID | None = None,
+    auto_reply_enabled: bool = False,
 ) -> Conversation:
     conversation = db.scalar(
         select(Conversation)
@@ -152,7 +167,7 @@ def _get_or_create_conversation(
             channel_id=channel_id,
             channel_type="whatsapp",
             status="open",
-            ai_enabled=False,
+            ai_enabled=auto_reply_enabled,
             assigned_user_id=None,
             created_at=now,
             updated_at=now,
@@ -160,11 +175,13 @@ def _get_or_create_conversation(
         db.add(conversation)
         db.flush()
         logger.info(
-            "whatsapp_inbound created conversation id=%s workspace=%s contact=%s",
+            "whatsapp_inbound created conversation id=%s workspace=%s contact=%s ai_enabled=%s",
             conversation.id,
             workspace_id,
             contact.id,
+            auto_reply_enabled,
         )
+    # Existing conversation: preserve ai_enabled — do not override operator's decision.
 
     return conversation
 
@@ -174,7 +191,12 @@ def _create_message_idempotent(
     workspace_id: uuid.UUID,
     conversation: Conversation,
     msg: WhatsAppInboundMessage,
-) -> ConversationMessage:
+) -> tuple[ConversationMessage, bool]:
+    """
+    Create the inbound message if it doesn't already exist.
+
+    Returns (message, is_new) where is_new=False indicates a duplicate wamid.
+    """
     # Idempotency check: reject duplicate wamid within this conversation.
     existing = db.scalar(
         select(ConversationMessage).where(
@@ -188,7 +210,7 @@ def _create_message_idempotent(
             msg.wamid,
             conversation.id,
         )
-        return existing
+        return existing, False
 
     now = datetime.now(timezone.utc)
     message = ConversationMessage(
@@ -219,4 +241,24 @@ def _create_message_idempotent(
         msg.wamid,
         conversation.id,
     )
-    return message
+    return message, True
+
+
+def _trigger_agent_reply(
+    db: Session,
+    workspace_id: uuid.UUID,
+    conversation: Conversation,
+    trigger_message: ConversationMessage,
+) -> None:
+    """Dispatch auto-reply; errors are logged and never propagate."""
+    try:
+        from app.services.conversation_agent_reply_service import (  # noqa: PLC0415
+            generate_conversation_agent_reply,
+        )
+        generate_conversation_agent_reply(db, workspace_id, conversation, trigger_message)
+    except Exception:
+        logger.exception(
+            "whatsapp_inbound auto-reply failed conversation=%s message=%s",
+            conversation.id,
+            trigger_message.id,
+        )

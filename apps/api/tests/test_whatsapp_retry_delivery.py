@@ -13,22 +13,19 @@ Covers:
 """
 
 import uuid
-from types import SimpleNamespace
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy.orm import Session
 
+from app.enums import MemberRole, MemberStatus
 from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.models.user import User
 from app.models.workspace import Workspace
-from app.enums import MemberRole, MemberStatus
 from app.models.workspace_member import WorkspaceMember
 from tests.conftest import _make_client, _make_user
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

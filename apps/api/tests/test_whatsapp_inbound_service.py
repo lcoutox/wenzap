@@ -1,5 +1,5 @@
 """
-Tests for whatsapp_inbound_service.py — Phase 6.2-A.
+Tests for whatsapp_inbound_service.py — Phase 6.2-A / WhatsApp AI.1.
 
 Covers:
   Contact
@@ -9,12 +9,19 @@ Covers:
   - does not mix contacts between workspaces
 
   Conversation
-  - creates conversation with channel_type=whatsapp and ai_enabled=False
+  - channel with auto_reply_enabled=False creates conversation with ai_enabled=False
+  - channel with auto_reply_enabled=True creates conversation with ai_enabled=True
+  - existing conversation preserves ai_enabled (not overridden on subsequent messages)
   - reuses open conversation for same contact/channel/agent
   - reuses pending conversation
   - creates new conversation if previous was resolved
   - creates new conversation if previous was archived
   - agent_id comes from the channel
+
+  Auto-reply
+  - channel with auto_reply_enabled=True dispatches agent reply for new messages
+  - duplicate wamid does not dispatch agent reply twice
+  - existing conversation with ai_enabled=False does not dispatch agent reply
 
   Message
   - creates inbound/customer message with correct fields
@@ -30,6 +37,7 @@ Covers:
 """
 
 import uuid
+from unittest.mock import patch
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -59,6 +67,7 @@ def _make_whatsapp_channel(
     agent_id: uuid.UUID,
     phone_number_id: str = "PHONE_ID_001",
     status: str = "active",
+    auto_reply_enabled: bool = False,
 ) -> Channel:
     ch = Channel(
         workspace_id=workspace_id,
@@ -78,6 +87,7 @@ def _make_whatsapp_channel(
             "status": "testing",
             "connected_at": None,
             "last_webhook_at": None,
+            "auto_reply_enabled": auto_reply_enabled,
         },
         allowed_origins=[],
     )
@@ -639,3 +649,147 @@ class TestChannelNotFound:
             select(Contact).where(Contact.external_id == "whatsapp:5537000000000")
         )
         assert contact is None
+
+
+# ── Auto-reply (WhatsApp AI.1) ────────────────────────────────────────────────
+
+
+class TestAutoReplyEnabled:
+    """Tests for auto_reply_enabled channel config and AI reply triggering."""
+
+    def test_auto_reply_disabled_creates_conversation_ai_disabled(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_OFF",
+            auto_reply_enabled=False,
+        )
+        process_inbound_message(
+            db, _make_msg(phone_number_id="AR_PID_OFF", wamid="wamid.AR_OFF_001")
+        )
+
+        conv = db.scalar(
+            select(Conversation).where(
+                Conversation.workspace_id == workspace_a.id,
+                Conversation.channel_type == "whatsapp",
+            )
+        )
+        assert conv is not None
+        assert conv.ai_enabled is False
+
+    def test_auto_reply_enabled_creates_conversation_ai_enabled(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_ON",
+            auto_reply_enabled=True,
+        )
+        process_inbound_message(db, _make_msg(phone_number_id="AR_PID_ON", wamid="wamid.AR_ON_001"))
+
+        conv = db.scalar(
+            select(Conversation).where(
+                Conversation.workspace_id == workspace_a.id,
+                Conversation.channel_type == "whatsapp",
+            )
+        )
+        assert conv is not None
+        assert conv.ai_enabled is True
+
+    def test_auto_reply_enabled_dispatches_agent_reply(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_DISPATCH",
+            auto_reply_enabled=True,
+        )
+
+        with patch(
+            "app.services.conversation_agent_reply_service.generate_conversation_agent_reply"
+        ) as mock_reply:
+            process_inbound_message(
+                db, _make_msg(phone_number_id="AR_PID_DISPATCH", wamid="wamid.AR_DISPATCH_001")
+            )
+
+        mock_reply.assert_called_once()
+
+    def test_duplicate_wamid_does_not_dispatch_agent_reply_twice(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_DUP",
+            auto_reply_enabled=True,
+        )
+        msg = _make_msg(phone_number_id="AR_PID_DUP", wamid="wamid.AR_DUP_001")
+
+        with patch(
+            "app.services.conversation_agent_reply_service.generate_conversation_agent_reply"
+        ) as mock_reply:
+            process_inbound_message(db, msg)
+            process_inbound_message(db, msg)  # duplicate
+
+        mock_reply.assert_called_once()  # NOT twice
+
+    def test_auto_reply_disabled_does_not_dispatch_agent_reply(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_NODISPATCH",
+            auto_reply_enabled=False,
+        )
+
+        with patch(
+            "app.services.conversation_agent_reply_service.generate_conversation_agent_reply"
+        ) as mock_reply:
+            process_inbound_message(
+                db, _make_msg(phone_number_id="AR_PID_NODISPATCH", wamid="wamid.AR_ND_001")
+            )
+
+        mock_reply.assert_not_called()
+
+    def test_existing_conversation_ai_enabled_preserved(
+        self, db: Session, workspace_a: Workspace
+    ):
+        """Subsequent messages don't override ai_enabled — human takeover is respected."""
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db, workspace_a.id, agent.id,
+            phone_number_id="AR_PID_PRESERVE",
+            auto_reply_enabled=True,
+        )
+        # First message creates conversation with ai_enabled=True.
+        process_inbound_message(
+            db, _make_msg(phone_number_id="AR_PID_PRESERVE", wamid="wamid.AR_PRES_001")
+        )
+
+        # Operator manually pauses AI on the conversation.
+        conv = db.scalar(
+            select(Conversation).where(
+                Conversation.workspace_id == workspace_a.id,
+                Conversation.channel_type == "whatsapp",
+            )
+        )
+        assert conv is not None
+        conv.ai_enabled = False
+        db.commit()
+
+        # Second message arrives — should NOT re-enable AI.
+        with patch(
+            "app.services.conversation_agent_reply_service.generate_conversation_agent_reply"
+        ) as mock_reply:
+            process_inbound_message(
+                db, _make_msg(phone_number_id="AR_PID_PRESERVE", wamid="wamid.AR_PRES_002")
+            )
+
+        mock_reply.assert_not_called()
+        db.refresh(conv)
+        assert conv.ai_enabled is False
