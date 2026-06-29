@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
-import type { ConversationMessage, MessageDelivery } from "@/lib/api";
+import { AlertTriangle, ImageOff, Loader2, RotateCcw } from "lucide-react";
+import type { CatalogMediaDelivery, ConversationMessage, MessageDelivery } from "@/lib/api";
 import { api } from "@/lib/api";
 
 function formatTimestamp(iso: string): string {
@@ -17,6 +17,61 @@ function senderLabel(msg: ConversationMessage, contactName: string | null): stri
 
 function getDelivery(msg: ConversationMessage): MessageDelivery | null {
   return (msg.metadata_json?.delivery as MessageDelivery) ?? null;
+}
+
+function getCatalogMediaDelivery(msg: ConversationMessage): CatalogMediaDelivery | null {
+  const raw = msg.metadata_json?.catalog_media_delivery;
+  if (!raw || typeof raw !== "object") return null;
+  return raw as CatalogMediaDelivery;
+}
+
+function CatalogMediaMessageCard({ delivery }: { delivery: CatalogMediaDelivery }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const itemName = typeof delivery.item_name === "string" ? delivery.item_name : null;
+  const caption = typeof delivery.caption === "string" ? delivery.caption : null;
+  const mediaUrl = typeof delivery.media_url === "string" ? delivery.media_url : null;
+  const sent = delivery.sent === true;
+  const failed = delivery.sent === false;
+  const showImage = !!mediaUrl && !imageFailed;
+
+  return (
+    <div className="w-56 rounded-2xl rounded-br-sm overflow-hidden bg-nb-elevated border border-nb-border text-nb-text">
+      <div className="aspect-square w-full bg-nb-bg flex items-center justify-center overflow-hidden">
+        {showImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={mediaUrl}
+            alt={itemName ?? "Imagem do Catálogo"}
+            className="w-full h-full object-cover"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-1.5 text-nb-muted">
+            <ImageOff className="w-6 h-6" />
+            <span className="text-[10px]">Prévia indisponível</span>
+          </div>
+        )}
+      </div>
+      <div className="px-3 py-2.5 space-y-1">
+        <p className="text-[10px] uppercase tracking-wide text-nb-muted/70">Imagem do Catálogo</p>
+        {itemName && <p className="text-sm font-medium text-nb-text break-words">{itemName}</p>}
+        {caption && caption !== itemName && (
+          <p className="text-xs text-nb-secondary break-words">{caption}</p>
+        )}
+        {failed ? (
+          <div className="flex items-start gap-1 text-[10px] text-nb-danger pt-0.5">
+            <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-px" />
+            <span>
+              Falha ao enviar imagem do Catálogo
+              {typeof delivery.error === "string" && delivery.error ? `: ${delivery.error}` : ""}
+            </span>
+          </div>
+        ) : sent ? (
+          <p className="text-[10px] text-nb-muted/70 pt-0.5">Enviada</p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function deliveryErrorHint(delivery: MessageDelivery): string {
@@ -116,6 +171,7 @@ function OutboundBubble({
   onMessageUpdated: (updated: ConversationMessage) => void;
 }) {
   const isAgent = msg.sender_type === "agent";
+  const catalogMedia = getCatalogMediaDelivery(msg);
   return (
     <div className="flex items-end gap-2 max-w-[75%] self-end flex-row-reverse">
       <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 ${isAgent ? "bg-nb-primary-bg border border-nb-primary/20" : "bg-nb-soft border border-nb-border"}`}>
@@ -123,9 +179,13 @@ function OutboundBubble({
       </div>
       <div className="flex flex-col gap-0.5 items-end">
         <span className="text-[10px] text-nb-muted px-1">{senderLabel(msg, contactName)}</span>
-        <div className={`rounded-2xl rounded-br-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-white ${isAgent ? "bg-nb-primary-strong" : "bg-nb-primary"}`}>
-          {msg.content}
-        </div>
+        {catalogMedia ? (
+          <CatalogMediaMessageCard delivery={catalogMedia} />
+        ) : (
+          <div className={`rounded-2xl rounded-br-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-white ${isAgent ? "bg-nb-primary-strong" : "bg-nb-primary"}`}>
+            {msg.content}
+          </div>
+        )}
         <span className="text-[10px] text-nb-muted/50 px-1">{formatTimestamp(msg.created_at)}</span>
         <DeliveryBadge msg={msg} onRetried={onMessageUpdated} />
       </div>

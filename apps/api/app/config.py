@@ -30,18 +30,32 @@ class Settings(BaseSettings):
     conversation_history_limit: int = 20
 
     # ── Storage settings ──────────────────────────────────────────────────────
-    # storage_provider: "local" for dev/test/MVP; "s3" for production (not yet implemented).
+    # storage_provider: "local" for dev/test/MVP; "r2" for production.
     storage_provider: str = "local"
     storage_local_root: str = "./storage"
     storage_bucket: str = ""
-    storage_region: str = ""
+    storage_region: str = "auto"
     storage_endpoint_url: str = ""
     storage_access_key_id: str = ""
     storage_secret_access_key: str = ""
 
+    # ── Cloudflare R2 settings ────────────────────────────────────────────────
+    # Set STORAGE_PROVIDER=r2 to activate. These override the generic storage_*
+    # equivalents when the R2 provider is active.
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = ""
+    r2_public_base_url: str = ""
+    r2_endpoint_url: str = ""
+
     # ── Upload settings ───────────────────────────────────────────────────────
     # Global fallback when the workspace plan has no max_file_size_bytes set.
     max_file_size_bytes: int = 10_485_760  # 10 MB
+
+    # Per-type limits for catalog media uploads.
+    catalog_media_max_image_bytes: int = 10_485_760    # 10 MB
+    catalog_media_max_document_bytes: int = 20_971_520  # 20 MB
 
     # ── First-party auth ──────────────────────────────────────────────────────
     auth_session_ttl_days: int = 30

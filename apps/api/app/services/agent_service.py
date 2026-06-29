@@ -111,6 +111,7 @@ def _build_agent_out(
         ai_model_id=model_cfg.ai_model_id if model_cfg else agent.ai_model_id,
         model_name=model_cfg.model_name if model_cfg else agent.model_name,
         temperature=float(model_cfg.temperature) if model_cfg else float(agent.temperature),
+        catalog_enabled=agent.catalog_enabled,
         created_by_user_id=agent.created_by_user_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -209,6 +210,7 @@ def create_agent(
         ai_model_id=model.id,               # transition: kept in agents
         model_name=model.model_name,        # transition: kept in agents
         temperature=data.temperature,       # transition: kept in agents
+        catalog_enabled=data.catalog_enabled,
         status=AgentStatus.draft.value,
         created_by_user_id=user_id,
     )

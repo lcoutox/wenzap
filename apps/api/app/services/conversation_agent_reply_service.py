@@ -302,6 +302,31 @@ def generate_conversation_agent_reply(
 
     # ── 9. Persist response message ───────────────────────────────────────────
     now = datetime.now(timezone.utc)
+
+    # Build metadata_json for audit (catalog retrieval info, safe to store).
+    response_metadata: dict = {}
+    if ctx.catalog_retrieval_attempted:
+        methods = {i.retrieval_method for i in ctx.catalog_items}
+        method = "hybrid" if "hybrid" in methods else (
+            "lexical_fallback" if methods else "none"
+        )
+        response_metadata["catalog_retrieval"] = {
+            "query": trigger_message.content[:500],
+            "retrieval_method": method,
+            "embedding_used": method == "hybrid",
+            "items_considered": [
+                {
+                    "id": str(item.id),
+                    "name": item.name,
+                    "score": item.score,
+                    "semantic_score": item.semantic_score,
+                    "lexical_score": item.lexical_score,
+                    "retrieval_method": item.retrieval_method,
+                }
+                for item in ctx.catalog_items
+            ],
+        }
+
     response_msg = ConversationMessage(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
@@ -310,6 +335,7 @@ def generate_conversation_agent_reply(
         agent_id=agent.id,
         content=llm_response.content,
         content_type="text",
+        metadata_json=response_metadata or None,
     )
     db.add(response_msg)
     db.flush()  # Assign id and created_at.
@@ -358,12 +384,61 @@ def generate_conversation_agent_reply(
             )
             deliver_human_message(db, response_msg, conversation)
         except Exception:
-            import logging as _logging  # noqa: PLC0415
-            _logging.getLogger(__name__).exception(
+            logger.exception(
                 "whatsapp_outbound agent delivery failed conversation=%s message=%s",
                 conversation.id,
                 response_msg.id,
             )
+
+        # After text delivery: attempt catalog image delivery if eligible.
+        text_delivered = (
+            (response_msg.metadata_json or {}).get("delivery", {}).get("status") == "sent"
+        )
+        if text_delivered and agent.catalog_enabled and ctx.catalog_retrieval_attempted:
+            try:
+                from app.services.catalog_media_delivery_service import (  # noqa: PLC0415
+                    decide_catalog_media_delivery,
+                    deliver_catalog_media_image,
+                )
+                from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+                from app.services.whatsapp_outbound_service import (  # noqa: PLC0415
+                    _find_whatsapp_channel,
+                    _load_contact,
+                    _resolve_access_token,
+                    normalize_whatsapp_to,
+                )
+                storage = get_storage_provider()
+                wa_channel = _find_whatsapp_channel(db, conversation)
+                wa_contact = _load_contact(db, conversation)
+                recipient = normalize_whatsapp_to(wa_contact) if wa_contact else None
+                wa_token = _resolve_access_token(db, wa_channel) if wa_channel else None
+
+                if wa_channel and recipient and wa_token:
+                    decision = decide_catalog_media_delivery(
+                        db=db,
+                        workspace_id=workspace_id,
+                        conversation=conversation,
+                        catalog_items=ctx.catalog_items,
+                        catalog_retrieval_attempted=ctx.catalog_retrieval_attempted,
+                        storage=storage,
+                        text_message=response_msg,
+                    )
+                    if decision.should_send:
+                        deliver_catalog_media_image(
+                            db=db,
+                            workspace_id=workspace_id,
+                            conversation=conversation,
+                            decision=decision,
+                            agent_id=agent.id,
+                            channel=wa_channel,
+                            contact_recipient=recipient,
+                            access_token=wa_token,
+                        )
+            except Exception:
+                logger.exception(
+                    "catalog_media_delivery unexpected error conversation=%s",
+                    conversation.id,
+                )
 
     return run
 

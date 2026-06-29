@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Zap,
   BookOpen,
+  Package,
 } from "lucide-react";
 import type { Subscription, Usage } from "@/lib/api";
 
@@ -38,7 +39,8 @@ const nav = [
   { href: "/dashboard/inbox",         label: "Inbox",        icon: MessageSquare },
   { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
   { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
-  { href: "/dashboard/settings",      label: "Configurações", icon: Settings },
+  { href: "/dashboard/catalog",        label: "Catálogo",     icon: Package  },
+  { href: "/dashboard/settings",       label: "Configurações", icon: Settings },
 ];
 
 // ── Plan card ─────────────────────────────────────────────────────────────────

@@ -143,10 +143,15 @@ def test_factory_local_returns_local_provider(tmp_path):
     assert isinstance(result, LocalStorageProvider)
 
 
-def test_factory_s3_raises_not_implemented():
+def test_factory_s3_raises_without_config():
     with patch("app.services.storage.factory.settings") as mock_settings:
         mock_settings.storage_provider = "s3"
-        with pytest.raises(StorageError, match="not implemented yet"):
+        mock_settings.storage_bucket = ""
+        mock_settings.storage_endpoint_url = ""
+        mock_settings.storage_access_key_id = ""
+        mock_settings.storage_secret_access_key = ""
+        mock_settings.storage_region = "us-east-1"
+        with pytest.raises(StorageError):
             get_storage_provider()
 
 

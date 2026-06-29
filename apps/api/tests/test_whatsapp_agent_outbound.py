@@ -153,6 +153,8 @@ class TestAgentOutboundDelivery:
                 retrieved_chunks_count=0,
                 retrieval_duration_ms=None,
                 retrieval_error_message=None,
+                catalog_retrieval_attempted=False,
+                catalog_items=[],
             )
 
             run = generate_conversation_agent_reply(
@@ -204,6 +206,8 @@ class TestAgentOutboundDelivery:
                 retrieved_chunks_count=0,
                 retrieval_duration_ms=None,
                 retrieval_error_message=None,
+                catalog_retrieval_attempted=False,
+                catalog_items=[],
             )
 
             run = generate_conversation_agent_reply(

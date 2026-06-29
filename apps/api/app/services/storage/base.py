@@ -21,3 +21,13 @@ class StorageProvider(ABC):
     @abstractmethod
     def exists(self, key: str) -> bool:
         """Return True if *key* exists in storage."""
+
+    @abstractmethod
+    def generate_presigned_url(self, key: str, expires_in: int = 3600) -> str:
+        """
+        Return a URL (presigned or public) that allows GET access to *key*.
+
+        The URL is valid for at least *expires_in* seconds.
+        For local storage, returns a non-network-accessible path (suitable for
+        display in dev tooling, not for browser preview).
+        """

@@ -112,6 +112,7 @@ export type Agent = {
   ai_model_id: string | null;
   model_name: string;
   temperature: number;
+  catalog_enabled: boolean;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -133,6 +134,7 @@ export type AgentUpdateInput = {
   persona?: string | null;
   ai_model_id?: string;
   temperature?: number;
+  catalog_enabled?: boolean;
 };
 
 export type AgentStatusUpdateInput = {
@@ -366,6 +368,19 @@ export type MessageDelivery = {
   failed_at?: string | null;
 };
 
+export type CatalogMediaDelivery = {
+  attempted?: boolean;
+  sent?: boolean;
+  item_id?: string;
+  item_name?: string;
+  media_id?: string;
+  media_url?: string;
+  caption?: string;
+  reason?: string;
+  error?: string;
+  wamid?: string;
+};
+
 export type ConversationMessage = {
   id: string;
   workspace_id: string;
@@ -377,7 +392,13 @@ export type ConversationMessage = {
   content: string;
   content_type: string;
   external_message_id: string | null;
-  metadata_json: { delivery?: MessageDelivery; [key: string]: unknown } | null;
+  metadata_json:
+    | {
+        delivery?: MessageDelivery;
+        catalog_media_delivery?: CatalogMediaDelivery;
+        [key: string]: unknown;
+      }
+    | null;
   created_at: string;
 };
 
@@ -428,6 +449,122 @@ export type OnboardingSubmitInput = {
   role: string;
   heard_from: string;
   contact_consent: boolean;
+};
+
+// ── Catalog ───────────────────────────────────────────────────────────────────
+
+export type CatalogItemStatus = "draft" | "active" | "inactive" | "unavailable" | "archived";
+
+export type CatalogCategory = {
+  id: string;
+  workspace_id: string;
+  parent_id: string | null;
+  name: string;
+  slug: string | null;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CatalogItem = {
+  id: string;
+  workspace_id: string;
+  category_id: string | null;
+  name: string;
+  slug: string | null;
+  short_description: string | null;
+  description: string | null;
+  price: number | null;
+  currency: string;
+  status: CatalogItemStatus;
+  tags: string[];
+  metadata_json: Record<string, unknown>;
+  searchable_text: string | null;
+  external_id: string | null;
+  sku: string | null;
+  stock_quantity: number | null;
+  is_featured: boolean;
+  created_at: string;
+  updated_at: string;
+  primary_media?: CatalogMedia | null;
+};
+
+export type CatalogCategoryCreateInput = {
+  name: string;
+  parent_id?: string | null;
+  slug?: string;
+  description?: string;
+  sort_order?: number;
+  is_active?: boolean;
+};
+
+export type CatalogCategoryUpdateInput = Partial<CatalogCategoryCreateInput>;
+
+export type CatalogItemCreateInput = {
+  name: string;
+  category_id?: string | null;
+  slug?: string;
+  short_description?: string;
+  description?: string;
+  price?: number | null;
+  currency?: string;
+  status?: CatalogItemStatus;
+  tags?: string[];
+  metadata_json?: Record<string, unknown>;
+  external_id?: string;
+  sku?: string;
+  stock_quantity?: number | null;
+  is_featured?: boolean;
+};
+
+export type CatalogItemUpdateInput = Partial<CatalogItemCreateInput>;
+
+export type CatalogMediaFileType = "image" | "document" | "other";
+
+export type CatalogMedia = {
+  id: string;
+  workspace_id: string;
+  item_id: string;
+  file_key: string;
+  original_filename: string;
+  display_name: string | null;
+  mime_type: string;
+  file_type: CatalogMediaFileType;
+  size_bytes: number;
+  sort_order: number;
+  is_primary: boolean;
+  alt_text: string | null;
+  metadata_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  preview_url: string | null;
+  download_url: string | null;
+};
+
+export type CatalogMediaUpdateInput = {
+  display_name?: string | null;
+  alt_text?: string | null;
+  sort_order?: number;
+  metadata_json?: Record<string, unknown>;
+};
+
+export type CatalogMediaReorderItem = {
+  id: string;
+  sort_order: number;
+};
+
+export type CatalogItemFilters = {
+  q?: string;
+  category_id?: string;
+  status?: CatalogItemStatus;
+  is_featured?: boolean;
+  has_price?: boolean;
+  tag?: string;
+  limit?: number;
+  offset?: number;
+  include_primary_media?: boolean;
 };
 
 // ── Channels ──────────────────────────────────────────────────────────────────
@@ -768,6 +905,90 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+  },
+  catalog: {
+    categories: {
+      list: (includeInactive?: boolean) =>
+        cookieFetch<CatalogCategory[]>(
+          includeInactive ? "/catalog/categories?include_inactive=true" : "/catalog/categories",
+        ),
+      get: (id: string) => cookieFetch<CatalogCategory>(`/catalog/categories/${id}`),
+      create: (data: CatalogCategoryCreateInput) =>
+        cookieFetch<CatalogCategory>("/catalog/categories", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: CatalogCategoryUpdateInput) =>
+        cookieFetch<CatalogCategory>(`/catalog/categories/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (id: string) =>
+        cookieFetch<CatalogCategory>(`/catalog/categories/${id}`, { method: "DELETE" }),
+    },
+    items: {
+      list: (filters?: CatalogItemFilters) => {
+        const qs = new URLSearchParams();
+        if (filters?.q) qs.set("q", filters.q);
+        if (filters?.category_id) qs.set("category_id", filters.category_id);
+        if (filters?.status) qs.set("status", filters.status);
+        if (filters?.is_featured != null) qs.set("is_featured", String(filters.is_featured));
+        if (filters?.has_price != null) qs.set("has_price", String(filters.has_price));
+        if (filters?.tag) qs.set("tag", filters.tag);
+        if (filters?.limit != null) qs.set("limit", String(filters.limit));
+        if (filters?.offset != null) qs.set("offset", String(filters.offset));
+        if (filters?.include_primary_media) qs.set("include_primary_media", "true");
+        const q = qs.toString();
+        return cookieFetch<CatalogItem[]>(q ? `/catalog/items?${q}` : "/catalog/items");
+      },
+      get: (id: string) => cookieFetch<CatalogItem>(`/catalog/items/${id}`),
+      create: (data: CatalogItemCreateInput) =>
+        cookieFetch<CatalogItem>("/catalog/items", {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: CatalogItemUpdateInput) =>
+        cookieFetch<CatalogItem>(`/catalog/items/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      archive: (id: string) =>
+        cookieFetch<CatalogItem>(`/catalog/items/${id}`, { method: "DELETE" }),
+    },
+    media: {
+      list: (itemId: string) =>
+        cookieFetch<CatalogMedia[]>(`/catalog/items/${itemId}/media`),
+      get: (itemId: string, mediaId: string) =>
+        cookieFetch<CatalogMedia>(`/catalog/items/${itemId}/media/${mediaId}`),
+      upload: async (itemId: string, formData: FormData): Promise<CatalogMedia> => {
+        const res = await fetch(`${API_URL}/catalog/items/${itemId}/media`, {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new ApiError(res.status, err.detail ?? "API error");
+        }
+        return res.json() as Promise<CatalogMedia>;
+      },
+      update: (itemId: string, mediaId: string, data: CatalogMediaUpdateInput) =>
+        cookieFetch<CatalogMedia>(`/catalog/items/${itemId}/media/${mediaId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (itemId: string, mediaId: string) =>
+        cookieFetch<void>(`/catalog/items/${itemId}/media/${mediaId}`, { method: "DELETE" }),
+      setPrimary: (itemId: string, mediaId: string) =>
+        cookieFetch<CatalogMedia>(`/catalog/items/${itemId}/media/${mediaId}/set-primary`, {
+          method: "POST",
+        }),
+      reorder: (itemId: string, payload: CatalogMediaReorderItem[]) =>
+        cookieFetch<CatalogMedia[]>(`/catalog/items/${itemId}/media/reorder`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+    },
   },
   agents: {
     list: (status?: AgentStatus) =>

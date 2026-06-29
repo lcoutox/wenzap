@@ -43,6 +43,11 @@ class LocalStorageProvider(StorageProvider):
         path = self._safe_resolve(key)
         return os.path.isfile(path)
 
+    def generate_presigned_url(self, key: str, expires_in: int = 3600) -> str:
+        # Local storage has no network-accessible URLs; return the absolute path
+        # so dev tooling can still display it.
+        return f"file://{self._safe_resolve(key)}"
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _safe_resolve(self, key: str) -> str:

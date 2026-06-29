@@ -659,7 +659,6 @@ class TestExchangeEndpoint:
 
     def test_code_exchanged_without_redirect_uri(self, db: Session, user_a: User, workspace_a: Workspace):
         """Verify the Meta code exchange call does not include redirect_uri."""
-        import httpx as _httpx
 
         agent = _make_agent(db, workspace_a.id)
         state = _valid_state(user_a.id, workspace_a.id, agent.id)

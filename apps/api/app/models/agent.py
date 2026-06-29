@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -28,6 +28,7 @@ class Agent(Base):
         String(200), nullable=False, default="nexbrain-prime"
     )
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.70)
+    catalog_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Nullable: user may be deleted after creating the agent.
     # Never used for authorization — workspace_id + membership is the authority.
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

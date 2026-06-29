@@ -13,6 +13,7 @@ from app.routers import (
     agents,
     ai_models,
     auth,
+    catalog,
     channels,
     contacts,
     conversations,
@@ -89,6 +90,7 @@ app.include_router(workspaces.router)
 app.include_router(members.router)
 app.include_router(plans.router)
 app.include_router(agents.router)
+app.include_router(catalog.router)
 app.include_router(knowledge_bases.router)
 app.include_router(ai_models.router)
 app.include_router(channels.router)

@@ -65,6 +65,7 @@ from app.services import playground_service
 from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
 from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
 from app.services.ai_model_service import PLAN_TIER
+from app.services.catalog_retrieval_service import retrieve_catalog_context
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
 
 # Phase 3: only these Anthropic model_name values can be executed.
@@ -175,6 +176,17 @@ def run_agent_test(
     score_max = max(c.score for c in chunks_final) if chunks_final else None
     score_min = min(c.score for c in chunks_final) if chunks_final else None
 
+    # ── Catalog retrieval (Catálogo.3 / Catálogo.5) ──────────────────────────
+    if agent.catalog_enabled:
+        catalog_result = retrieve_catalog_context(
+            db,
+            workspace_id=workspace_id,
+            query=data.message,
+        )
+    else:
+        from app.services.catalog_retrieval_service import CatalogRetrievalResult  # noqa: PLC0415
+        catalog_result = CatalogRetrievalResult(retrieval_attempted=False)
+
     # ── Build system prompt (deferred until after retrieval) ──────────────────
     system = build_system_prompt(
         agent_name=agent.name,
@@ -182,6 +194,7 @@ def run_agent_test(
         system_prompt=prompt_settings.system_prompt,
         persona=prompt_settings.persona,
         rag_context=rag_context,
+        catalog_context=catalog_result.context_block,
     )
 
     request = LLMRequest(
@@ -272,6 +285,22 @@ def run_agent_test(
         session_id=session.id,
         rag_used=rag_used_flag,
         retrieved_chunks_count=injected_count,
+        catalog_retrieval_attempted=catalog_result.retrieval_attempted,
+        catalog_items_count=len(catalog_result.items),
+        catalog_items_used=[
+            {
+                "id": str(i.id),
+                "name": i.name,
+                "score": i.score,
+                "semantic_score": i.semantic_score,
+                "lexical_score": i.lexical_score,
+                "retrieval_method": i.retrieval_method,
+            }
+            for i in catalog_result.items
+        ],
+        catalog_retrieval_method=(
+            catalog_result.items[0].retrieval_method if catalog_result.items else None
+        ),
     )
 
 

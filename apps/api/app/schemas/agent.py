@@ -13,6 +13,7 @@ class AgentCreate(BaseModel):
     persona: str | None = None
     ai_model_id: uuid.UUID
     temperature: float = 0.7
+    catalog_enabled: bool = True
 
     @field_validator("name")
     @classmethod
@@ -53,6 +54,7 @@ class AgentUpdate(BaseModel):
     persona: str | None = None
     ai_model_id: uuid.UUID | None = None
     temperature: float | None = None
+    catalog_enabled: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -103,6 +105,7 @@ class AgentOut(BaseModel):
     ai_model_id: uuid.UUID | None
     model_name: str
     temperature: float
+    catalog_enabled: bool
     created_by_user_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

@@ -70,6 +70,7 @@ export default function AgentWorkspacePage() {
   const [persona,      setPersona]      = useState("");
   const [aiModelId,    setAiModelId]    = useState<string | null>(null);
   const [temperature,  setTemperature]  = useState("0.7");
+  const [catalogEnabled, setCatalogEnabled] = useState(true);
 
   // UI state
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("settings");
@@ -97,6 +98,7 @@ export default function AgentWorkspacePage() {
         setPersona(agentData.persona ?? "");
         setAiModelId(agentData.ai_model_id);
         setTemperature(String(agentData.temperature));
+        setCatalogEnabled(agentData.catalog_enabled);
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -133,6 +135,7 @@ export default function AgentWorkspacePage() {
         persona: persona.trim() || null,
         ai_model_id: aiModelId,
         temperature: tempNum,
+        catalog_enabled: catalogEnabled,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -250,12 +253,14 @@ export default function AgentWorkspacePage() {
                   activeModel={activeModel}
                   name={name}
                   description={description}
+                  catalogEnabled={catalogEnabled}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
                   onNameChange={setName}
                   onDescriptionChange={setDescription}
+                  onCatalogEnabledChange={setCatalogEnabled}
                 />
               )}
 

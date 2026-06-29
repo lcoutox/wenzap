@@ -9,6 +9,9 @@ from app.models.agent_test_run_retrieved_chunk import AgentTestRunRetrievedChunk
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.auth_session import AuthSession
+from app.models.catalog_category import CatalogCategory
+from app.models.catalog_item import CatalogItem
+from app.models.catalog_media import CatalogMedia
 from app.models.channel import Channel
 from app.models.channel_credential import ChannelCredential
 from app.models.contact import Contact
@@ -47,6 +50,9 @@ __all__ = [
     "AgentPlaygroundMessage",
     "AiModelProvider",
     "AiModel",
+    "CatalogCategory",
+    "CatalogItem",
+    "CatalogMedia",
     "KnowledgeBase",
     "KnowledgeChunk",
     "KnowledgeSource",

@@ -84,6 +84,7 @@ def build_system_prompt(
     system_prompt: str,
     persona: str | None,
     rag_context: str | None = None,
+    catalog_context: str | None = None,
     channel_hint: str | None = None,
 ) -> str:
     """
@@ -94,15 +95,18 @@ def build_system_prompt(
       2. Operator-configured system prompt
       3. Persona / tone guidance (optional)
       4. RAG context block (optional, Phase 4.3+)
-      5. Nexbrain platform safety rules (fixed, always last)
+      5. Catalog context block (optional, Catálogo.3+)
+      6. Channel rules (optional)
+      7. Nexbrain platform safety rules (fixed, always last)
 
     Args:
         agent_name:        Name of the agent (used as identity anchor).
         agent_description: Optional description of the agent's purpose.
         system_prompt:     Core instructions from agent_prompt_settings.
         persona:           Optional tone/personality guidance.
-        rag_context:       Pre-built RAG block string from build_rag_context_block,
-                           or None if no Knowledge Base context is available.
+        rag_context:       Pre-built RAG block from build_rag_context_block, or None.
+        catalog_context:   Pre-built catalog block from build_catalog_context_block, or None.
+        channel_hint:      Channel type hint for formatting rules (e.g. "whatsapp").
 
     Returns:
         A single string ready to pass as the LLM system field.
@@ -121,6 +125,9 @@ def build_system_prompt(
 
     if rag_context:
         parts.append(rag_context)
+
+    if catalog_context:
+        parts.append(catalog_context)
 
     if channel_hint == "whatsapp":
         parts.append(_WHATSAPP_CHANNEL_RULES)

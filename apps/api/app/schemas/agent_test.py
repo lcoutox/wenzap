@@ -40,3 +40,8 @@ class AgentTestResponse(BaseModel):
     # clients that ignore unknown fields continue to work without changes.
     rag_used: bool = False
     retrieved_chunks_count: int = 0
+    # Catalog metadata (Catálogo.3 / Catálogo.4)
+    catalog_retrieval_attempted: bool = False
+    catalog_items_count: int = 0
+    catalog_items_used: list[dict] = []
+    catalog_retrieval_method: str | None = None

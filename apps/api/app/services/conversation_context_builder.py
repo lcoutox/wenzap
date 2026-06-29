@@ -29,6 +29,10 @@ from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
 from app.services.agent_guardrails import detect_prompt_injection
+from app.services.catalog_retrieval_service import (
+    CatalogRetrievalItem,
+    retrieve_catalog_context,
+)
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
 
 # Maps (direction, sender_type) to the label shown in the conversation history block.
@@ -58,7 +62,7 @@ class ConversationContext:
     needed to call the LLM and log the run are exposed here.
     """
 
-    # Fully assembled system prompt (identity + persona + RAG + safety rules).
+    # Fully assembled system prompt (identity + persona + RAG + catalog + safety rules).
     system_prompt: str
 
     # Formatted conversation history block (header + labelled lines).
@@ -72,6 +76,12 @@ class ConversationContext:
     retrieved_chunks_count: int = 0
     retrieval_duration_ms: int | None = None
     retrieval_error_message: str | None = None
+
+    # Catalog retrieval metadata (Catálogo.3).
+    catalog_retrieval_attempted: bool = False
+    catalog_items_count: int = 0
+    catalog_items: list[CatalogRetrievalItem] = field(default_factory=list)
+    catalog_error_message: str | None = None
 
     # All messages included in the history (for debugging / audit).
     history_messages: list[dict[str, Any]] = field(default_factory=list)
@@ -126,6 +136,17 @@ def build_conversation_context(
     if chunks_final:
         rag_context = build_rag_context_block([c.content for c in chunks_final])
 
+    # ── Catalog retrieval (Catálogo.3 / Catálogo.5) ──────────────────────────
+    if agent.catalog_enabled:
+        catalog_result = retrieve_catalog_context(
+            db,
+            workspace_id=workspace_id,
+            query=trigger_message.content,
+        )
+    else:
+        from app.services.catalog_retrieval_service import CatalogRetrievalResult  # noqa: PLC0415
+        catalog_result = CatalogRetrievalResult(retrieval_attempted=False)
+
     # ── Build system prompt (reuses Playground builder unchanged) ─────────────
     system = build_system_prompt(
         agent_name=agent.name,
@@ -133,6 +154,7 @@ def build_conversation_context(
         system_prompt=prompt_settings.system_prompt or "",
         persona=prompt_settings.persona,
         rag_context=rag_context,
+        catalog_context=catalog_result.context_block,
         channel_hint=conversation.channel_type,
     )
 
@@ -144,6 +166,10 @@ def build_conversation_context(
         retrieved_chunks_count=len(chunks_final),
         retrieval_duration_ms=retrieval_result.retrieval_duration_ms,
         retrieval_error_message=retrieval_result.error_message,
+        catalog_retrieval_attempted=catalog_result.retrieval_attempted,
+        catalog_items_count=len(catalog_result.items),
+        catalog_items=catalog_result.items,
+        catalog_error_message=catalog_result.error_message,
         history_messages=[
             {
                 "direction": m.direction,
