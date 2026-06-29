@@ -158,6 +158,9 @@ def exchange_code_for_short_lived_token(code: str) -> str:
                 "client_id": app_id,
                 "client_secret": app_secret,
                 "code": code,
+                # JS SDK with response_type="code" requires redirect_uri="" on backend exchange.
+                # Meta validates that this matches the implicit redirect_uri used in FB.login.
+                "redirect_uri": "",
             },
             timeout=_META_TIMEOUT,
         )
