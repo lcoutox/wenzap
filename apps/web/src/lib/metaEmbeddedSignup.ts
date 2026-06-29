@@ -26,6 +26,8 @@ declare global {
 const META_TRUSTED_ORIGINS = new Set([
   "https://www.facebook.com",
   "https://web.facebook.com",
+  "https://facebook.com",
+  "https://business.facebook.com",
 ]);
 
 export interface EmbeddedSignupData {
@@ -111,16 +113,30 @@ export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
     let businessId: string | null = null;
 
     function onMessage(event: MessageEvent) {
+      // Log every message from any Meta/Facebook origin for debugging
+      if (
+        typeof event.origin === "string" &&
+        (event.origin.includes("facebook.com") || event.origin.includes("meta.com"))
+      ) {
+        console.debug("[WenzapES] postMessage from", event.origin, event.data);
+      }
+
       if (!META_TRUSTED_ORIGINS.has(event.origin)) return;
       try {
         const data =
           typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+
+        console.debug("[WenzapES] parsed message", data);
+
         if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
 
         if (data.event === "FINISH" && data.data) {
           wabaId = data.data.waba_id ?? null;
           phoneNumberId = data.data.phone_number_id ?? null;
           businessId = data.data.business_id ?? null;
+          console.debug("[WenzapES] FINISH captured", { wabaId, phoneNumberId, businessId });
+        } else if (data.event === "CANCEL") {
+          console.debug("[WenzapES] CANCEL received", data);
         }
       } catch {
         // not a JSON message — ignore
