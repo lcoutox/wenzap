@@ -11,7 +11,6 @@ import {
   Copy,
   Globe,
   Loader2,
-  MessageCircle,
   Plus,
   Power,
   Trash2,
@@ -27,6 +26,7 @@ import type {
   MemberRole,
   WebWidgetConfig,
 } from "@/lib/api";
+import { EmbeddedSignupButton } from "@/components/agents/workspace/whatsapp/EmbeddedSignupButton";
 
 // ── Permissions ───────────────────────────────────────────────────────────────
 
@@ -659,79 +659,96 @@ function WhatsAppCard({
   busy: boolean;
 }) {
   const cfg = channel.config;
-  const waStatus = cfg.status ?? "—";
-  const statusColor = waStatus === "active" ? "text-nb-success" : waStatus === "disconnected" ? "text-nb-danger" : "text-nb-warning";
   const autoReplyEnabled = cfg.auto_reply_enabled ?? false;
+  const isEmbedded = cfg.onboarding_type === "embedded_signup";
+  const [techOpen, setTechOpen] = useState(false);
 
   return (
     <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4 hover:border-nb-border-strong transition-colors">
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center flex-shrink-0">
             <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-nb-text truncate">{channel.name}</p>
-            <p className="text-xs text-nb-muted mt-0.5">{cfg.display_phone_number || "Sem número de exibição"}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-nb-text truncate">WhatsApp conectado</p>
+              <CheckCircle className="w-3.5 h-3.5 text-nb-success flex-shrink-0" />
+            </div>
+            <p className="text-xs text-nb-muted mt-0.5">
+              {cfg.display_phone_number || cfg.phone_number_id}
+            </p>
           </div>
         </div>
         <StatusBadge status={channel.status} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <div>
-          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Phone Number ID</p>
-          <p className="text-nb-secondary font-mono">{cfg.phone_number_id}</p>
+      {/* Auto-reply toggle */}
+      <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-nb-elevated border border-nb-border">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-nb-secondary">Resposta automática da IA</p>
+          <p className="text-[10px] text-nb-muted mt-0.5 leading-relaxed">
+            {autoReplyEnabled
+              ? "Ativa — novas mensagens serão respondidas pelo agente."
+              : "Inativa — mensagens chegam apenas no Inbox."}
+          </p>
         </div>
-        <div>
-          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">WABA ID</p>
-          <p className="text-nb-secondary font-mono">{cfg.waba_id}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Status Meta</p>
-          <p className={`font-medium ${statusColor}`}>{waStatus}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Token</p>
-          <p className="text-nb-secondary font-mono truncate">{cfg.access_token_ref ?? "—"}</p>
-        </div>
-        {cfg.last_webhook_at && (
-          <div className="col-span-2">
-            <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Último webhook</p>
-            <p className="text-nb-secondary">{new Date(cfg.last_webhook_at).toLocaleString("pt-BR")}</p>
+        {canEdit ? (
+          <AutoReplyToggle
+            enabled={autoReplyEnabled}
+            busy={busy}
+            onChange={() => onToggleAutoReply(channel)}
+          />
+        ) : (
+          <span className={`text-[10px] font-semibold ${autoReplyEnabled ? "text-nb-success" : "text-nb-muted"}`}>
+            {autoReplyEnabled ? "Ativa" : "Inativa"}
+          </span>
+        )}
+      </div>
+
+      {/* Technical details (collapsible) */}
+      <div className="border border-nb-border rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setTechOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 bg-nb-elevated hover:bg-nb-soft transition-colors text-xs"
+        >
+          <span className="text-nb-muted font-medium">Detalhes técnicos</span>
+          {techOpen ? <ChevronUp className="w-3.5 h-3.5 text-nb-muted" /> : <ChevronDown className="w-3.5 h-3.5 text-nb-muted" />}
+        </button>
+        {techOpen && (
+          <div className="bg-nb-bg border-t border-nb-border px-3 py-3 grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Phone Number ID</p>
+              <p className="text-nb-secondary font-mono truncate">{cfg.phone_number_id}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">WABA ID</p>
+              <p className="text-nb-secondary font-mono truncate">{cfg.waba_id}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Conexão</p>
+              <p className="text-nb-secondary">{isEmbedded ? "Embedded Signup" : "Manual"}</p>
+            </div>
+            {cfg.last_webhook_at && (
+              <div>
+                <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Último webhook</p>
+                <p className="text-nb-secondary">{new Date(cfg.last_webhook_at).toLocaleString("pt-BR")}</p>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Auto-reply toggle */}
-      <div className="pt-3 border-t border-nb-border space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-nb-secondary">Resposta automática da IA</p>
-            <p className="text-[10px] text-nb-muted mt-0.5 leading-relaxed">
-              Quando ativado, novas mensagens recebidas neste número serão respondidas automaticamente pelo agente vinculado.
-            </p>
-          </div>
-          {canEdit ? (
-            <AutoReplyToggle
-              enabled={autoReplyEnabled}
-              busy={busy}
-              onChange={() => onToggleAutoReply(channel)}
-            />
-          ) : (
-            <span className={`text-[10px] font-semibold ${autoReplyEnabled ? "text-nb-success" : "text-nb-muted"}`}>
-              {autoReplyEnabled ? "Ativo" : "Inativo"}
-            </span>
-          )}
-        </div>
-
-        {canEdit && (
-          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
+      {canEdit && (
+        <div className="flex justify-end border-t border-nb-border pt-2">
+          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
             {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
             Desconectar
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -768,6 +785,85 @@ function WhatsAppFormModal({
           <WhatsAppForm onSave={onSave} onCancel={onClose} saving={saving} saveError={saveError} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── WhatsApp connect card (disconnected state) ────────────────────────────────
+
+function WhatsAppConnectCard({
+  agentId,
+  writable,
+  saveError,
+  saving,
+  onEmbeddedSuccess,
+  onManualOpen,
+}: {
+  agentId: string;
+  writable: boolean;
+  saveError: string | null;
+  saving: boolean;
+  onEmbeddedSuccess: (ch: WhatsAppChannel) => void;
+  onManualOpen: () => void;
+}) {
+  const [manualOpen, setManualOpen] = useState(false);
+
+  return (
+    <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-5">
+      {/* Hero */}
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center flex-shrink-0">
+          <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-nb-text">Conecte seu WhatsApp oficial</p>
+          <p className="text-xs text-nb-muted mt-0.5">
+            Permita que este agente responda mensagens recebidas pelo WhatsApp da sua empresa.
+          </p>
+        </div>
+      </div>
+
+      {writable ? (
+        <>
+          {/* Primary CTA — Embedded Signup */}
+          <div className="space-y-2">
+            <EmbeddedSignupButton agentId={agentId} onSuccess={onEmbeddedSuccess} />
+            <p className="text-[11px] text-nb-muted text-center leading-relaxed">
+              Você será direcionado para a Meta para escolher ou conectar seu número do WhatsApp Business.
+            </p>
+          </div>
+
+          {/* Manual config accordion */}
+          <div className="border border-nb-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setManualOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-nb-elevated hover:bg-nb-soft transition-colors text-xs"
+            >
+              <span className="text-nb-muted font-medium">Configuração avançada / manual</span>
+              {manualOpen ? <ChevronUp className="w-3.5 h-3.5 text-nb-muted" /> : <ChevronDown className="w-3.5 h-3.5 text-nb-muted" />}
+            </button>
+            {manualOpen && (
+              <div className="bg-nb-bg border-t border-nb-border px-4 py-3 space-y-2">
+                <p className="text-[11px] text-nb-muted leading-relaxed">
+                  Use apenas para testes internos ou configuração assistida pela equipe Wenzap.
+                </p>
+                <button
+                  type="button"
+                  onClick={onManualOpen}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:border-nb-border-strong hover:text-nb-text disabled:opacity-50 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Configurar manualmente
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-nb-muted">Apenas administradores podem conectar canais.</p>
+      )}
     </div>
   );
 }
@@ -1003,42 +1099,23 @@ export function ImplantarTab({
 
             {/* ── WhatsApp section ── */}
             <div className="space-y-4 pt-4 border-t border-nb-border">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
-                  <h3 className="text-sm font-semibold text-nb-secondary">WhatsApp</h3>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-nb-elevated border border-nb-border text-nb-muted uppercase tracking-wide">Manual</span>
-                </div>
-                {writable && waChannels.length === 0 && (
-                  <button type="button" onClick={() => { setSaveError(null); setWaModal(true); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:border-nb-border-strong hover:text-nb-text transition-colors">
-                    <Plus className="w-3.5 h-3.5" />Conectar número
-                  </button>
-                )}
+              <div className="flex items-center gap-2">
+                <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                <h3 className="text-sm font-semibold text-nb-secondary">WhatsApp</h3>
               </div>
 
               {waChannels.length === 0 ? (
-                <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center flex-shrink-0">
-                      <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-nb-text">WhatsApp Business</p>
-                      <p className="text-xs text-nb-muted mt-0.5">Meta Cloud API · Configuração manual</p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-nb-muted leading-relaxed">
-                    Conecte este agente a um número oficial do WhatsApp Business. Use os dados do Meta Cloud API para configurar o canal.
-                  </p>
-                  {writable ? (
-                    <button type="button" onClick={() => { setSaveError(null); setWaModal(true); }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 text-[#25D366] text-sm font-medium hover:bg-[#25D366]/20 transition-colors">
-                      <MessageCircle className="w-4 h-4" />
-                      Conectar WhatsApp
-                    </button>
-                  ) : (
-                    <p className="text-xs text-nb-muted">Apenas administradores podem conectar canais.</p>
-                  )}
-                </div>
+                <WhatsAppConnectCard
+                  agentId={agentId}
+                  writable={writable}
+                  saveError={saveError}
+                  saving={saving}
+                  onEmbeddedSuccess={(ch) => {
+                    setWaChannels((prev) => [ch, ...prev]);
+                    showSuccess("Canal WhatsApp conectado com sucesso.");
+                  }}
+                  onManualOpen={() => { setSaveError(null); setWaModal(true); }}
+                />
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {waChannels.map((ch) => (

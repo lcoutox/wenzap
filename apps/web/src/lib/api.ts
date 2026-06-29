@@ -730,6 +730,24 @@ export const api = {
       cookieFetch<Channel>(`/channels/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     archive: (id: string) =>
       cookieFetch<Channel>(`/channels/${id}/archive`, { method: "POST" }),
+    whatsappEmbeddedSignup: {
+      createState: (agentId: string) =>
+        cookieFetch<{ state: string; expires_in: number }>(
+          "/channels/whatsapp/embedded-signup/state",
+          { method: "POST", body: JSON.stringify({ agent_id: agentId }) },
+        ),
+      exchange: (payload: {
+        code: string;
+        state: string;
+        waba_id: string;
+        phone_number_id: string;
+        business_id?: string | null;
+      }) =>
+        cookieFetch<Channel>(
+          "/channels/whatsapp/embedded-signup/exchange",
+          { method: "POST", body: JSON.stringify(payload) },
+        ),
+    },
   },
   onboarding: {
     get: () => cookieFetch<OnboardingStatus>("/onboarding"),
