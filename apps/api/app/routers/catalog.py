@@ -1,6 +1,7 @@
+import json
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
@@ -12,6 +13,8 @@ from app.schemas.catalog import (
     CatalogCategoryCreate,
     CatalogCategoryOut,
     CatalogCategoryUpdate,
+    CatalogImportPreview,
+    CatalogImportReport,
     CatalogItemCreate,
     CatalogItemFilters,
     CatalogItemOut,
@@ -20,7 +23,7 @@ from app.schemas.catalog import (
     CatalogMediaReorderItem,
     CatalogMediaUpdate,
 )
-from app.services import catalog_media_service, catalog_service
+from app.services import catalog_import_service, catalog_media_service, catalog_service
 from app.services.workspace_service import get_current_member_role
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -36,8 +39,6 @@ def _require_role(
     workspace: Workspace,
     user: User,
 ) -> MemberRole:
-    from fastapi import HTTPException
-
     role = get_current_member_role(db, workspace.id, user.id)
     if role not in allowed:
         raise HTTPException(
@@ -309,4 +310,71 @@ def reorder_media(
     storage = catalog_media_service.get_storage_or_503()
     return catalog_media_service.reorder_media(
         db, current_workspace.id, item_id, items, storage
+    )
+
+
+# ── Import ────────────────────────────────────────────────────────────────────
+
+@router.post("/import/preview", response_model=CatalogImportPreview)
+async def import_preview(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> CatalogImportPreview:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    result = await catalog_import_service.preview(file)
+    return CatalogImportPreview(
+        filename=result.filename,
+        total_rows=result.total_rows,
+        columns=result.columns,
+        rows_preview=[
+            {"row_number": r.row_number, "values": r.values}
+            for r in result.rows_preview
+        ],
+        warnings=result.warnings,
+    )
+
+
+@router.post("/import/commit", response_model=CatalogImportReport)
+async def import_commit(
+    file: UploadFile = File(...),
+    mapping_json: str = Form(...),
+    mode: str = Form(default="create_only"),
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> CatalogImportReport:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+
+    try:
+        mapping = json.loads(mapping_json)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="mapping_json inválido.",
+        )
+
+    if mode not in {"create_only", "upsert_by_sku", "upsert_by_external_id"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Modo inválido: '{mode}'.",
+        )
+
+    result = await catalog_import_service.commit(
+        db, current_workspace.id, file, mapping, mode  # type: ignore[arg-type]
+    )
+    return CatalogImportReport(
+        total_rows=result.total_rows,
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        errors=[
+            {"row_number": e.row_number, "field": e.field, "message": e.message}
+            for e in result.errors
+        ],
+        warnings=[
+            {"row_number": w.row_number, "message": w.message}
+            for w in result.warnings
+        ],
     )

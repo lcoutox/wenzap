@@ -231,3 +231,38 @@ class CatalogItemFilters(BaseModel):
     limit: int = Field(default=50, ge=1, le=200)
     offset: int = Field(default=0, ge=0)
     include_primary_media: bool = False
+
+
+# ── Catalog Import ─────────────────────────────────────────────────────────────
+
+class CatalogImportRowPreview(BaseModel):
+    row_number: int
+    values: dict[str, str]
+
+
+class CatalogImportPreview(BaseModel):
+    filename: str
+    total_rows: int
+    columns: list[str]
+    rows_preview: list[CatalogImportRowPreview]
+    warnings: list[str]
+
+
+class CatalogImportError(BaseModel):
+    row_number: int
+    field: str | None
+    message: str
+
+
+class CatalogImportWarning(BaseModel):
+    row_number: int | None
+    message: str
+
+
+class CatalogImportReport(BaseModel):
+    total_rows: int
+    created: int
+    updated: int
+    skipped: int
+    errors: list[CatalogImportError]
+    warnings: list[CatalogImportWarning]

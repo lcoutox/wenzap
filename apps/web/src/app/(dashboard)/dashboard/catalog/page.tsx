@@ -10,6 +10,7 @@ import {
   Search,
   Star,
   Tag,
+  Upload,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { CatalogCategory, CatalogItem, CatalogItemStatus, MemberRole } from "@/lib/api";
@@ -177,13 +178,22 @@ export default function CatalogPage() {
           </p>
         </div>
         {canWrite(role) && (
-          <Link
-            href="/dashboard/catalog/new"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-nb-primary text-white text-sm font-medium hover:bg-nb-primary-strong transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Novo item
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/catalog/import"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-nb-elevated border border-nb-border text-sm font-medium text-nb-text hover:bg-nb-border transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+              Importar
+            </Link>
+            <Link
+              href="/dashboard/catalog/new"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-nb-primary text-white text-sm font-medium hover:bg-nb-primary-strong transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Novo item
+            </Link>
+          </div>
         )}
       </div>
 

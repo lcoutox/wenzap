@@ -576,6 +576,57 @@ export type CatalogMediaReorderItem = {
   sort_order: number;
 };
 
+export type CatalogImportMapping = {
+  name?: string;
+  category?: string;
+  description?: string;
+  short_description?: string;
+  price?: string;
+  currency?: string;
+  status?: string;
+  tags?: string;
+  sku?: string;
+  external_id?: string;
+  stock_quantity?: string;
+  is_featured?: string;
+  metadata?: Record<string, string>;
+};
+
+export type CatalogImportMode = "create_only" | "upsert_by_sku" | "upsert_by_external_id";
+
+export type CatalogImportRowPreview = {
+  row_number: number;
+  values: Record<string, string>;
+};
+
+export type CatalogImportPreview = {
+  filename: string;
+  total_rows: number;
+  columns: string[];
+  rows_preview: CatalogImportRowPreview[];
+  warnings: string[];
+};
+
+export type CatalogImportError = {
+  row_number: number;
+  field: string | null;
+  message: string;
+};
+
+export type CatalogImportWarning = {
+  row_number: number | null;
+  message: string;
+};
+
+export type CatalogImportReport = {
+  total_rows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: CatalogImportError[];
+  warnings: CatalogImportWarning[];
+};
+
 export type CatalogItemFilters = {
   q?: string;
   category_id?: string;
@@ -1009,6 +1060,36 @@ export const api = {
           method: "POST",
           body: JSON.stringify(payload),
         }),
+    },
+    import: {
+      preview: async (file: File): Promise<CatalogImportPreview> => {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`${API_URL}/catalog/import/preview`, {
+          method: "POST",
+          body: form,
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json() as Promise<CatalogImportPreview>;
+      },
+      commit: async (
+        file: File,
+        mapping: CatalogImportMapping,
+        mode: CatalogImportMode,
+      ): Promise<CatalogImportReport> => {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("mapping_json", JSON.stringify(mapping));
+        form.append("mode", mode);
+        const res = await fetch(`${API_URL}/catalog/import/commit`, {
+          method: "POST",
+          body: form,
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json() as Promise<CatalogImportReport>;
+      },
     },
   },
   agents: {
