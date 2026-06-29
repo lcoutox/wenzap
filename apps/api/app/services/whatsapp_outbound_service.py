@@ -1,19 +1,20 @@
 """
-WhatsApp outbound delivery service — Phase 6.3-A.
+WhatsApp outbound delivery service — Phase 6.3-A / ES.1.
 
 Delivers outbound/human messages from the Inbox to WhatsApp Cloud API.
 
 Design notes:
 - deliver_human_message() never raises. All errors are caught, logged, and
   recorded in metadata_json.delivery so the Inbox message is never lost.
-- Access tokens are resolved from environment variables via access_token_ref.
+- Access tokens are resolved via resolve_channel_secret(), which supports:
+    env:VAR_NAME  — reads the named environment variable (existing manual channels)
+    db:<uuid>     — decrypts from channel_credentials table (Embedded Signup)
   The actual token value is never logged.
 - channel_id on the conversation is the preferred lookup path; workspace+agent
   is used as a fallback for conversations created before this migration.
 """
 
 import logging
-import os
 from datetime import datetime, timezone
 
 import httpx
@@ -24,6 +25,7 @@ from app.models.channel import Channel
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
+from app.services.channel_credentials_service import resolve_channel_secret
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +129,7 @@ def _deliver(
         )
         return
 
-    token = _resolve_access_token(channel)
+    token = _resolve_access_token(db, channel)
     if not token:
         logger.warning(
             "whatsapp_outbound missing token channel_id=%s", channel.id
@@ -242,15 +244,11 @@ def _load_contact(db: Session, conversation: Conversation) -> Contact | None:
     return db.get(Contact, conversation.contact_id)
 
 
-def _resolve_access_token(channel: Channel) -> str | None:
+def _resolve_access_token(db: Session, channel: Channel) -> str | None:
     ref = (channel.config_json or {}).get("access_token_ref")
     if not ref:
         return None
-    if ref.startswith("env:"):
-        var_name = ref.removeprefix("env:")
-        return os.environ.get(var_name) or None
-    logger.warning("whatsapp_outbound unknown token ref format channel_id=%s", channel.id)
-    return None
+    return resolve_channel_secret(db, channel, ref)
 
 
 def _call_meta_cloud_api(

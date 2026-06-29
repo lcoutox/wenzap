@@ -10,6 +10,7 @@ from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.auth_session import AuthSession
 from app.models.channel import Channel
+from app.models.channel_credential import ChannelCredential
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_agent_run import ConversationAgentRun
@@ -37,6 +38,7 @@ __all__ = [
     "UsageCounter",
     "Agent",
     "Channel",
+    "ChannelCredential",
     "AgentPromptSettings",
     "AgentModelSettings",
     "AgentTestRun",

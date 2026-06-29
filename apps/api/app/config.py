@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # ── WhatsApp / Meta ───────────────────────────────────────────────────────
     whatsapp_webhook_verify_token: str = ""
 
+    # ── Credential encryption ─────────────────────────────────────────────────
+    # Required for encrypted channel credentials (db: token refs).
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # noqa: E501
+    # Leave empty in dev/test when no db: credentials are used.
+    app_encryption_key: str = ""
+
     # ── Observability ─────────────────────────────────────────────────────────
     sentry_dsn: str = ""
 
