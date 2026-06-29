@@ -2,21 +2,25 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Moon, Sun, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
 import type { UserMe } from "@/lib/api";
 import { MembersSettingsSection } from "@/components/settings/MembersSettingsSection";
 import { PlanUsageSettingsSection } from "@/components/settings/PlanUsageSettingsSection";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemePreference } from "@/contexts/ThemeContext";
 
-type Tab = "general" | "members" | "plan";
+type Tab = "general" | "appearance" | "members" | "plan";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "general", label: "Geral"       },
-  { id: "members", label: "Membros"     },
-  { id: "plan",    label: "Plano e uso" },
+  { id: "general",    label: "Geral"       },
+  { id: "appearance", label: "Aparência"   },
+  { id: "members",    label: "Membros"     },
+  { id: "plan",       label: "Plano e uso" },
 ];
 
 function parseTab(raw: string | null): Tab {
-  if (raw === "members" || raw === "plan") return raw;
+  if (raw === "members" || raw === "plan" || raw === "appearance") return raw;
   return "general";
 }
 
@@ -107,6 +111,67 @@ function TabGeral() {
   );
 }
 
+// ── Tab: Aparência ─────────────────────────────────────────────────────────────
+
+const THEME_OPTIONS: {
+  value: ThemePreference;
+  label: string;
+  description: string;
+  Icon: React.ElementType;
+}[] = [
+  { value: "dark",   label: "Escuro",  description: "Visual escuro premium (padrão)", Icon: Moon    },
+  { value: "light",  label: "Claro",   description: "Visual claro e limpo",           Icon: Sun     },
+  { value: "system", label: "Sistema", description: "Segue a preferência do sistema", Icon: Monitor },
+];
+
+function TabAparencia() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <div className="max-w-md space-y-6">
+      <div>
+        <h2 className="text-sm font-semibold text-nb-text">Aparência</h2>
+        <p className="text-xs text-nb-muted mt-0.5">
+          Escolha como o Wenzap deve aparecer neste navegador.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {THEME_OPTIONS.map(({ value, label, description, Icon }) => {
+          const active = theme === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTheme(value)}
+              className={`
+                flex flex-col items-center gap-3 p-4 rounded-2xl border text-center transition-all
+                ${active
+                  ? "border-nb-primary bg-nb-primary-bg text-nb-primary"
+                  : "border-nb-border bg-nb-panel text-nb-secondary hover:border-nb-border-strong hover:text-nb-text"
+                }
+              `}
+            >
+              <Icon className={`w-5 h-5 ${active ? "text-nb-primary" : "text-nb-muted"}`} />
+              <div>
+                <p className="text-sm font-medium">{label}</p>
+                <p className="text-[11px] text-nb-muted mt-0.5 leading-tight">{description}</p>
+              </div>
+              {active && (
+                <span className="w-1.5 h-1.5 rounded-full bg-nb-primary" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="text-[11px] text-nb-muted">
+        Esta preferência fica salva neste navegador.
+      </p>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function SettingsContent() {
@@ -148,10 +213,11 @@ function SettingsContent() {
       </div>
 
       {/* Tab content */}
-      <div>
-        {activeTab === "general" && <TabGeral />}
-        {activeTab === "members" && <MembersSettingsSection />}
-        {activeTab === "plan"    && <PlanUsageSettingsSection />}
+      <div className="pt-6">
+        {activeTab === "general"    && <TabGeral />}
+        {activeTab === "appearance" && <TabAparencia />}
+        {activeTab === "members"    && <MembersSettingsSection />}
+        {activeTab === "plan"       && <PlanUsageSettingsSection />}
       </div>
     </>
   );

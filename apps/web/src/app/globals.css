@@ -5,6 +5,10 @@
    Paleta: Dark Navy + Verde Wenzap
    Hierarquia de superfícies (mais escuro → mais elevado):
      bg < surface < panel < elevated < soft
+
+   Tailwind v4: @theme define os tokens e gera as classes utilitárias (bg-nb-*,
+   text-nb-*, etc). Os valores reais ficam nas seções [data-theme] abaixo e
+   sobrescrevem as variáveis CSS que o Tailwind referencia em cascata.
 ────────────────────────────────────────────────────────────────────────────── */
 
 @theme {
@@ -36,11 +40,56 @@
   --color-nb-info:    #38BDF8;
 }
 
+/* ── Dark theme (default — preserves original identity) ──────────────────── */
+
+:root,
+[data-theme="dark"] {
+  --color-nb-bg:            #0B0F14;
+  --color-nb-surface:       #0F1419;
+  --color-nb-panel:         #111827;
+  --color-nb-elevated:      #1A2030;
+  --color-nb-soft:          #1F2937;
+  --color-nb-border:        #1F2D3D;
+  --color-nb-border-strong: #374151;
+  --color-nb-text:          #F9FAFB;
+  --color-nb-secondary:     #9CA3AF;
+  --color-nb-muted:         #6B7280;
+  --color-nb-primary:       #00E09A;
+  --color-nb-primary-strong:#20e7b2;
+  --color-nb-primary-bg:    #002E20;
+  --color-nb-success:       #34D399;
+  --color-nb-warning:       #FBBF24;
+  --color-nb-danger:        #FB7185;
+  --color-nb-info:          #38BDF8;
+}
+
+/* ── Light theme ─────────────────────────────────────────────────────────── */
+
+[data-theme="light"] {
+  --color-nb-bg:            #EEF2F6;
+  --color-nb-surface:       #F8FAFC;
+  --color-nb-panel:         #FFFFFF;
+  --color-nb-elevated:      #FFFFFF;
+  --color-nb-soft:          #E8EDF2;
+  --color-nb-border:        #D1DBE8;
+  --color-nb-border-strong: #A8B8CC;
+  --color-nb-text:          #0F172A;
+  --color-nb-secondary:     #334155;
+  --color-nb-muted:         #64748B;
+  --color-nb-primary:       #00B87A;
+  --color-nb-primary-strong:#009E68;
+  --color-nb-primary-bg:    #DCFDF0;
+  --color-nb-success:       #059669;
+  --color-nb-warning:       #D97706;
+  --color-nb-danger:        #DC2626;
+  --color-nb-info:          #0284C7;
+}
+
 @layer base {
   html,
   body {
-    background-color: #0B0F14;
-    color: #F9FAFB;
+    background-color: var(--color-nb-bg);
+    color: var(--color-nb-text);
     font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
