@@ -1,11 +1,20 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { LogOut, ChevronDown, User } from "lucide-react";
+import { LogOut, ChevronDown, User, Moon, Sun, Monitor } from "lucide-react";
 import { useAppAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemePreference } from "@/contexts/ThemeContext";
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; Icon: React.ElementType }[] = [
+  { value: "dark",   label: "Escuro",  Icon: Moon    },
+  { value: "light",  label: "Claro",   Icon: Sun     },
+  { value: "system", label: "Sistema", Icon: Monitor },
+];
 
 export function UserMenuDropdown() {
   const { user, logout } = useAppAuth();
+  const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -42,10 +51,41 @@ export function UserMenuDropdown() {
 
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-56 rounded-xl bg-nb-surface border border-nb-border shadow-xl z-50 overflow-hidden">
+          {/* User info */}
           <div className="px-4 py-3 border-b border-nb-border">
             <p className="text-sm font-medium text-nb-text truncate">{name}</p>
             <p className="text-xs text-nb-muted truncate mt-0.5">{email}</p>
           </div>
+
+          {/* Theme switcher */}
+          <div className="px-3 py-2.5 border-b border-nb-border">
+            <p className="text-[10px] font-medium text-nb-muted uppercase tracking-wider mb-2">Aparência</p>
+            <div className="flex gap-1">
+              {THEME_OPTIONS.map(({ value, label, Icon }) => {
+                const active = theme === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTheme(value)}
+                    title={label}
+                    className={`
+                      flex-1 flex flex-col items-center gap-1 py-1.5 rounded-lg text-[10px] font-medium transition-colors
+                      ${active
+                        ? "bg-nb-primary-bg text-nb-primary border border-nb-primary/40"
+                        : "text-nb-muted hover:bg-nb-elevated hover:text-nb-secondary border border-transparent"
+                      }
+                    `}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Logout */}
           <div className="py-1">
             <button
               onClick={() => void logout()}
