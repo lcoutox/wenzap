@@ -6,6 +6,7 @@ POST /channels/whatsapp/embedded-signup/exchange  — exchange Meta code for tok
 """
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -59,7 +60,6 @@ def create_state(
     """
     _require_write_role(db, current_workspace, current_user)
 
-    # Validate that the agent exists and belongs to this workspace
     signup_svc.resolve_agent_or_404(db, current_workspace.id, data.agent_id)
 
     state = signup_svc.create_embedded_signup_state(
@@ -82,7 +82,7 @@ def exchange(
 
     Flow:
     1. Verify CSRF state (signature, expiry, user/workspace match).
-    2. Exchange code → short-lived token via Meta Graph API.
+    2. Exchange code → short-lived token via Meta Graph API (no redirect_uri).
     3. Exchange short-lived → long-lived token (~60 days).
     4. Verify phone_number_id belongs to waba_id via Meta Graph API.
     5. Create or update the WhatsApp Channel and its encrypted ChannelCredential.
@@ -101,82 +101,59 @@ def exchange(
         raise HTTPException(status_code=400, detail="invalid_state")
 
     try:
-        import uuid
         agent_id = uuid.UUID(agent_id_str)
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid_state")
 
-    # Validate agent still exists in this workspace
     signup_svc.resolve_agent_or_404(db, current_workspace.id, agent_id)
 
-    # 2. Exchange code → short-lived token
+    # 2. Exchange code → short-lived token (no redirect_uri — JS SDK xd_arbiter flow)
     logger.info(
-        "embedded_signup exchange started workspace_id=%s",
+        "embedded_signup exchange started workspace_id=%s waba_id=%s phone_number_id=%s",
         current_workspace.id,
+        data.waba_id,
+        data.phone_number_id,
     )
-    short_lived_token = signup_svc.exchange_code_for_short_lived_token(data.code, data.redirect_uri)
+    short_lived_token = signup_svc.exchange_code_for_short_lived_token(data.code)
 
     # 3. Exchange short-lived → long-lived token
     long_lived_token, expires_at = signup_svc.exchange_for_long_lived_token(short_lived_token)
 
-    # 4. Resolve WABA ID — explicit (tests/manual) or auto-discovered from token
-    if data.waba_id:
-        waba_id = data.waba_id
-    else:
-        # Facebook Login for Business does not return waba_id via postMessage;
-        # it is embedded in the token's granular_scopes after the user selects it.
-        waba_id = signup_svc.fetch_waba_id_from_token(long_lived_token)
-
-    # 5. List phone numbers in the WABA and pick/verify the target number
-    phone_numbers = signup_svc.fetch_waba_phone_numbers(waba_id, long_lived_token)
-
-    if data.phone_number_id:
-        matched = next(
-            (p for p in phone_numbers if str(p.get("id")) == str(data.phone_number_id)),
-            None,
+    # 4. Verify phone_number_id belongs to waba_id
+    phone_numbers = signup_svc.fetch_waba_phone_numbers(data.waba_id, long_lived_token)
+    matched = next(
+        (p for p in phone_numbers if str(p.get("id")) == str(data.phone_number_id)),
+        None,
+    )
+    if matched is None:
+        logger.warning(
+            "embedded_signup phone_number_id not found in waba "
+            "waba_id=%s phone_number_id=%s workspace_id=%s",
+            data.waba_id,
+            data.phone_number_id,
+            current_workspace.id,
         )
-        if matched is None:
-            logger.warning(
-                "embedded_signup phone_number_id not found in waba "
-                "waba_id=%s phone_number_id=%s workspace_id=%s",
-                waba_id,
-                data.phone_number_id,
-                current_workspace.id,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="phone_number_not_found",
-            )
-    else:
-        if not phone_numbers:
-            logger.warning(
-                "embedded_signup no phone_numbers in waba waba_id=%s workspace_id=%s",
-                waba_id,
-                current_workspace.id,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="no_phone_numbers_in_waba",
-            )
-        matched = phone_numbers[0]
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="phone_number_not_found",
+        )
 
-    phone_number_id = str(matched.get("id"))
-    display_phone_number = matched.get("display_phone_number") or phone_number_id
+    display_phone_number = matched.get("display_phone_number") or data.phone_number_id
 
     logger.info(
-        "embedded_signup waba_id=%s phone_number_id=%s workspace_id=%s",
-        waba_id,
-        phone_number_id,
+        "embedded_signup verified waba_id=%s phone_number_id=%s workspace_id=%s",
+        data.waba_id,
+        data.phone_number_id,
         current_workspace.id,
     )
 
-    # 6. Create or update channel and credential
+    # 5. Create or update channel and credential
     return signup_svc.create_or_update_whatsapp_channel(
         db=db,
         workspace_id=current_workspace.id,
         agent_id=agent_id,
-        waba_id=waba_id,
-        phone_number_id=phone_number_id,
+        waba_id=data.waba_id,
+        phone_number_id=data.phone_number_id,
         display_phone_number=display_phone_number,
         business_id=data.business_id,
         long_lived_token=long_lived_token,

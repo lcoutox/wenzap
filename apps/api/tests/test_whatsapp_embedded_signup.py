@@ -629,17 +629,41 @@ class TestExchangeEndpoint:
         assert resp.status_code == 503
         assert resp.json()["detail"] == "meta_config_missing"
 
-    # ── Auto-discovery path (no waba_id/phone_number_id from frontend) ─────────
-
-    def test_autodiscover_waba_from_granular_scopes(
-        self, db: Session, user_a: User, workspace_a: Workspace
-    ):
-        """When waba_id is omitted, backend discovers it from /me?fields=granular_scopes."""
+    def test_exchange_requires_waba_id(self, db: Session, user_a: User, workspace_a: Workspace):
+        """Exchange endpoint rejects requests without waba_id."""
         agent = _make_agent(db, workspace_a.id)
         state = _valid_state(user_a.id, workspace_a.id, agent.id)
 
-        discovered_waba_id = "999000111"
-        discovered_phone_id = self._PHONE_ID
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                resp = client.post(
+                    "/channels/whatsapp/embedded-signup/exchange",
+                    json={"code": "auth_code", "state": state, "phone_number_id": self._PHONE_ID},
+                )
+
+        assert resp.status_code == 422  # missing required field
+
+    def test_exchange_requires_phone_number_id(self, db: Session, user_a: User, workspace_a: Workspace):
+        """Exchange endpoint rejects requests without phone_number_id."""
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                resp = client.post(
+                    "/channels/whatsapp/embedded-signup/exchange",
+                    json={"code": "auth_code", "state": state, "waba_id": self._WA_ID},
+                )
+
+        assert resp.status_code == 422  # missing required field
+
+    def test_code_exchanged_without_redirect_uri(self, db: Session, user_a: User, workspace_a: Workspace):
+        """Verify the Meta code exchange call does not include redirect_uri."""
+        import httpx as _httpx
+
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+        captured_params: list[dict] = []
 
         def _ok(data: dict) -> MagicMock:
             m = MagicMock()
@@ -647,23 +671,15 @@ class TestExchangeEndpoint:
             m.raise_for_status.return_value = None
             return m
 
-        # 4 HTTP calls: short-lived exchange, long-lived exchange,
-        # granular_scopes discovery, phone_numbers list
         responses = [
             _ok({"access_token": "short"}),
             _ok({"access_token": "long", "expires_in": 5184000}),
-            _ok({
-                "id": "me123",
-                "granular_scopes": [
-                    {"scope": "whatsapp_business_management", "target_ids": [discovered_waba_id]},
-                    {"scope": "whatsapp_business_messaging", "target_ids": [discovered_phone_id]},
-                ],
-            }),
-            _ok({"data": _meta_phone_numbers(discovered_phone_id, self._DISPLAY)}),
+            _ok({"data": _meta_phone_numbers(self._PHONE_ID, self._DISPLAY)}),
         ]
         call_count = [0]
 
         def _side_effect(*args, **kwargs):
+            captured_params.append(kwargs.get("params", {}))
             idx = call_count[0]
             call_count[0] += 1
             return responses[idx]
@@ -671,48 +687,9 @@ class TestExchangeEndpoint:
         with _client(db, user_a, workspace_a) as client:
             with _patch_settings():
                 with patch("httpx.get", side_effect=_side_effect):
-                    resp = client.post(
-                        "/channels/whatsapp/embedded-signup/exchange",
-                        json={"code": "auth_code", "state": state},
-                    )
+                    resp = self._do_exchange(client, state)
 
         assert resp.status_code == 201
-        config = resp.json()["config"]
-        assert config["waba_id"] == discovered_waba_id
-        assert config["phone_number_id"] == discovered_phone_id
-
-    def test_autodiscover_no_waba_in_scopes_returns_422(
-        self, db: Session, user_a: User, workspace_a: Workspace
-    ):
-        agent = _make_agent(db, workspace_a.id)
-        state = _valid_state(user_a.id, workspace_a.id, agent.id)
-
-        def _ok(data: dict) -> MagicMock:
-            m = MagicMock()
-            m.json.return_value = data
-            m.raise_for_status.return_value = None
-            return m
-
-        # granular_scopes has no whatsapp_business_management entry
-        responses = [
-            _ok({"access_token": "short"}),
-            _ok({"access_token": "long", "expires_in": 5184000}),
-            _ok({"id": "me123", "granular_scopes": []}),
-        ]
-        call_count = [0]
-
-        def _side_effect(*args, **kwargs):
-            idx = call_count[0]
-            call_count[0] += 1
-            return responses[idx]
-
-        with _client(db, user_a, workspace_a) as client:
-            with _patch_settings():
-                with patch("httpx.get", side_effect=_side_effect):
-                    resp = client.post(
-                        "/channels/whatsapp/embedded-signup/exchange",
-                        json={"code": "auth_code", "state": state},
-                    )
-
-        assert resp.status_code == 422
-        assert resp.json()["detail"] == "waba_not_found_in_token"
+        # First call is the code exchange — must not include redirect_uri
+        code_exchange_params = captured_params[0]
+        assert "redirect_uri" not in code_exchange_params

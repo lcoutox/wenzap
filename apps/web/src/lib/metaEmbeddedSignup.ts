@@ -4,10 +4,15 @@
  * The SDK is loaded lazily — only when the user initiates the flow.
  * Multiple calls to loadMetaSdk() are safe; the script is injected once.
  *
- * This implementation targets the "Facebook Login for Business" flow, where
- * the popup returns only an authorization code. waba_id and phone_number_id
- * are NOT available via postMessage in this flow — the backend discovers them
- * from the token's granular_scopes after code exchange.
+ * Flow:
+ *  1. FB.login() opens the Meta popup with extras.feature = "whatsapp_embedded_signup".
+ *  2. The popup fires a WA_EMBEDDED_SIGNUP postMessage with waba_id + phone_number_id.
+ *  3. The FB.login callback fires with authResponse.code.
+ *  4. Both signals are required before resolving. A 10-second polling loop handles
+ *     the race where code arrives before the postMessage.
+ *
+ * No redirect_uri is passed to FB.login or to the backend — the JS SDK handles
+ * the popup redirect internally via xd_arbiter and it must not be overridden.
  */
 
 declare global {
@@ -21,16 +26,30 @@ declare global {
       }) => void;
       login: (
         callback: (response: { authResponse?: { code?: string } | null; status: string }) => void,
-        options: { config_id: string; response_type: string; override_default_response_type: boolean; redirect_uri?: string },
+        options: {
+          config_id: string;
+          response_type: string;
+          override_default_response_type: boolean;
+          extras?: Record<string, unknown>;
+        },
       ) => void;
     };
     fbAsyncInit?: () => void;
   }
 }
 
+const META_TRUSTED_ORIGINS = new Set([
+  "https://www.facebook.com",
+  "https://web.facebook.com",
+  "https://facebook.com",
+  "https://business.facebook.com",
+]);
+
 export interface EmbeddedSignupData {
   code: string;
-  redirect_uri: string;
+  waba_id: string;
+  phone_number_id: string;
+  business_id?: string | null;
 }
 
 let sdkLoadPromise: Promise<void> | null = null;
@@ -83,12 +102,11 @@ export function loadMetaSdk(): Promise<void> {
 }
 
 /**
- * Run the Facebook Login for Business flow and return the authorization code.
+ * Run the WhatsApp Embedded Signup flow.
  *
- * The backend will use this code to:
- *  1. Exchange it for a user access token
- *  2. Discover the WABA and phone number from the token's granular_scopes
- *  3. Create the WhatsApp channel
+ * Resolves with { code, waba_id, phone_number_id, business_id } when both the
+ * authorization code and the WA_EMBEDDED_SIGNUP postMessage are received.
+ * Rejects with a user-facing error message on cancellation or timeout.
  */
 export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
@@ -99,32 +117,83 @@ export function runEmbeddedSignup(): Promise<EmbeddedSignupData> {
   }
 
   return new Promise<EmbeddedSignupData>((resolve, reject) => {
-    // The redirect_uri passed to FB.login must match exactly what the backend
-    // sends to Meta during code exchange. We use the origin root so it can be
-    // registered as a valid OAuth redirect URI in the Facebook app settings.
-    const redirect_uri = window.location.origin + "/";
+    let code: string | null = null;
+    let wabaId: string | null = null;
+    let phoneNumberId: string | null = null;
+    let businessId: string | null = null;
+
+    function onMessage(event: MessageEvent) {
+      if (!META_TRUSTED_ORIGINS.has(event.origin)) return;
+      try {
+        const data =
+          typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
+
+        if (data.event === "FINISH" && data.data) {
+          wabaId = data.data.waba_id ?? null;
+          phoneNumberId = data.data.phone_number_id ?? null;
+          businessId = data.data.business_id ?? null;
+        }
+      } catch {
+        // non-JSON message — ignore
+      }
+    }
+
+    window.addEventListener("message", onMessage);
+
+    const cleanup = () => window.removeEventListener("message", onMessage);
 
     window.FB!.login(
       (response) => {
         if (response.status !== "connected" || !response.authResponse) {
+          cleanup();
           reject(new Error("Conexão cancelada. Tente novamente quando quiser."));
           return;
         }
 
-        const code = response.authResponse.code ?? null;
+        code = response.authResponse.code ?? null;
         if (!code) {
+          cleanup();
           reject(new Error("Código de autorização não recebido da Meta. Tente novamente."));
           return;
         }
 
-        resolve({ code, redirect_uri });
+        // Poll up to 10 s for the WA_EMBEDDED_SIGNUP postMessage.
+        // The postMessage may arrive slightly before or after the FB.login callback.
+        const deadline = Date.now() + 10_000;
+        function waitForSessionInfo() {
+          if (wabaId && phoneNumberId) {
+            cleanup();
+            resolve({
+              code: code!,
+              waba_id: wabaId,
+              phone_number_id: phoneNumberId,
+              business_id: businessId,
+            });
+            return;
+          }
+          if (Date.now() >= deadline) {
+            cleanup();
+            reject(
+              new Error(
+                "Não foi possível obter os dados do WhatsApp Business. Complete o fluxo da Meta e tente novamente.",
+              ),
+            );
+            return;
+          }
+          setTimeout(waitForSessionInfo, 50);
+        }
+        waitForSessionInfo();
       },
       {
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
-        redirect_uri,
-      } as Parameters<NonNullable<typeof window.FB>["login"]>[1],
+        extras: {
+          feature: "whatsapp_embedded_signup",
+          sessionInfoVersion: 2,
+        },
+      },
     );
   });
 }
