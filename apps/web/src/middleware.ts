@@ -35,7 +35,9 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (isPublic(pathname) && hasSession) {
+  // /embed routes must never redirect authenticated users — doing so would cause
+  // the widget iframe to render the dashboard instead of the chat UI.
+  if (isPublic(pathname) && hasSession && !pathname.startsWith("/embed")) {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
