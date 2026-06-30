@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Calendar,
+  FolderOpen,
   Package,
   Plus,
   Search,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { CatalogCategory, CatalogItem, CatalogItemStatus, MemberRole } from "@/lib/api";
+import { CatalogCategoriesDialog } from "@/components/catalog/CatalogCategoriesDialog";
 
 function canWrite(role: MemberRole | null) {
   return role === "owner" || role === "admin" || role === "member";
@@ -138,6 +140,7 @@ export default function CatalogPage() {
   const [error, setError]         = useState<string | null>(null);
   const [q, setQ]                 = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("active");
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -179,6 +182,13 @@ export default function CatalogPage() {
         </div>
         {canWrite(role) && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCategoriesOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-nb-elevated border border-nb-border text-sm font-medium text-nb-text hover:bg-nb-border transition-colors"
+            >
+              <FolderOpen className="w-4 h-4" />
+              Categorias
+            </button>
             <Link
               href="/dashboard/catalog/import"
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-nb-elevated border border-nb-border text-sm font-medium text-nb-text hover:bg-nb-border transition-colors"
@@ -220,6 +230,12 @@ export default function CatalogPage() {
           <option value="unavailable">Indisponível</option>
         </select>
       </div>
+
+      <CatalogCategoriesDialog
+        open={categoriesOpen}
+        onClose={() => setCategoriesOpen(false)}
+        onCategoriesChange={(updated) => setCategories(updated)}
+      />
 
       {/* Content */}
       {loading ? (
