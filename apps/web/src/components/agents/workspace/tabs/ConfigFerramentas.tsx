@@ -1,20 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ArrowRight,
   BookOpen,
-  CheckCircle2,
+  Check,
   Clock,
   Globe,
   Hand,
+  Info,
+  Loader2,
+  Minus,
+  Plus,
+  Settings2,
   ShoppingBag,
   X,
+  Zap,
 } from "lucide-react";
-import { api } from "@/lib/api";
-import type { AgentCatalogScope, AgentKnowledgeBase, CatalogCategory, MemberRole } from "@/lib/api";
-import { SaveBar } from "@/components/agents/workspace/SaveBar";
+import { api, ApiError } from "@/lib/api";
+import type { AgentCatalogScope, AgentKnowledgeBase, CatalogCategory, KnowledgeBase, MemberRole } from "@/lib/api";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function canWrite(role: MemberRole | null) {
+  return role === "owner" || role === "admin" || role === "member";
+}
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
@@ -47,104 +57,518 @@ function Toggle({
   );
 }
 
-// ── Category picker modal ─────────────────────────────────────────────────────
+// ── Modal wrapper ─────────────────────────────────────────────────────────────
 
-function CategoryPickerModal({
-  categories,
-  selectedIds,
+function Modal({
+  open,
   onClose,
-  onSave,
+  title,
+  children,
 }: {
-  categories: CatalogCategory[];
-  selectedIds: string[];
+  open: boolean;
   onClose: () => void;
-  onSave: (ids: string[]) => void;
+  title: string;
+  children: React.ReactNode;
 }) {
-  const [draft, setDraft] = useState<Set<string>>(new Set(selectedIds));
+  const overlayRef = useRef<HTMLDivElement>(null);
 
-  const toggle = (id: string) =>
-    setDraft((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-nb-panel rounded-2xl border border-nb-border shadow-xl flex flex-col max-h-[80vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-nb-border shrink-0">
-          <div>
-            <h3 className="text-sm font-bold text-nb-text">Categorias do Catálogo</h3>
-            <p className="text-xs text-nb-muted mt-0.5">
-              Selecione quais categorias este agente pode consultar.
-            </p>
-          </div>
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={(e) => e.target === overlayRef.current && onClose()}
+    >
+      <div className="w-full max-w-lg bg-nb-surface border border-nb-border rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-nb-border shrink-0">
+          <h2 className="text-sm font-semibold text-nb-text">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-nb-elevated transition-colors text-nb-muted"
+            className="p-1.5 rounded-lg hover:bg-nb-elevated text-nb-muted hover:text-nb-secondary transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 min-h-0">
-          {categories.length === 0 ? (
-            <p className="text-sm text-nb-muted text-center py-6">
-              Nenhuma categoria cadastrada.
-            </p>
-          ) : (
-            categories.map((cat) => (
-              <label
-                key={cat.id}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                  draft.has(cat.id)
-                    ? "border-nb-primary bg-nb-primary/5"
-                    : "border-nb-border bg-nb-elevated hover:bg-nb-border/30"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={draft.has(cat.id)}
-                  onChange={() => toggle(cat.id)}
-                  className="accent-nb-primary"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-nb-text truncate">{cat.name}</p>
-                  {cat.description && (
-                    <p className="text-xs text-nb-muted truncate">{cat.description}</p>
-                  )}
-                </div>
-              </label>
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 p-4 border-t border-nb-border shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-nb-border text-sm text-nb-text hover:bg-nb-elevated transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => { onSave(Array.from(draft)); onClose(); }}
-            className="px-4 py-2 rounded-xl bg-nb-primary text-white text-sm font-medium hover:bg-nb-primary-strong transition-colors"
-          >
-            Salvar seleção
-          </button>
-        </div>
+        <div className="overflow-y-auto flex-1 px-5 py-4">{children}</div>
       </div>
     </div>
   );
 }
 
-// ── Tool cards ────────────────────────────────────────────────────────────────
+// ── KB Configure Modal ────────────────────────────────────────────────────────
 
-function SoonToolCard({
+function KbConfigModal({
+  open,
+  onClose,
+  agentId,
+  role,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  role: MemberRole | null;
+}) {
+  const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
+  const [connections, setConnections] = useState<AgentKnowledgeBase[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setLoadError(null);
+    Promise.all([api.knowledgeBases.list(), api.agents.knowledgeBases.list(agentId)])
+      .then(([allKbs, agentKbs]) => {
+        setKbs(allKbs);
+        setConnections(agentKbs);
+      })
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar bases."))
+      .finally(() => setLoading(false));
+  }, [open, agentId]);
+
+  function getConnection(kbId: string) {
+    return connections.find((c) => c.knowledge_base_id === kbId);
+  }
+
+  async function handleConnect(kbId: string) {
+    setBusy((p) => ({ ...p, [kbId]: true }));
+    setActionErrors((p) => ({ ...p, [kbId]: "" }));
+    try {
+      const conn = await api.agents.knowledgeBases.connect(agentId, kbId);
+      setConnections((prev) => {
+        const existing = prev.find((c) => c.knowledge_base_id === kbId);
+        if (existing) return prev.map((c) => (c.knowledge_base_id === kbId ? conn : c));
+        return [...prev, conn];
+      });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const refreshed = await api.agents.knowledgeBases.list(agentId).catch(() => null);
+        if (refreshed) setConnections(refreshed);
+      } else {
+        setActionErrors((p) => ({ ...p, [kbId]: e instanceof Error ? e.message : "Erro ao conectar." }));
+      }
+    } finally {
+      setBusy((p) => ({ ...p, [kbId]: false }));
+    }
+  }
+
+  async function handleDisconnect(kbId: string) {
+    setBusy((p) => ({ ...p, [kbId]: true }));
+    setActionErrors((p) => ({ ...p, [kbId]: "" }));
+    try {
+      await api.agents.knowledgeBases.disconnect(agentId, kbId);
+      setConnections((prev) => prev.filter((c) => c.knowledge_base_id !== kbId));
+    } catch (e) {
+      setActionErrors((p) => ({ ...p, [kbId]: e instanceof Error ? e.message : "Erro ao desconectar." }));
+    } finally {
+      setBusy((p) => ({ ...p, [kbId]: false }));
+    }
+  }
+
+  const writeAllowed = canWrite(role);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Configurar Base de Conhecimento">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          Selecione quais bases este agente pode consultar ao responder clientes.
+        </p>
+
+        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-nb-warning/10 border border-nb-warning/20">
+          <Info className="w-4 h-4 text-nb-warning flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-nb-warning">
+            As bases conectadas são usadas automaticamente pelo agente via RAG.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-14 bg-nb-elevated rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : loadError ? (
+          <p className="text-sm text-nb-danger">{loadError}</p>
+        ) : kbs.length === 0 ? (
+          <div className="flex flex-col items-center py-10 text-center border border-dashed border-nb-border rounded-xl">
+            <BookOpen className="w-8 h-8 text-nb-muted mb-2" />
+            <p className="text-sm font-medium text-nb-secondary mb-1">Nenhuma base criada ainda.</p>
+            <p className="text-xs text-nb-muted mb-4">
+              Crie uma em{" "}
+              <Link href="/dashboard/knowledge-bases" className="text-nb-primary hover:underline">
+                Conhecimento
+              </Link>
+              .
+            </p>
+            <Link
+              href="/dashboard/knowledge-bases"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-nb-primary text-white text-xs font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Criar base de conhecimento
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {kbs.map((kb) => {
+              const conn = getConnection(kb.id);
+              const connected = !!conn && conn.is_active;
+              const isBusy = busy[kb.id] ?? false;
+              const err = actionErrors[kb.id];
+
+              return (
+                <div
+                  key={kb.id}
+                  className="flex items-center gap-3 p-3.5 bg-nb-panel rounded-xl border border-nb-border hover:border-nb-border-strong transition-colors"
+                >
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      connected
+                        ? "bg-nb-primary/10 border border-nb-primary/20"
+                        : "bg-nb-elevated border border-nb-border"
+                    }`}
+                  >
+                    <BookOpen className={`w-4 h-4 ${connected ? "text-nb-primary-strong" : "text-nb-muted"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-nb-text truncate">{kb.name}</span>
+                      {connected && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-nb-success/10 text-nb-success border border-nb-success/20">
+                          <Check className="w-3 h-3" />
+                          Conectada
+                        </span>
+                      )}
+                    </div>
+                    {kb.description && (
+                      <p className="text-xs text-nb-muted truncate mt-0.5">{kb.description}</p>
+                    )}
+                    {err && <p className="text-xs text-nb-danger mt-0.5">{err}</p>}
+                  </div>
+                  {writeAllowed && (
+                    isBusy ? (
+                      <Loader2 className="w-4 h-4 text-nb-muted animate-spin flex-shrink-0" />
+                    ) : connected ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnect(kb.id)}
+                        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-nb-muted border border-nb-border rounded-lg hover:bg-nb-danger/10 hover:text-nb-danger hover:border-nb-danger/20 transition-colors"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                        Desconectar
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleConnect(kb.id)}
+                        className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-lg hover:bg-nb-primary/10 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Conectar
+                      </button>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {kbs.length > 0 && (
+          <div className="flex justify-end pt-1">
+            <Link
+              href="/dashboard/knowledge-bases"
+              className="text-xs text-nb-primary hover:underline"
+            >
+              Gerenciar bases de conhecimento →
+            </Link>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Catalog Configure Modal ───────────────────────────────────────────────────
+
+function CategoryPickerModal({
+  open,
+  onClose,
+  categories,
+  selectedIds,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  categories: CatalogCategory[];
+  selectedIds: string[];
+  onSave: (ids: string[]) => void;
+}) {
+  const [draft, setDraft] = useState<string[]>(selectedIds);
+
+  useEffect(() => {
+    if (open) setDraft(selectedIds);
+  }, [open, selectedIds]);
+
+  function toggle(id: string) {
+    setDraft((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Selecionar categorias">
+      <div className="space-y-3">
+        {categories.length === 0 ? (
+          <p className="text-sm text-nb-muted py-6 text-center">
+            Nenhuma categoria encontrada no catálogo.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {categories.map((cat) => {
+              const checked = draft.includes(cat.id);
+              return (
+                <label
+                  key={cat.id}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-nb-border hover:border-nb-border-strong cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(cat.id)}
+                    className="w-4 h-4 accent-nb-primary"
+                  />
+                  <span className="text-sm text-nb-text">{cat.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 pt-2 border-t border-nb-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => { onSave(draft); onClose(); }}
+            className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors"
+          >
+            Salvar seleção
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CatalogConfigModal({
+  open,
+  onClose,
+  agentId,
+  readonly,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  readonly: boolean;
+}) {
+  const [scope, setScope] = useState<AgentCatalogScope>({
+    catalog_enabled: true,
+    category_scope: "all",
+    category_ids: [],
+  });
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setError(null);
+    Promise.all([api.agents.catalogScope.get(agentId), api.catalog.categories.list(false)])
+      .then(([s, cats]) => { setScope(s); setCategories(cats); })
+      .catch(() => setError("Erro ao carregar configuração do Catálogo."))
+      .finally(() => setLoading(false));
+  }, [open, agentId]);
+
+  async function saveScope(next: AgentCatalogScope) {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await api.agents.catalogScope.update(agentId, {
+        catalog_enabled: next.catalog_enabled,
+        category_scope: next.category_scope,
+        category_ids: next.category_ids,
+      });
+      setScope(saved);
+    } catch {
+      setSaveError("Erro ao salvar configuração do Catálogo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleToggle(enabled: boolean) {
+    const next = { ...scope, catalog_enabled: enabled };
+    setScope(next);
+    saveScope(next);
+  }
+
+  function handleScopeChange(s: "all" | "selected") {
+    const next: AgentCatalogScope = {
+      ...scope,
+      category_scope: s,
+      category_ids: s === "all" ? [] : scope.category_ids,
+    };
+    setScope(next);
+    saveScope(next);
+  }
+
+  function handleCategorySave(ids: string[]) {
+    const next: AgentCatalogScope = {
+      ...scope,
+      category_scope: ids.length > 0 ? "selected" : "all",
+      category_ids: ids,
+    };
+    setScope(next);
+    saveScope(next);
+  }
+
+  const selectedNames = scope.category_ids
+    .map((id) => categories.find((c) => c.id === id)?.name)
+    .filter(Boolean);
+
+  return (
+    <>
+      <Modal open={open && !pickerOpen} onClose={onClose} title="Configurar Catálogo">
+        <div className="space-y-5">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2].map((i) => <div key={i} className="h-12 bg-nb-elevated rounded-xl animate-pulse" />)}
+            </div>
+          ) : error ? (
+            <p className="text-sm text-nb-danger">{error}</p>
+          ) : (
+            <>
+              {/* Enable toggle */}
+              <div className="flex items-center justify-between p-4 bg-nb-panel border border-nb-border rounded-xl">
+                <div>
+                  <p className="text-sm font-medium text-nb-text">Usar Catálogo nas respostas</p>
+                  <p className="text-xs text-nb-muted mt-0.5">
+                    Permite que o agente consulte produtos e serviços cadastrados.
+                  </p>
+                </div>
+                <Toggle
+                  checked={scope.catalog_enabled}
+                  disabled={readonly || saving}
+                  onChange={handleToggle}
+                />
+              </div>
+
+              {scope.catalog_enabled && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-nb-muted uppercase tracking-wide">
+                    Escopo do Catálogo
+                  </p>
+
+                  {(["all", "selected"] as const).map((opt) => (
+                    <label
+                      key={opt}
+                      className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${
+                        scope.category_scope === opt
+                          ? "border-nb-primary/40 bg-nb-primary/5"
+                          : "border-nb-border hover:border-nb-border-strong"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="catalog-scope"
+                        checked={scope.category_scope === opt}
+                        onChange={() => !readonly && !saving && handleScopeChange(opt)}
+                        disabled={readonly || saving}
+                        className="mt-0.5 accent-nb-primary"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-nb-text">
+                          {opt === "all" ? "Todo o Catálogo" : "Categorias selecionadas"}
+                        </p>
+                        <p className="text-xs text-nb-muted mt-0.5">
+                          {opt === "all"
+                            ? "O agente consulta todos os itens do catálogo."
+                            : "Restrinja o agente a categorias específicas."}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+
+                  {scope.category_scope === "selected" && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        disabled={readonly || saving}
+                        onClick={() => setPickerOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Selecionar categorias
+                      </button>
+                      {selectedNames.length > 0 && (
+                        <ul className="mt-2 flex flex-col gap-1">
+                          {selectedNames.map((name) => (
+                            <li key={name} className="flex items-center gap-2 text-xs text-nb-muted">
+                              <span className="w-1.5 h-1.5 rounded-full bg-nb-primary shrink-0" />
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {saveError && <p className="text-xs text-nb-danger">{saveError}</p>}
+              {saving && (
+                <div className="flex items-center gap-2 text-xs text-nb-muted">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Salvando…
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <CategoryPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        categories={categories}
+        selectedIds={scope.category_ids}
+        onSave={handleCategorySave}
+      />
+    </>
+  );
+}
+
+// ── Roadmap card ──────────────────────────────────────────────────────────────
+
+function RoadmapCard({
   icon: Icon,
   name,
   description,
@@ -154,20 +578,19 @@ function SoonToolCard({
   description: string;
 }) {
   return (
-    <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 opacity-55">
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
-          <Icon className="w-5 h-5 text-nb-muted" />
+    <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 opacity-55 flex items-start gap-3">
+      <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+        <Icon className="w-4 h-4 text-nb-muted" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-nb-secondary">{name}</h3>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-nb-elevated border border-nb-border text-nb-muted">
+            <Clock className="w-3 h-3" />
+            Em breve
+          </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-nb-secondary">{name}</h3>
-            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-nb-elevated border border-nb-border text-nb-muted">
-              Em breve
-            </span>
-          </div>
-          <p className="text-xs text-nb-muted mt-1 leading-relaxed">{description}</p>
-        </div>
+        <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">{description}</p>
       </div>
     </div>
   );
@@ -178,118 +601,133 @@ function SoonToolCard({
 export function ConfigFerramentas({
   agentId,
   readonly,
-  saving,
-  saveError,
-  saveSuccess,
-  role: _role,
+  role,
 }: {
   agentId: string;
   readonly: boolean;
-  saving: boolean;
-  saveError: string | null;
-  saveSuccess: boolean;
   role: MemberRole | null;
 }) {
-  // Knowledge Base state
+  // KB state (for active tools display)
   const [kbList, setKbList] = useState<AgentKnowledgeBase[]>([]);
   const [kbLoading, setKbLoading] = useState(true);
   const [kbError, setKbError] = useState(false);
+  const [kbModalOpen, setKbModalOpen] = useState(false);
+
+  // Catalog state (for active tools display)
+  const [catalogScope, setCatalogScope] = useState<AgentCatalogScope | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
 
   useEffect(() => {
-    api.agents.knowledgeBases.list(agentId)
+    api.agents.knowledgeBases
+      .list(agentId)
       .then((data) => setKbList(data.filter((kb) => kb.is_active)))
       .catch(() => setKbError(true))
       .finally(() => setKbLoading(false));
   }, [agentId]);
 
-  // Catalog scope state
-  const [scope, setScope] = useState<AgentCatalogScope>({
-    catalog_enabled: true,
-    category_scope: "all",
-    category_ids: [],
-  });
-  const [categories, setCategories] = useState<CatalogCategory[]>([]);
-  const [loadingScope, setLoadingScope] = useState(true);
-  const [scopeError, setScopeError] = useState<string | null>(null);
-  const [scopeSaving, setScopeSaving] = useState(false);
-  const [scopeSaveError, setScopeSaveError] = useState<string | null>(null);
-  const [scopeSaveSuccess, setScopeSaveSuccess] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-
   useEffect(() => {
-    Promise.all([
-      api.agents.catalogScope.get(agentId),
-      api.catalog.categories.list(false),
-    ])
-      .then(([s, cats]) => {
-        setScope(s);
-        setCategories(cats);
-      })
-      .catch(() => setScopeError("Erro ao carregar ferramentas."))
-      .finally(() => setLoadingScope(false));
+    api.agents.catalogScope
+      .get(agentId)
+      .then(setCatalogScope)
+      .catch(() => setCatalogScope(null))
+      .finally(() => setCatalogLoading(false));
   }, [agentId]);
 
-  const saveScope = async (next: AgentCatalogScope) => {
-    setScopeSaving(true);
-    setScopeSaveError(null);
-    try {
-      const saved = await api.agents.catalogScope.update(agentId, {
-        catalog_enabled: next.catalog_enabled,
-        category_scope: next.category_scope,
-        category_ids: next.category_ids,
-      });
-      setScope(saved);
-      setScopeSaveSuccess(true);
-      setTimeout(() => setScopeSaveSuccess(false), 3000);
-    } catch {
-      setScopeSaveError("Erro ao salvar configuração do Catálogo.");
-    } finally {
-      setScopeSaving(false);
-    }
-  };
+  // Refresh KB list after modal closes
+  function handleKbModalClose() {
+    setKbModalOpen(false);
+    setKbLoading(true);
+    api.agents.knowledgeBases
+      .list(agentId)
+      .then((data) => setKbList(data.filter((kb) => kb.is_active)))
+      .catch(() => setKbError(true))
+      .finally(() => setKbLoading(false));
+  }
 
-  const handleToggleCatalog = (enabled: boolean) => {
-    const next = { ...scope, catalog_enabled: enabled };
-    setScope(next);
-    saveScope(next);
-  };
+  // Refresh catalog scope after modal closes
+  function handleCatalogModalClose() {
+    setCatalogModalOpen(false);
+    api.agents.catalogScope
+      .get(agentId)
+      .then(setCatalogScope)
+      .catch(() => {});
+  }
 
-  const handleScopeChange = (s: "all" | "selected") => {
-    const next: AgentCatalogScope = {
-      ...scope,
-      category_scope: s,
-      category_ids: s === "all" ? [] : scope.category_ids,
-    };
-    setScope(next);
-    saveScope(next);
-  };
+  const kbActive = !kbLoading && !kbError && kbList.length > 0;
+  const catalogActive = !catalogLoading && catalogScope?.catalog_enabled === true;
 
-  const handleCategorySave = (ids: string[]) => {
-    const next: AgentCatalogScope = {
-      ...scope,
-      category_scope: ids.length > 0 ? "selected" : "all",
-      category_ids: ids,
-    };
-    setScope(next);
-    saveScope(next);
-  };
+  const activeTools: React.ReactNode[] = [];
 
-  const selectedCategoryNames = scope.category_ids
-    .map((id) => categories.find((c) => c.id === id)?.name)
-    .filter(Boolean);
-
-  if (loadingScope) {
-    return (
-      <div className="space-y-4">
-        {[1, 2].map((i) => (
-          <div key={i} className="h-40 rounded-2xl bg-nb-elevated animate-pulse" />
-        ))}
+  if (kbActive) {
+    activeTools.push(
+      <div key="kb" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <BookOpen className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Base de Conhecimento</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5">
+            {kbList.length === 1 ? "1 base conectada" : `${kbList.length} bases conectadas`}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {kbList.map((kb) => (
+              <li key={kb.id} className="flex items-center gap-2 text-xs text-nb-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-nb-success shrink-0" />
+                {kb.knowledge_base_name}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <button
+          type="button"
+          onClick={() => setKbModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
       </div>
     );
   }
 
-  if (scopeError) {
-    return <p className="text-sm text-nb-danger">{scopeError}</p>;
+  if (catalogActive && catalogScope) {
+    const scopeLabel =
+      catalogScope.category_scope === "all"
+        ? "Todo o Catálogo"
+        : `${catalogScope.category_ids.length} ${
+            catalogScope.category_ids.length === 1 ? "categoria selecionada" : "categorias selecionadas"
+          }`;
+
+    activeTools.push(
+      <div key="catalog" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <ShoppingBag className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Catálogo</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativo
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5">Escopo: {scopeLabel}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCatalogModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -303,259 +741,134 @@ export function ConfigFerramentas({
         </p>
       </div>
 
-      {/* Active tools */}
+      {/* ── Ferramentas ativas ──────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-nb-muted uppercase tracking-wide">
+            Ferramentas ativas
+          </p>
+          {activeTools.length > 0 && (
+            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-nb-primary/10 text-nb-primary border border-nb-primary/20">
+              {activeTools.length}
+            </span>
+          )}
+        </div>
+
+        {kbLoading || catalogLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-nb-elevated animate-pulse" />
+            ))}
+          </div>
+        ) : activeTools.length > 0 ? (
+          <div className="flex flex-col gap-3">{activeTools}</div>
+        ) : (
+          <div className="flex flex-col items-center py-10 text-center border border-dashed border-nb-border rounded-2xl">
+            <Zap className="w-8 h-8 text-nb-muted mb-2" />
+            <p className="text-sm font-medium text-nb-secondary mb-1">Nenhuma ferramenta ativa.</p>
+            <p className="text-xs text-nb-muted">
+              Adicione uma ferramenta para dar novas capacidades operacionais ao agente.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Ferramentas disponíveis ─────────────────────────────────────────── */}
       <div className="space-y-3">
         <p className="text-xs font-semibold text-nb-muted uppercase tracking-wide">
           Ferramentas disponíveis
         </p>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
 
-          {/* ── Knowledge Base ── */}
-          <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 flex flex-col gap-4">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
-                <BookOpen className="w-5 h-5 text-nb-primary-strong" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-semibold text-nb-text">Base de Conhecimento</h3>
-                  {kbLoading ? (
-                    <span className="w-16 h-4 rounded-full bg-nb-elevated animate-pulse inline-block" />
-                  ) : kbError ? (
-                    <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-danger/10 text-nb-danger border-nb-danger/20">
-                      Erro
-                    </span>
-                  ) : kbList.length > 0 ? (
-                    <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
-                      Conectada
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-elevated text-nb-muted border-nb-border">
-                      Sem bases
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-nb-muted mt-1 leading-relaxed">
-                  Permite que o agente consulte documentos, perguntas frequentes e informações da
-                  empresa para responder com mais precisão.
-                </p>
-              </div>
+          {/* Knowledge Base */}
+          <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <BookOpen className="w-4 h-4 text-nb-muted" />
             </div>
-
-            {/* Connected bases summary */}
-            {!kbLoading && !kbError && kbList.length > 0 && (
-              <div className="border-t border-nb-border pt-3 flex flex-col gap-2">
-                <p className="text-xs font-semibold text-nb-text">
-                  {kbList.length === 1 ? "1 base conectada" : `${kbList.length} bases conectadas`}
-                </p>
-                <ul className="flex flex-col gap-1">
-                  {kbList.map((kb) => (
-                    <li key={kb.id} className="flex items-center gap-2 text-xs text-nb-muted">
-                      <span className="w-1.5 h-1.5 rounded-full bg-nb-success shrink-0" />
-                      {kb.knowledge_base_name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Empty state */}
-            {!kbLoading && !kbError && kbList.length === 0 && (
-              <div className="border-t border-nb-border pt-3">
-                <p className="text-xs text-nb-muted leading-relaxed">
-                  Nenhuma base conectada. Conecte documentos, FAQs e informações da empresa para que
-                  o agente responda com mais precisão.
-                </p>
-              </div>
-            )}
-
-            {/* Error state */}
-            {!kbLoading && kbError && (
-              <div className="border-t border-nb-border pt-3">
-                <p className="text-xs text-nb-danger">
-                  Não foi possível carregar as bases conectadas.
-                </p>
-              </div>
-            )}
-
-            <div className="border-t border-nb-border pt-3">
-              <Link
-                href={`/dashboard/agents/${agentId}?tab=knowledge`}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:text-nb-primary-strong transition-colors"
-              >
-                {!kbLoading && !kbError && kbList.length === 0
-                  ? "Conectar base"
-                  : "Gerenciar conhecimento"}
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
-
-          {/* ── Catalog ── */}
-          <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 flex flex-col gap-4">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
-                <ShoppingBag className="w-5 h-5 text-nb-primary-strong" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-semibold text-nb-text">Catálogo</h3>
-                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${
-                    scope.catalog_enabled
-                      ? "bg-nb-success/10 text-nb-success border-nb-success/20"
-                      : "bg-nb-elevated text-nb-muted border-nb-border"
-                  }`}>
-                    {scope.catalog_enabled ? "Ativo" : "Inativo"}
-                  </span>
-                </div>
-                <p className="text-xs text-nb-muted mt-1 leading-relaxed">
-                  Permite que o agente consulte produtos, serviços, planos e ofertas cadastradas para
-                  recomendar opções durante o atendimento.
-                </p>
-              </div>
-              <div className="shrink-0 mt-0.5">
-                <Toggle
-                  checked={scope.catalog_enabled}
-                  disabled={readonly || scopeSaving}
-                  onChange={handleToggleCatalog}
-                />
-              </div>
-            </div>
-
-            {/* Scope selector — only when enabled */}
-            {scope.catalog_enabled && (
-              <div className="border-t border-nb-border pt-4 flex flex-col gap-3">
-                <p className="text-xs font-semibold text-nb-text">Escopo do Catálogo</p>
-                <div className="flex flex-col gap-2">
-                  {(["all", "selected"] as const).map((opt) => (
-                    <label
-                      key={opt}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
-                        scope.category_scope === opt
-                          ? "border-nb-primary bg-nb-primary/5"
-                          : "border-nb-border bg-nb-elevated hover:bg-nb-border/30"
-                      } ${readonly || scopeSaving ? "pointer-events-none opacity-60" : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        checked={scope.category_scope === opt}
-                        onChange={() => handleScopeChange(opt)}
-                        disabled={readonly || scopeSaving}
-                        className="accent-nb-primary"
-                      />
-                      <span className="text-sm text-nb-text">
-                        {opt === "all" ? "Todo o Catálogo" : "Categorias selecionadas"}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Category summary / picker */}
-                {scope.category_scope === "selected" && (
-                  <div className="flex flex-col gap-2 mt-1">
-                    {categories.length === 0 ? (
-                      <p className="text-xs text-nb-muted">
-                        Nenhuma categoria cadastrada.{" "}
-                        <Link
-                          href="/dashboard/catalog"
-                          className="text-nb-primary hover:underline"
-                        >
-                          Gerenciar Catálogo
-                        </Link>
-                      </p>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                          <p className="text-xs text-nb-muted">
-                            {scope.category_ids.length === 0
-                              ? "Nenhuma categoria selecionada"
-                              : selectedCategoryNames.length <= 3
-                              ? selectedCategoryNames.join(", ")
-                              : `${selectedCategoryNames.slice(0, 3).join(", ")} +${selectedCategoryNames.length - 3}`}
-                          </p>
-                          {!readonly && (
-                            <button
-                              type="button"
-                              onClick={() => setPickerOpen(true)}
-                              className="text-xs font-medium text-nb-primary hover:text-nb-primary-strong transition-colors shrink-0"
-                            >
-                              {scope.category_ids.length === 0 ? "Selecionar categorias" : "Alterar categorias"}
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Save error / success for scope changes */}
-                {scopeSaveError && (
-                  <p className="text-xs text-nb-danger">{scopeSaveError}</p>
-                )}
-                {scopeSaveSuccess && (
-                  <p className="text-xs text-nb-success">Configuração salva.</p>
-                )}
-              </div>
-            )}
-
-            <div className="border-t border-nb-border pt-3 flex items-center justify-between flex-wrap gap-3">
-              <p className="text-xs text-nb-muted max-w-xs">
-                Quando ativado, o agente pode consultar itens ativos do Catálogo quando identificar
-                uma intenção comercial.
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Base de Conhecimento</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Permite que o agente consulte documentos, perguntas frequentes e informações da empresa
+                para responder com mais precisão.
               </p>
-              <Link
-                href="/dashboard/catalog"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:text-nb-primary-strong transition-colors shrink-0"
-              >
-                Gerenciar Catálogo
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
             </div>
+            <button
+              type="button"
+              disabled={readonly}
+              onClick={() => setKbModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {kbActive ? (
+                <><Settings2 className="w-3.5 h-3.5" /> Configurar</>
+              ) : (
+                <><Plus className="w-3.5 h-3.5" /> Adicionar</>
+              )}
+            </button>
           </div>
-        </div>
-      </div>
 
-      {/* SaveBar for parent form (knowledge base etc) */}
-      {!readonly && (
-        <SaveBar saving={saving} saveError={saveError} saveSuccess={saveSuccess} />
-      )}
+          {/* Catalog */}
+          <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <ShoppingBag className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Catálogo</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Permite que o agente consulte produtos, serviços, planos e ofertas cadastradas para
+                recomendar opções durante o atendimento.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || catalogLoading}
+              onClick={() => setCatalogModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {catalogActive ? (
+                <><Settings2 className="w-3.5 h-3.5" /> Configurar</>
+              ) : (
+                <><Plus className="w-3.5 h-3.5" /> Adicionar</>
+              )}
+            </button>
+          </div>
 
-      {/* Roadmap */}
-      <div className="space-y-3">
-        <p className="text-xs font-semibold text-nb-muted uppercase tracking-wide">Em breve</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SoonToolCard
+          {/* Roadmap */}
+          <RoadmapCard
             icon={Globe}
             name="HTTP Tools"
-            description="Permite que o agente consulte sistemas externos e execute ações via API durante o atendimento."
+            description="Execute chamadas HTTP para APIs externas durante o atendimento."
           />
-          <SoonToolCard
+          <RoadmapCard
             icon={Hand}
             name="Solicitar humano"
-            description="Permite que o agente chame um atendente quando a conversa precisar de intervenção humana."
+            description="Permite que o agente transfira o atendimento para um operador humano."
           />
-          <SoonToolCard
-            icon={Clock}
+          <RoadmapCard
+            icon={Zap}
             name="Follow-up"
-            description="Permite que o agente acompanhe oportunidades e retome conversas automaticamente."
+            description="Envie mensagens de acompanhamento automáticas após o atendimento."
           />
-          <SoonToolCard
-            icon={CheckCircle2}
+          <RoadmapCard
+            icon={Check}
             name="Marcar como resolvido"
-            description="Permite que o agente finalize conversas quando o atendimento estiver concluído."
+            description="Permita que o agente encerre conversas automaticamente quando resolvidas."
           />
         </div>
       </div>
 
-      {/* Category picker modal */}
-      {pickerOpen && (
-        <CategoryPickerModal
-          categories={categories}
-          selectedIds={scope.category_ids}
-          onClose={() => setPickerOpen(false)}
-          onSave={handleCategorySave}
-        />
-      )}
+      {/* Modals */}
+      <KbConfigModal
+        open={kbModalOpen}
+        onClose={handleKbModalClose}
+        agentId={agentId}
+        role={role}
+      />
+      <CatalogConfigModal
+        open={catalogModalOpen}
+        onClose={handleCatalogModalClose}
+        agentId={agentId}
+        readonly={readonly}
+      />
     </div>
   );
 }

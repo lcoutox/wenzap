@@ -1,13 +1,12 @@
-import { BookOpen, MessageSquare, Radio, Settings, Wrench } from "lucide-react";
+import { MessageSquare, Radio, Settings, Wrench } from "lucide-react";
 
 export type WorkspaceTab = "chat" | "deploy" | "settings" | "knowledge" | "tools";
 
 const TABS: { id: WorkspaceTab; label: string; icon: React.ElementType }[] = [
-  { id: "chat",      label: "Chat",          icon: MessageSquare },
-  { id: "deploy",    label: "Canais",        icon: Radio },
-  { id: "knowledge", label: "Conhecimento",  icon: BookOpen },
-  { id: "tools",     label: "Ferramentas",   icon: Wrench },
-  { id: "settings",  label: "Configurações", icon: Settings },
+  { id: "chat",     label: "Chat",          icon: MessageSquare },
+  { id: "deploy",   label: "Canais",        icon: Radio },
+  { id: "tools",    label: "Ferramentas",   icon: Wrench },
+  { id: "settings", label: "Configurações", icon: Settings },
 ];
 
 export function AgentWorkspaceTabs({

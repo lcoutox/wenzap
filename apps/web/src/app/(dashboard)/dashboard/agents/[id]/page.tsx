@@ -16,7 +16,6 @@ import { ImplantarTab } from "@/components/agents/workspace/tabs/ImplantarTab";
 import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
 import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
-import { ConfigConhecimento }   from "@/components/agents/workspace/tabs/ConfigConhecimento";
 import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,12 +52,13 @@ function isModelExecutable(catalog: AiCatalog | null, activeModel: AiModel | nul
 
 // ── Tab deep-link helpers ─────────────────────────────────────────────────────
 
-const VALID_WORKSPACE_TABS: WorkspaceTab[] = ["chat", "deploy", "knowledge", "tools", "settings"];
+const VALID_WORKSPACE_TABS: WorkspaceTab[] = ["chat", "deploy", "tools", "settings"];
 
 function parseWorkspaceTab(value: string | null): WorkspaceTab | null {
-  if (value && (VALID_WORKSPACE_TABS as string[]).includes(value)) {
-    return value as WorkspaceTab;
-  }
+  if (!value) return null;
+  // Legacy deep-link: ?tab=knowledge → tools
+  if (value === "knowledge") return "tools";
+  if ((VALID_WORKSPACE_TABS as string[]).includes(value)) return value as WorkspaceTab;
   return null;
 }
 
@@ -266,26 +266,14 @@ export default function AgentWorkspacePage() {
           <ImplantarTab agentId={id} role={role} />
         )}
 
-        {/* ── Conhecimento ── */}
-        {workspaceTab === "knowledge" && (
-          <div className="max-w-3xl">
-            <ConfigConhecimento agentId={id} role={role} />
-          </div>
-        )}
-
         {/* ── Ferramentas ── */}
         {workspaceTab === "tools" && (
-          <div className="max-w-3xl">
-            <form onSubmit={handleSave}>
-              <ConfigFerramentas
-                agentId={id}
-                readonly={readonly}
-                saving={saving}
-                saveError={saveError}
-                saveSuccess={saveSuccess}
-                role={role}
-              />
-            </form>
+          <div className="max-w-4xl">
+            <ConfigFerramentas
+              agentId={id}
+              readonly={readonly}
+              role={role}
+            />
           </div>
         )}
 
