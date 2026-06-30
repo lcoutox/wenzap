@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Backgrounds */
+  --color-nb-bg:          #0B0F14;
+  --color-nb-surface:     #0F1419;
+  --color-nb-panel:       #111827;
+  --color-nb-elevated:    #1A2030;
+  --color-nb-soft:        #1F2937;
+
+  /* Borders */
+  --color-nb-border:        #1F2D3D;
+  --color-nb-border-strong: #374151;
+
+  /* Typography */
+  --color-nb-text:       #F9FAFB;
+  --color-nb-secondary:  #9CA3AF;
+  --color-nb-muted:      #6B7280;
+
+  /* Primary — verde Wenzap */
+  --color-nb-primary:        #00E09A;
+  --color-nb-primary-strong: #20e7b2;
+  --color-nb-primary-bg:     #002E20;
+
+  /* Semantic */
+  --color-nb-success: #34D399;
+  --color-nb-warning: #FBBF24;
+  --color-nb-danger:  #FB7185;
+  --color-nb-info:    #38BDF8;
+
+  /* Font */
+  --font-sans: 'Sora', sans-serif;
+}
+
+:root {
+  --color-nb-bg:            #0B0F14;
+  --color-nb-surface:       #0F1419;
+  --color-nb-panel:         #111827;
+  --color-nb-elevated:      #1A2030;
+  --color-nb-soft:          #1F2937;
+  --color-nb-border:        #1F2D3D;
+  --color-nb-border-strong: #374151;
+  --color-nb-text:          #F9FAFB;
+  --color-nb-secondary:     #9CA3AF;
+  --color-nb-muted:         #6B7280;
+  --color-nb-primary:       #00E09A;
+  --color-nb-primary-strong:#20e7b2;
+  --color-nb-primary-bg:    #002E20;
+  --color-nb-success:       #34D399;
+  --color-nb-warning:       #FBBF24;
+  --color-nb-danger:        #FB7185;
+  --color-nb-info:          #38BDF8;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Sora', sans-serif;
+  background-color: var(--color-nb-bg);
+  color: var(--color-nb-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
