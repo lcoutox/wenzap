@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import type { Agent, AgentStatus, AiCatalog, AiModel, MemberRole } from "@/lib/api";
@@ -51,11 +51,24 @@ function isModelExecutable(catalog: AiCatalog | null, activeModel: AiModel | nul
   return false;
 }
 
+// ── Tab deep-link helpers ─────────────────────────────────────────────────────
+
+const VALID_WORKSPACE_TABS: WorkspaceTab[] = ["chat", "deploy", "knowledge", "tools", "settings"];
+
+function parseWorkspaceTab(value: string | null): WorkspaceTab | null {
+  if (value && (VALID_WORKSPACE_TABS as string[]).includes(value)) {
+    return value as WorkspaceTab;
+  }
+  return null;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AgentWorkspacePage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
+  const router   = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Remote state
   const [agent,   setAgent]   = useState<Agent | null>(null);
@@ -73,13 +86,31 @@ export default function AgentWorkspacePage() {
   const [temperature,  setTemperature]  = useState("0.7");
   const [catalogEnabled, setCatalogEnabled] = useState(true);
 
-  // UI state
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("settings");
+  // UI state — initialise from ?tab= query param, fallback to "chat"
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
+    () => parseWorkspaceTab(searchParams.get("tab")) ?? "chat"
+  );
   const [configTab,    setConfigTab]    = useState<ConfigTab>("geral");
   const [saving,       setSaving]       = useState(false);
   const [saveError,    setSaveError]    = useState<string | null>(null);
   const [saveSuccess,  setSaveSuccess]  = useState(false);
   const [actionError,  setActionError]  = useState<string | null>(null);
+
+  // ── Tab navigation ────────────────────────────────────────────────────────────
+
+  // Sync URL → state (handles back/forward and in-page links like "Gerenciar conhecimento")
+  const tabParam = searchParams.get("tab");
+  useEffect(() => {
+    const next = parseWorkspaceTab(tabParam) ?? "chat";
+    setWorkspaceTab((current) => (current === next ? current : next));
+  }, [tabParam]);
+
+  const handleTabChange = (tab: WorkspaceTab) => {
+    setWorkspaceTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   // ── Load ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -215,7 +246,7 @@ export default function AgentWorkspacePage() {
       />
 
       {/* Main workspace tabs */}
-      <AgentWorkspaceTabs active={workspaceTab} onChange={setWorkspaceTab} />
+      <AgentWorkspaceTabs active={workspaceTab} onChange={handleTabChange} />
 
       {/* Tab content */}
       <div className="p-6 flex-1">
