@@ -17,6 +17,7 @@ import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigG
 import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
 import { ConfigConhecimento }   from "@/components/agents/workspace/tabs/ConfigConhecimento";
+import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -241,6 +242,24 @@ export default function AgentWorkspacePage() {
           </div>
         )}
 
+        {/* ── Ferramentas ── */}
+        {workspaceTab === "tools" && (
+          <div className="max-w-3xl">
+            <form onSubmit={handleSave}>
+              <ConfigFerramentas
+                agentId={id}
+                catalogEnabled={catalogEnabled}
+                readonly={readonly}
+                saving={saving}
+                saveError={saveError}
+                saveSuccess={saveSuccess}
+                onCatalogEnabledChange={setCatalogEnabled}
+                role={role}
+              />
+            </form>
+          </div>
+        )}
+
         {/* ── Configurações ── */}
         {workspaceTab === "settings" && (
           <div className="max-w-3xl space-y-5">
@@ -253,14 +272,12 @@ export default function AgentWorkspacePage() {
                   activeModel={activeModel}
                   name={name}
                   description={description}
-                  catalogEnabled={catalogEnabled}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
                   onNameChange={setName}
                   onDescriptionChange={setDescription}
-                  onCatalogEnabledChange={setCatalogEnabled}
                 />
               )}
 

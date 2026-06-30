@@ -32,27 +32,23 @@ export function ConfigGeral({
   activeModel,
   name,
   description,
-  catalogEnabled,
   readonly,
   saving,
   saveError,
   saveSuccess,
   onNameChange,
   onDescriptionChange,
-  onCatalogEnabledChange,
 }: {
   agent: Agent;
   activeModel: AiModel | null;
   name: string;
   description: string;
-  catalogEnabled: boolean;
   readonly: boolean;
   saving: boolean;
   saveError: string | null;
   saveSuccess: boolean;
   onNameChange: (v: string) => void;
   onDescriptionChange: (v: string) => void;
-  onCatalogEnabledChange: (v: boolean) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -118,39 +114,6 @@ export function ConfigGeral({
             </div>
           )}
         </div>
-      </AgentFormSection>
-
-      <AgentFormSection
-        title="Recursos do agente"
-        description="Defina quais fontes de informação este agente pode consultar."
-      >
-        <label className="flex items-start gap-4 cursor-pointer group">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={catalogEnabled}
-            disabled={readonly}
-            onClick={() => !readonly && onCatalogEnabledChange(!catalogEnabled)}
-            className={`relative mt-0.5 flex-shrink-0 w-10 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-nb-primary/40 ${
-              catalogEnabled ? "bg-nb-primary" : "bg-nb-border-strong"
-            } ${readonly ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <span
-              className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                catalogEnabled ? "translate-x-4" : "translate-x-0"
-              }`}
-            />
-          </button>
-          <div>
-            <p className="text-sm font-medium text-nb-secondary">
-              Usar Catálogo nas respostas
-            </p>
-            <p className="text-xs text-nb-muted mt-0.5">
-              Permite que este agente consulte itens cadastrados no Catálogo para recomendar
-              produtos, serviços, planos ou ofertas durante o atendimento.
-            </p>
-          </div>
-        </label>
       </AgentFormSection>
 
       {!readonly && (
