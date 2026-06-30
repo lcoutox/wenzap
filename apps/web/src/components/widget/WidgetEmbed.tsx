@@ -273,6 +273,16 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
     return () => clearInterval(id);
   }, [open, sessionToken, publicKey, initDone]);
 
+  // Allow parent page to open the widget via postMessage { type: "wenzap:open" }.
+  useEffect(() => {
+    function handleParentMessage(event: MessageEvent) {
+      if (!event.data || event.data.type !== "wenzap:open") return;
+      setOpen(true);
+    }
+    window.addEventListener("message", handleParentMessage);
+    return () => window.removeEventListener("message", handleParentMessage);
+  }, []);
+
   // Scroll to bottom whenever messages change or chat opens.
   useEffect(() => {
     scrollToBottom(messagesRef.current);

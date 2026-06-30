@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+@theme {
+  --color-nb-bg:          #0B0F14;
+  --color-nb-surface:     #0F1419;
+  --color-nb-panel:       #111827;
+  --color-nb-elevated:    #1A2030;
+  --color-nb-soft:        #1F2937;
+
+  --color-nb-border:        #1F2D3D;
+  --color-nb-border-strong: #374151;
+
+  --color-nb-text:       #F9FAFB;
+  --color-nb-secondary:  #9CA3AF;
+  --color-nb-muted:      #6B7280;
+
+  --color-nb-primary:        #00E09A;
+  --color-nb-primary-strong: #20e7b2;
+  --color-nb-primary-bg:     #002E20;
+
+  --color-fd-background: #0B0F14;
+  --color-fd-foreground: #F9FAFB;
+  --color-fd-muted: #111827;
+  --color-fd-muted-foreground: #9CA3AF;
+  --color-fd-popover: #0F1419;
+  --color-fd-popover-foreground: #F9FAFB;
+  --color-fd-card: #111827;
+  --color-fd-card-foreground: #F9FAFB;
+  --color-fd-border: rgba(31, 45, 61, 0.9);
+  --color-fd-primary: #00E09A;
+  --color-fd-primary-foreground: #062319;
+  --color-fd-secondary: #1A2030;
+  --color-fd-secondary-foreground: #F9FAFB;
+  --color-fd-accent: rgba(0, 224, 154, 0.12);
+  --color-fd-accent-foreground: #20e7b2;
+  --color-fd-ring: #00E09A;
+}
+
+:root {
+  --fd-layout-width: 1400px;
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(0, 224, 154, 0.10), transparent 28rem),
+    radial-gradient(circle at 85% 4%, rgba(56, 189, 248, 0.06), transparent 24rem),
+    #0B0F14;
+  color: #F9FAFB;
+  font-family: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100svh;
+}

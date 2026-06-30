@@ -112,6 +112,18 @@
     applyStyles(currentSide);
   });
 
+  // Expose a lightweight public API so host pages can control the widget.
+  // window.WenzapWidget.open() sends a postMessage into the iframe.
+  window.WenzapWidget = {
+    open: function () {
+      try {
+        iframe.contentWindow.postMessage({ type: "wenzap:open" }, appOrigin);
+      } catch (e) {
+        // Iframe not yet ready — no-op.
+      }
+    },
+  };
+
   function inject() {
     if (document.getElementById("__wenzap_widget_iframe__")) return;
     iframe.id = "__wenzap_widget_iframe__";
