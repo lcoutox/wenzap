@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Calendar,
   FolderOpen,
@@ -339,7 +339,7 @@ function ItemsTable({
 
 type CatalogTab = "categories" | "items";
 
-export default function CatalogPage() {
+function CatalogPageContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
@@ -714,5 +714,13 @@ export default function CatalogPage() {
         onSaved={handleCategorySaved}
       />
     </div>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense>
+      <CatalogPageContent />
+    </Suspense>
   );
 }
