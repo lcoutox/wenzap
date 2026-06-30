@@ -780,6 +780,21 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
             </button>
           </div>
           </>)} {/* end contactCaptured */}
+
+          {/* Powered by Wenzap */}
+          <div
+            style={{
+              borderTop: `1px solid ${t.border}`,
+              padding: "5px 0 6px",
+              textAlign: "center",
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: 10, color: t.muted, letterSpacing: "0.01em" }}>
+              Powered by{" "}
+              <span style={{ fontWeight: 600, color: t.secondary }}>Wenzap</span>
+            </span>
+          </div>
         </div>
       )}
 

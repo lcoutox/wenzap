@@ -6,6 +6,7 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { UserMenuDropdown } from "./UserMenuDropdown";
 import { useAppAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
 import type { Subscription, Usage } from "@/lib/api";
 
 const STORAGE_KEY = "wenzap:sidebar-collapsed";
@@ -30,18 +31,16 @@ function getBreadcrumb(pathname: string): string {
 
 export function DashboardShell({
   children,
-  subscription,
-  usage,
 }: {
   children: React.ReactNode;
-  subscription: Subscription | null;
-  usage: Usage | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAppAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
     try {
@@ -49,6 +48,11 @@ export function DashboardShell({
       if (stored !== null) setCollapsed(stored === "true");
     } catch {}
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    api.plans.current().then(setSubscription).catch(() => {});
+    api.plans.usage().then(setUsage).catch(() => {});
   }, []);
 
   useEffect(() => {
