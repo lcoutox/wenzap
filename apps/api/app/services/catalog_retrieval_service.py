@@ -195,11 +195,29 @@ def _to_retrieval_item(
     )
 
 
+def _category_filter(allowed_category_ids: list[uuid.UUID] | None):
+    """
+    Return a SQLAlchemy clause restricting items to allowed categories, or None.
+
+    None  → no filter (all scope)
+    []    → block all (selected scope, but no categories chosen)
+    [ids] → IN filter
+    """
+    if allowed_category_ids is None:
+        return None
+    if not allowed_category_ids:
+        # Empty selected list → nothing should match
+        from sqlalchemy import false
+        return false()
+    return CatalogItem.category_id.in_(allowed_category_ids)
+
+
 def _lexical_search(
     db: Session,
     workspace_id: uuid.UUID,
     terms: list[str],
     over_fetch: int,
+    allowed_category_ids: list[uuid.UUID] | None = None,
 ) -> list[CatalogItem]:
     """Return active items that match any query term via ILIKE."""
     if not terms:
@@ -213,14 +231,16 @@ def _lexical_search(
             CatalogItem.short_description.ilike(like),
             CatalogItem.description.ilike(like),
         ))
+    where_clauses = [
+        CatalogItem.workspace_id == workspace_id,
+        CatalogItem.status == "active",
+        or_(*conditions),
+    ]
+    cat_filter = _category_filter(allowed_category_ids)
+    if cat_filter is not None:
+        where_clauses.append(cat_filter)
     return list(db.scalars(
-        select(CatalogItem)
-        .where(
-            CatalogItem.workspace_id == workspace_id,
-            CatalogItem.status == "active",
-            or_(*conditions),
-        )
-        .limit(over_fetch)
+        select(CatalogItem).where(*where_clauses).limit(over_fetch)
     ).all())
 
 
@@ -229,19 +249,24 @@ def _semantic_search(
     workspace_id: uuid.UUID,
     query_embedding: list[float],
     top_k: int,
+    allowed_category_ids: list[uuid.UUID] | None = None,
 ) -> list[tuple[CatalogItem, float]]:
     """
     Return (item, semantic_score) pairs ordered by cosine similarity desc.
     Only items that have an embedding and are active are considered.
     """
     distance_col = CatalogItem.embedding.cosine_distance(query_embedding)
+    where_clauses = [
+        CatalogItem.workspace_id == workspace_id,
+        CatalogItem.status == "active",
+        CatalogItem.embedding.isnot(None),
+    ]
+    cat_filter = _category_filter(allowed_category_ids)
+    if cat_filter is not None:
+        where_clauses.append(cat_filter)
     rows = db.execute(
         select(CatalogItem, distance_col.label("distance"))
-        .where(
-            CatalogItem.workspace_id == workspace_id,
-            CatalogItem.status == "active",
-            CatalogItem.embedding.isnot(None),
-        )
+        .where(*where_clauses)
         .order_by(distance_col.asc())
         .limit(top_k)
     ).all()
@@ -254,6 +279,7 @@ def retrieve_catalog_items(
     query: str,
     limit: int = _DEFAULT_LIMIT,
     provider: EmbeddingProvider | None = None,
+    allowed_category_ids: list[uuid.UUID] | None = None,
 ) -> list[CatalogRetrievalItem]:
     """
     Return up to *limit* active catalog items relevant to *query*.
@@ -283,11 +309,17 @@ def retrieve_catalog_items(
         embed_result = embed_texts([query.strip()], provider=provider)
         query_embedding = embed_result.embeddings[0]
 
-        sem_rows = _semantic_search(db, workspace_id, query_embedding, top_k=limit * 3)
+        sem_rows = _semantic_search(
+            db, workspace_id, query_embedding, top_k=limit * 3,
+            allowed_category_ids=allowed_category_ids,
+        )
 
         if sem_rows:
             # Fetch lexical candidates for the same workspace to compute lexical score.
-            lex_rows = _lexical_search(db, workspace_id, terms, over_fetch=limit * 5)
+            lex_rows = _lexical_search(
+                db, workspace_id, terms, over_fetch=limit * 5,
+                allowed_category_ids=allowed_category_ids,
+            )
 
             # Merge: all semantically-found items + lexical-only items.
             all_items: dict[uuid.UUID, CatalogItem] = {r.id: r for r, _ in sem_rows}
@@ -335,7 +367,10 @@ def retrieve_catalog_items(
     if not terms:
         return []
 
-    rows = _lexical_search(db, workspace_id, terms, over_fetch=limit * 5)
+    rows = _lexical_search(
+        db, workspace_id, terms, over_fetch=limit * 5,
+        allowed_category_ids=allowed_category_ids,
+    )
     if not rows:
         return []
 
@@ -440,6 +475,7 @@ def retrieve_catalog_context(
     workspace_id: uuid.UUID,
     query: str,
     limit: int = _DEFAULT_LIMIT,
+    allowed_category_ids: list[uuid.UUID] | None = None,
 ) -> CatalogRetrievalResult:
     """
     Full pipeline: intent detection → retrieval → context block.
@@ -466,7 +502,10 @@ def retrieve_catalog_context(
     result.retrieval_attempted = True
 
     try:
-        items = retrieve_catalog_items(db, workspace_id, query, limit=limit)
+        items = retrieve_catalog_items(
+            db, workspace_id, query, limit=limit,
+            allowed_category_ids=allowed_category_ids,
+        )
         result.items = items
         if items:
             result.context_block = build_catalog_context_block(items)

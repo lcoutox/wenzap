@@ -62,6 +62,7 @@ from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent_test import AgentTestModelInfo, AgentTestRequest, AgentTestResponse
 from app.services import playground_service
+from app.services.agent_catalog_scope_service import get_allowed_category_ids
 from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
 from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
 from app.services.ai_model_service import PLAN_TIER
@@ -176,12 +177,16 @@ def run_agent_test(
     score_max = max(c.score for c in chunks_final) if chunks_final else None
     score_min = min(c.score for c in chunks_final) if chunks_final else None
 
-    # ── Catalog retrieval (Catálogo.3 / Catálogo.5) ──────────────────────────
+    # ── Catalog retrieval (Catálogo.3 / Catálogo.5 / Agent Tools.2) ─────────
     if agent.catalog_enabled:
+        allowed_category_ids = get_allowed_category_ids(
+            db, agent_id=agent_id, workspace_id=workspace_id
+        )
         catalog_result = retrieve_catalog_context(
             db,
             workspace_id=workspace_id,
             query=data.message,
+            allowed_category_ids=allowed_category_ids,
         )
     else:
         from app.services.catalog_retrieval_service import CatalogRetrievalResult  # noqa: PLC0415

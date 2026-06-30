@@ -27,6 +27,7 @@ from app.models.agent import Agent
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
+from app.services.agent_catalog_scope_service import get_allowed_category_ids
 from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
 from app.services.agent_guardrails import detect_prompt_injection
 from app.services.catalog_retrieval_service import (
@@ -136,12 +137,16 @@ def build_conversation_context(
     if chunks_final:
         rag_context = build_rag_context_block([c.content for c in chunks_final])
 
-    # ── Catalog retrieval (Catálogo.3 / Catálogo.5) ──────────────────────────
+    # ── Catalog retrieval (Catálogo.3 / Catálogo.5 / Agent Tools.2) ─────────
     if agent.catalog_enabled:
+        allowed_category_ids = get_allowed_category_ids(
+            db, agent_id=agent.id, workspace_id=workspace_id
+        )
         catalog_result = retrieve_catalog_context(
             db,
             workspace_id=workspace_id,
             query=trigger_message.content,
+            allowed_category_ids=allowed_category_ids,
         )
     else:
         from app.services.catalog_retrieval_service import CatalogRetrievalResult  # noqa: PLC0415

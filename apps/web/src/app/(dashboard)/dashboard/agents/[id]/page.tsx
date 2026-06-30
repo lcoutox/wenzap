@@ -279,12 +279,10 @@ export default function AgentWorkspacePage() {
             <form onSubmit={handleSave}>
               <ConfigFerramentas
                 agentId={id}
-                catalogEnabled={catalogEnabled}
                 readonly={readonly}
                 saving={saving}
                 saveError={saveError}
                 saveSuccess={saveSuccess}
-                onCatalogEnabledChange={setCatalogEnabled}
                 role={role}
               />
             </form>

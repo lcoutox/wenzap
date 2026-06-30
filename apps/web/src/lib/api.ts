@@ -523,6 +523,18 @@ export type CatalogCategoryCreateInput = {
 
 export type CatalogCategoryUpdateInput = Partial<CatalogCategoryCreateInput>;
 
+export type AgentCatalogScope = {
+  catalog_enabled: boolean;
+  category_scope: "all" | "selected";
+  category_ids: string[];
+};
+
+export type AgentCatalogScopeUpdate = {
+  catalog_enabled: boolean;
+  category_scope: "all" | "selected";
+  category_ids: string[];
+};
+
 export type CatalogItemCreateInput = {
   name: string;
   category_id?: string | null;
@@ -1142,6 +1154,15 @@ export const api = {
       deleteSession: (agentId: string, sessionId: string) =>
         cookieFetch<void>(`/agents/${agentId}/playground/sessions/${sessionId}`, {
           method: "DELETE",
+        }),
+    },
+    catalogScope: {
+      get: (agentId: string) =>
+        cookieFetch<AgentCatalogScope>(`/agents/${agentId}/tools/catalog`),
+      update: (agentId: string, data: AgentCatalogScopeUpdate) =>
+        cookieFetch<AgentCatalogScope>(`/agents/${agentId}/tools/catalog`, {
+          method: "PUT",
+          body: JSON.stringify(data),
         }),
     },
   },

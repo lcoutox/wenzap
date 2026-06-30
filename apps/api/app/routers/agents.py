@@ -10,6 +10,7 @@ from app.enums import AgentStatus, MemberRole
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.agent import AgentCreate, AgentOut, AgentStatusUpdate, AgentUpdate
+from app.schemas.agent_catalog_scope import AgentCatalogScopeOut, AgentCatalogScopeUpdate
 from app.schemas.agent_knowledge_base import (
     AgentKnowledgeBaseCreate,
     AgentKnowledgeBaseOut,
@@ -22,6 +23,7 @@ from app.schemas.playground import (
     PlaygroundSessionWithMessages,
 )
 from app.services import (
+    agent_catalog_scope_service,
     agent_knowledge_base_service,
     agent_service,
     agent_test_service,
@@ -271,4 +273,33 @@ def test_agent(
         agent_id=agent_id,
         user_id=current_user.id,
         data=data,
+    )
+
+
+# ── Catalog scope endpoints ────────────────────────────────────────────────────
+
+@router.get("/{agent_id}/tools/catalog", response_model=AgentCatalogScopeOut)
+def get_agent_catalog_scope(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentCatalogScopeOut:
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    return agent_catalog_scope_service.get_catalog_scope(
+        db, agent_id=agent_id, workspace_id=current_workspace.id
+    )
+
+
+@router.put("/{agent_id}/tools/catalog", response_model=AgentCatalogScopeOut)
+def update_agent_catalog_scope(
+    agent_id: uuid.UUID,
+    data: AgentCatalogScopeUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentCatalogScopeOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_catalog_scope_service.update_catalog_scope(
+        db, agent_id=agent_id, workspace_id=current_workspace.id, data=data
     )

@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_catalog_category import AgentCatalogCategory
 from app.models.agent_knowledge_base import AgentKnowledgeBase
 from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_playground_message import AgentPlaygroundMessage
@@ -56,6 +57,7 @@ __all__ = [
     "KnowledgeBase",
     "KnowledgeChunk",
     "KnowledgeSource",
+    "AgentCatalogCategory",
     "AgentKnowledgeBase",
     "Contact",
     "Conversation",
