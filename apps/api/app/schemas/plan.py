@@ -18,6 +18,8 @@ class PlanOut(BaseModel):
     users_limit: int
     pipelines_limit: int
     integrations_limit: int
+    catalog_items_limit: int
+    channels_limit: int
     monthly_ai_credits: int
     monthly_conversations: int
 

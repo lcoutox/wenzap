@@ -10,12 +10,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.catalog_category import CatalogCategory
 from app.models.catalog_item import CatalogItem
 from app.models.catalog_media import CatalogMedia
+from app.models.plan import Plan
+from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.catalog import (
     CatalogCategoryCreate,
     CatalogCategoryUpdate,
@@ -274,11 +276,48 @@ def get_item_or_404(
     return item
 
 
+def _check_catalog_items_limit(db: Session, workspace_id: uuid.UUID) -> None:
+    """Raises HTTP 402 if workspace has reached catalog_items_limit."""
+    sub = db.scalar(
+        select(WorkspaceSubscription).where(
+            WorkspaceSubscription.workspace_id == workspace_id,
+            WorkspaceSubscription.status == "active",
+        )
+    )
+    if sub is None:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="No active subscription found for this workspace.",
+        )
+    plan = db.scalar(select(Plan).where(Plan.id == sub.plan_id))
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Subscription plan not found.",
+        )
+    active_count = db.scalar(
+        select(func.count()).where(
+            CatalogItem.workspace_id == workspace_id,
+            CatalogItem.status != "archived",
+        )
+    ) or 0
+    if active_count >= plan.catalog_items_limit:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Catalog item limit reached for your plan "
+                f"({plan.catalog_items_limit} item(s) allowed). "
+                "Archive existing items or upgrade your plan to add more."
+            ),
+        )
+
+
 def create_item(
     db: Session,
     workspace_id: uuid.UUID,
     data: CatalogItemCreate,
 ) -> CatalogItem:
+    _check_catalog_items_limit(db, workspace_id)
     if data.category_id is not None:
         get_category_or_404(db, workspace_id, data.category_id)
 

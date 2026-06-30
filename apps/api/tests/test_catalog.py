@@ -16,16 +16,43 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.enums import MemberRole, MemberStatus
+from app.models.plan import Plan
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
-from tests.conftest import _make_client, _make_user, _make_workspace
+from tests.conftest import _make_client, _make_subscription, _make_user, _make_workspace
+
+
+def _make_unlimited_plan(db: Session) -> Plan:
+    plan = Plan(
+        code=f"test-unlimited-{uuid.uuid4().hex[:6]}",
+        name="Test Unlimited",
+        monthly_price_cents=0,
+        currency="BRL",
+        agents_limit=999,
+        knowledge_bases_limit=999,
+        sources_per_kb_limit=999,
+        max_source_chars=9999999,
+        users_limit=999,
+        pipelines_limit=999,
+        integrations_limit=999,
+        catalog_items_limit=9999,
+        channels_limit=999,
+        monthly_ai_credits=999999,
+        monthly_conversations=999999,
+        is_active=True,
+    )
+    db.add(plan)
+    db.flush()
+    return plan
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _setup(db: Session):
     owner = _make_user(db, f"cat-owner-{uuid.uuid4().hex[:6]}@test.com", "Cat Owner")
     ws = _make_workspace(db, owner, f"cat-ws-{uuid.uuid4().hex[:6]}", "Cat Workspace")
+    plan = _make_unlimited_plan(db)
+    _make_subscription(db, ws, plan)
     db.commit()
     return owner, ws
 

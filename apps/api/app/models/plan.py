@@ -23,6 +23,8 @@ class Plan(Base):
     users_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     pipelines_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     integrations_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    catalog_items_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    channels_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     monthly_ai_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
     monthly_conversations: Mapped[int] = mapped_column(Integer, nullable=False, default=500)
     max_file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

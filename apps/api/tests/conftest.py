@@ -200,6 +200,11 @@ def subscription_a(db: Session, workspace_a: Workspace, plan: Plan) -> Workspace
     return _make_subscription(db, workspace_a, plan)
 
 
+@pytest.fixture()
+def subscription_b(db: Session, workspace_b: Workspace, plan: Plan) -> WorkspaceSubscription:
+    return _make_subscription(db, workspace_b, plan)
+
+
 # ── Client factories ──────────────────────────────────────────────────────────
 
 @contextmanager
@@ -237,7 +242,7 @@ def _make_cookie_client(db: Session, token: str) -> Generator[TestClient, None, 
 
 @pytest.fixture()
 def client_a(
-    db: Session, user_a: User, workspace_a: Workspace
+    db: Session, user_a: User, workspace_a: Workspace, subscription_a: WorkspaceSubscription
 ) -> Generator[TestClient, None, None]:
     with _make_client(db, user_a, workspace_a) as client:
         yield client
@@ -245,7 +250,7 @@ def client_a(
 
 @pytest.fixture()
 def client_b(
-    db: Session, user_b: User, workspace_b: Workspace
+    db: Session, user_b: User, workspace_b: Workspace, subscription_b: WorkspaceSubscription
 ) -> Generator[TestClient, None, None]:
     with _make_client(db, user_b, workspace_b) as client:
         yield client

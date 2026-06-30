@@ -139,7 +139,7 @@ def test_owner_creates_web_widget(db: Session, workspace_a: Workspace, client_a:
     assert body["agent_id"] == str(agent.id)
 
 
-def test_admin_creates_web_widget(db: Session, workspace_a: Workspace):
+def test_admin_creates_web_widget(db: Session, workspace_a: Workspace, subscription_a):
     admin = _make_member(db, workspace_a, MemberRole.admin)
     agent = _make_agent(db, workspace_a.id)
     db.commit()

@@ -4,12 +4,14 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
 from app.models.channel import Channel
+from app.models.plan import Plan
+from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.channel import ChannelCreate, ChannelOut, ChannelUpdate, _parse_config_by_type
 
 _MAX_LIMIT = 100
@@ -70,11 +72,48 @@ def list_channels(
     return [_channel_to_out(c) for c in channels]
 
 
+def _check_channels_limit(db: Session, workspace_id: uuid.UUID) -> None:
+    """Raises HTTP 402 if workspace has reached channels_limit."""
+    sub = db.scalar(
+        select(WorkspaceSubscription).where(
+            WorkspaceSubscription.workspace_id == workspace_id,
+            WorkspaceSubscription.status == "active",
+        )
+    )
+    if sub is None:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="No active subscription found for this workspace.",
+        )
+    plan = db.scalar(select(Plan).where(Plan.id == sub.plan_id))
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Subscription plan not found.",
+        )
+    active_count = db.scalar(
+        select(func.count()).where(
+            Channel.workspace_id == workspace_id,
+            Channel.status != "archived",
+        )
+    ) or 0
+    if active_count >= plan.channels_limit:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Channel limit reached for your plan "
+                f"({plan.channels_limit} channel(s) allowed). "
+                "Archive an existing channel or upgrade your plan to add more."
+            ),
+        )
+
+
 def create_channel(
     db: Session,
     workspace_id: uuid.UUID,
     data: ChannelCreate,
 ) -> ChannelOut:
+    _check_channels_limit(db, workspace_id)
     _resolve_agent_or_404(db, workspace_id, data.agent_id)
 
     for _ in range(_PUBLIC_KEY_MAX_RETRIES):
