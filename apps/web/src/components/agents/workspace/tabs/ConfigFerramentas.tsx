@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AgentCatalogScope, CatalogCategory, MemberRole } from "@/lib/api";
+import type { AgentCatalogScope, AgentKnowledgeBase, CatalogCategory, MemberRole } from "@/lib/api";
 import { SaveBar } from "@/components/agents/workspace/SaveBar";
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
@@ -190,6 +190,18 @@ export function ConfigFerramentas({
   saveSuccess: boolean;
   role: MemberRole | null;
 }) {
+  // Knowledge Base state
+  const [kbList, setKbList] = useState<AgentKnowledgeBase[]>([]);
+  const [kbLoading, setKbLoading] = useState(true);
+  const [kbError, setKbError] = useState(false);
+
+  useEffect(() => {
+    api.agents.knowledgeBases.list(agentId)
+      .then((data) => setKbList(data.filter((kb) => kb.is_active)))
+      .catch(() => setKbError(true))
+      .finally(() => setKbLoading(false));
+  }, [agentId]);
+
   // Catalog scope state
   const [scope, setScope] = useState<AgentCatalogScope>({
     catalog_enabled: true,
@@ -307,9 +319,21 @@ export function ConfigFerramentas({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-sm font-semibold text-nb-text">Base de Conhecimento</h3>
-                  <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
-                    Disponível
-                  </span>
+                  {kbLoading ? (
+                    <span className="w-16 h-4 rounded-full bg-nb-elevated animate-pulse inline-block" />
+                  ) : kbError ? (
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-danger/10 text-nb-danger border-nb-danger/20">
+                      Erro
+                    </span>
+                  ) : kbList.length > 0 ? (
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+                      Conectada
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-elevated text-nb-muted border-nb-border">
+                      Sem bases
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-nb-muted mt-1 leading-relaxed">
                   Permite que o agente consulte documentos, perguntas frequentes e informações da
@@ -317,12 +341,51 @@ export function ConfigFerramentas({
                 </p>
               </div>
             </div>
+
+            {/* Connected bases summary */}
+            {!kbLoading && !kbError && kbList.length > 0 && (
+              <div className="border-t border-nb-border pt-3 flex flex-col gap-2">
+                <p className="text-xs font-semibold text-nb-text">
+                  {kbList.length === 1 ? "1 base conectada" : `${kbList.length} bases conectadas`}
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {kbList.map((kb) => (
+                    <li key={kb.id} className="flex items-center gap-2 text-xs text-nb-muted">
+                      <span className="w-1.5 h-1.5 rounded-full bg-nb-success shrink-0" />
+                      {kb.knowledge_base_name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!kbLoading && !kbError && kbList.length === 0 && (
+              <div className="border-t border-nb-border pt-3">
+                <p className="text-xs text-nb-muted leading-relaxed">
+                  Nenhuma base conectada. Conecte documentos, FAQs e informações da empresa para que
+                  o agente responda com mais precisão.
+                </p>
+              </div>
+            )}
+
+            {/* Error state */}
+            {!kbLoading && kbError && (
+              <div className="border-t border-nb-border pt-3">
+                <p className="text-xs text-nb-danger">
+                  Não foi possível carregar as bases conectadas.
+                </p>
+              </div>
+            )}
+
             <div className="border-t border-nb-border pt-3">
               <Link
                 href={`/dashboard/agents/${agentId}?tab=knowledge`}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:text-nb-primary-strong transition-colors"
               >
-                Gerenciar conhecimento
+                {!kbLoading && !kbError && kbList.length === 0
+                  ? "Conectar base"
+                  : "Gerenciar conhecimento"}
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
