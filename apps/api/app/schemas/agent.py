@@ -122,6 +122,9 @@ class AgentOut(BaseModel):
     language_mode: LanguageMode
     knowledge_only: bool
     show_sources: bool
+    avatar_url: str | None
+    avatar_mime_type: str | None
+    avatar_updated_at: datetime | None
     created_by_user_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

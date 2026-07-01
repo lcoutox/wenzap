@@ -309,6 +309,7 @@ export default function AgentWorkspacePage() {
                   saveSuccess={saveSuccess}
                   onNameChange={setName}
                   onDescriptionChange={setDescription}
+                  onAvatarChange={setAgent}
                 />
               )}
 

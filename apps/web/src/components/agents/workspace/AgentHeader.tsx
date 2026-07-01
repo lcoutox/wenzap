@@ -74,8 +74,13 @@ export function AgentHeader({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-4 min-w-0">
           {/* Avatar */}
-          <div className="w-12 h-12 rounded-2xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
-            <Bot className="w-6 h-6 text-nb-primary-strong" />
+          <div className="w-12 h-12 rounded-2xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {agent.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={agent.avatar_url} alt={agent.name} className="w-full h-full object-cover" />
+            ) : (
+              <Bot className="w-6 h-6 text-nb-primary-strong" />
+            )}
           </div>
 
           {/* Name + meta */}

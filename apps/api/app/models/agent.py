@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -29,6 +29,13 @@ class Agent(Base):
     )
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.70)
     catalog_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Avatar fields
+    avatar_file_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    avatar_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Nullable: user may be deleted after creating the agent.
     # Never used for authorization — workspace_id + membership is the authority.
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

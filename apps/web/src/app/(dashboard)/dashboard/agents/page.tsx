@@ -20,8 +20,13 @@ function AgentCard({ agent, role }: { agent: Agent; role: MemberRole | null }) {
   return (
     <div className="group bg-nb-panel rounded-2xl border border-nb-border hover:border-nb-border-strong transition-all duration-150 flex flex-col">
       <div className="p-5 flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
-          <Bot className="w-5 h-5 text-nb-primary-strong" />
+        <div className="w-10 h-10 rounded-xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          {agent.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={agent.avatar_url} alt={agent.name} className="w-full h-full object-cover" />
+          ) : (
+            <Bot className="w-5 h-5 text-nb-primary-strong" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">

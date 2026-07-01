@@ -11,6 +11,7 @@ from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent import AgentCreate, AgentOut, AgentUpdate
+from app.services.agent_avatar_service import get_avatar_url
 from app.services.ai_model_service import (
     _get_workspace_plan_code,
     get_model_or_404,
@@ -117,6 +118,9 @@ def _build_agent_out(
         language_mode=(prompt.language_mode or "auto") if prompt else "auto",
         knowledge_only=prompt.knowledge_only if prompt else False,
         show_sources=prompt.show_sources if prompt else False,
+        avatar_url=get_avatar_url(agent),
+        avatar_mime_type=agent.avatar_mime_type,
+        avatar_updated_at=agent.avatar_updated_at,
         created_by_user_id=agent.created_by_user_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,

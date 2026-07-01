@@ -1,4 +1,8 @@
-import { Coins, Cpu } from "lucide-react";
+"use client";
+
+import { useRef, useState } from "react";
+import { Coins, Cpu, Bot, Upload, Trash2 } from "lucide-react";
+import { api } from "@/lib/api";
 import { AgentFormSection } from "@/components/agents/AgentFormSection";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
 import { SaveBar } from "@/components/agents/workspace/SaveBar";
@@ -8,6 +12,9 @@ const baseInput =
   "w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-text placeholder-nb-muted focus:outline-none focus:border-nb-primary focus:ring-1 focus:ring-nb-primary/30 transition-colors";
 const disabledInput =
   "w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-muted cursor-not-allowed";
+
+const ACCEPTED = "image/jpeg,image/png,image/webp";
+const MAX_MB = 5;
 
 function Field({
   label,
@@ -27,6 +34,127 @@ function Field({
   );
 }
 
+// ── Avatar uploader ────────────────────────────────────────────────────────────
+
+function AvatarUploader({
+  agent,
+  readonly,
+  onAvatarChange,
+}: {
+  agent: Agent;
+  readonly: boolean;
+  onAvatarChange: (updated: Agent) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setError(null);
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`Imagem deve ter no máximo ${MAX_MB} MB.`);
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Formato inválido. Use JPEG, PNG ou WebP.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const updated = await api.agents.uploadAvatar(agent.id, file);
+      onAvatarChange(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao enviar avatar.");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function handleDelete() {
+    setError(null);
+    setUploading(true);
+    try {
+      const updated = await api.agents.deleteAvatar(agent.id);
+      onAvatarChange(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao remover avatar.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const hasAvatar = !!agent.avatar_url;
+
+  return (
+    <div className="flex items-center gap-5">
+      {/* Preview */}
+      <div className="relative flex-shrink-0">
+        <div className="w-16 h-16 rounded-2xl overflow-hidden border border-nb-border bg-nb-primary-bg flex items-center justify-center">
+          {hasAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={agent.avatar_url!}
+              alt={agent.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <Bot className="w-7 h-7 text-nb-primary-strong" />
+          )}
+        </div>
+        {uploading && (
+          <div className="absolute inset-0 rounded-2xl bg-nb-bg/70 flex items-center justify-center">
+            <div className="w-4 h-4 border-2 border-nb-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {!readonly && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-xl border border-nb-border bg-nb-elevated hover:bg-nb-soft text-nb-secondary hover:text-nb-text transition-colors disabled:opacity-50"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {hasAvatar ? "Alterar avatar" : "Enviar avatar"}
+            </button>
+          )}
+          {hasAvatar && !readonly && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={handleDelete}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-xl border border-nb-danger/20 bg-nb-danger/5 hover:bg-nb-danger/10 text-nb-danger transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Remover
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-nb-muted">JPEG, PNG ou WebP · máx. {MAX_MB} MB</p>
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPTED}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export function ConfigGeral({
   agent,
   activeModel,
@@ -38,6 +166,7 @@ export function ConfigGeral({
   saveSuccess,
   onNameChange,
   onDescriptionChange,
+  onAvatarChange,
 }: {
   agent: Agent;
   activeModel: AiModel | null;
@@ -49,9 +178,22 @@ export function ConfigGeral({
   saveSuccess: boolean;
   onNameChange: (v: string) => void;
   onDescriptionChange: (v: string) => void;
+  onAvatarChange?: (updated: Agent) => void;
 }) {
   return (
     <div className="space-y-5">
+      {/* Avatar */}
+      <AgentFormSection
+        title="Avatar do agente"
+        description="Imagem exibida no painel e na lista de agentes."
+      >
+        <AvatarUploader
+          agent={agent}
+          readonly={readonly}
+          onAvatarChange={onAvatarChange ?? (() => {})}
+        />
+      </AgentFormSection>
+
       <AgentFormSection title="Identidade" description="Nome e descrição exibidos na plataforma.">
         <Field label="Nome *">
           <input

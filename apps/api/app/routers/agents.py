@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
@@ -23,6 +23,7 @@ from app.schemas.playground import (
     PlaygroundSessionWithMessages,
 )
 from app.services import (
+    agent_avatar_service,
     agent_catalog_scope_service,
     agent_knowledge_base_service,
     agent_service,
@@ -274,6 +275,46 @@ def test_agent(
         user_id=current_user.id,
         data=data,
     )
+
+
+# ── Avatar endpoints ───────────────────────────────────────────────────────────
+
+@router.post("/{agent_id}/avatar", response_model=AgentOut)
+async def upload_agent_avatar(
+    agent_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_obj = agent_service._get_agent_or_404(db, current_workspace.id, agent_id)
+    file_data = await file.read()
+    updated = agent_avatar_service.upload_avatar(
+        db=db,
+        agent=agent_obj,
+        file_data=file_data,
+        filename=file.filename or "avatar",
+        content_type=file.content_type,
+    )
+    prompt = agent_service._get_prompt_settings(db, updated.id)
+    model_cfg = agent_service._get_model_settings(db, updated.id)
+    return agent_service._build_agent_out(updated, prompt, model_cfg)
+
+
+@router.delete("/{agent_id}/avatar", response_model=AgentOut)
+def delete_agent_avatar(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_obj = agent_service._get_agent_or_404(db, current_workspace.id, agent_id)
+    updated = agent_avatar_service.delete_avatar(db=db, agent=agent_obj)
+    prompt = agent_service._get_prompt_settings(db, updated.id)
+    model_cfg = agent_service._get_model_settings(db, updated.id)
+    return agent_service._build_agent_out(updated, prompt, model_cfg)
 
 
 # ── Catalog scope endpoints ────────────────────────────────────────────────────

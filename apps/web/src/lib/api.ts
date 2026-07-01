@@ -119,6 +119,9 @@ export type Agent = {
   language_mode: LanguageMode;
   knowledge_only: boolean;
   show_sources: boolean;
+  avatar_url: string | null;
+  avatar_mime_type: string | null;
+  avatar_updated_at: string | null;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -1132,6 +1135,22 @@ export const api = {
         body: JSON.stringify({ status }),
       }),
     archive: (id: string) => cookieFetch<Agent>(`/agents/${id}`, { method: "DELETE" }),
+    uploadAvatar: async (id: string, file: File): Promise<Agent> => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${API_URL}/agents/${id}/avatar`, {
+        method: "POST",
+        body: form,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new ApiError(res.status, error.detail ?? "Upload error");
+      }
+      return res.json();
+    },
+    deleteAvatar: (id: string) =>
+      cookieFetch<Agent>(`/agents/${id}/avatar`, { method: "DELETE" }),
     test: (id: string, message: string, sessionId?: string) =>
       cookieFetch<AgentTestResponse>(`/agents/${id}/test`, {
         method: "POST",
