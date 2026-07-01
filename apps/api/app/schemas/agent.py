@@ -1,9 +1,13 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
 from app.enums import AgentStatus
+
+ResponseStyle = Literal["concise", "balanced", "detailed"]
+LanguageMode = Literal["auto", "pt", "en", "es"]
 
 
 class AgentCreate(BaseModel):
@@ -14,6 +18,10 @@ class AgentCreate(BaseModel):
     ai_model_id: uuid.UUID
     temperature: float = 0.7
     catalog_enabled: bool = True
+    response_style: ResponseStyle = "balanced"
+    language_mode: LanguageMode = "auto"
+    knowledge_only: bool = False
+    show_sources: bool = False
 
     @field_validator("name")
     @classmethod
@@ -55,6 +63,10 @@ class AgentUpdate(BaseModel):
     ai_model_id: uuid.UUID | None = None
     temperature: float | None = None
     catalog_enabled: bool | None = None
+    response_style: ResponseStyle | None = None
+    language_mode: LanguageMode | None = None
+    knowledge_only: bool | None = None
+    show_sources: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -106,6 +118,10 @@ class AgentOut(BaseModel):
     model_name: str
     temperature: float
     catalog_enabled: bool
+    response_style: ResponseStyle
+    language_mode: LanguageMode
+    knowledge_only: bool
+    show_sources: bool
     created_by_user_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

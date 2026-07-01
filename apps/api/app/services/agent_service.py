@@ -18,7 +18,8 @@ from app.services.ai_model_service import (
 )
 
 # Fields routed to agent_prompt_settings
-_PROMPT_FIELDS = {"system_prompt", "persona"}
+_PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
+                  "knowledge_only", "show_sources"}
 
 # Fields routed to agent_model_settings (handled explicitly, not via generic loop)
 _MODEL_FIELDS = {"ai_model_id", "temperature"}
@@ -112,6 +113,10 @@ def _build_agent_out(
         model_name=model_cfg.model_name if model_cfg else agent.model_name,
         temperature=float(model_cfg.temperature) if model_cfg else float(agent.temperature),
         catalog_enabled=agent.catalog_enabled,
+        response_style=(prompt.response_style or "balanced") if prompt else "balanced",
+        language_mode=(prompt.language_mode or "auto") if prompt else "auto",
+        knowledge_only=prompt.knowledge_only if prompt else False,
+        show_sources=prompt.show_sources if prompt else False,
         created_by_user_id=agent.created_by_user_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -222,6 +227,10 @@ def create_agent(
         agent_id=agent.id,
         system_prompt=data.system_prompt,
         persona=data.persona,
+        response_style=data.response_style,
+        language_mode=data.language_mode,
+        knowledge_only=data.knowledge_only,
+        show_sources=data.show_sources,
     )
     db.add(prompt)
 
@@ -284,7 +293,8 @@ def update_agent(
         agent.temperature = temp_val  # transition: keep agents in sync
 
     # ── Handle prompt fields ──────────────────────────────────────────────────
-    for field in ("system_prompt", "persona"):
+    for field in ("system_prompt", "persona", "response_style", "language_mode",
+                  "knowledge_only", "show_sources"):
         if field not in update_data:
             continue
         value = update_data.pop(field)
@@ -292,8 +302,9 @@ def update_agent(
             continue
         # Write to satellite (primary source)
         setattr(prompt, field, value)
-        # Transition: keep agents in sync
-        setattr(agent, field, value)
+        # Transition: keep legacy agent columns in sync for fields that exist there
+        if hasattr(agent, field):
+            setattr(agent, field, value)
 
     # ── Handle remaining agent fields (name, description) ────────────────────
     for field, value in update_data.items():

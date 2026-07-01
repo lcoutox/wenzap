@@ -100,6 +100,8 @@ export type AiCatalog = {
 // ── Agents ────────────────────────────────────────────────────────────────────
 
 export type AgentStatus = "draft" | "active" | "inactive" | "archived";
+export type ResponseStyle = "concise" | "balanced" | "detailed";
+export type LanguageMode = "auto" | "pt" | "en" | "es";
 
 export type Agent = {
   id: string;
@@ -113,6 +115,10 @@ export type Agent = {
   model_name: string;
   temperature: number;
   catalog_enabled: boolean;
+  response_style: ResponseStyle;
+  language_mode: LanguageMode;
+  knowledge_only: boolean;
+  show_sources: boolean;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -125,6 +131,10 @@ export type AgentCreateInput = {
   persona?: string;
   ai_model_id: string;
   temperature?: number;
+  response_style?: ResponseStyle;
+  language_mode?: LanguageMode;
+  knowledge_only?: boolean;
+  show_sources?: boolean;
 };
 
 export type AgentUpdateInput = {
@@ -135,6 +145,10 @@ export type AgentUpdateInput = {
   ai_model_id?: string;
   temperature?: number;
   catalog_enabled?: boolean;
+  response_style?: ResponseStyle;
+  language_mode?: LanguageMode;
+  knowledge_only?: boolean;
+  show_sources?: boolean;
 };
 
 export type AgentStatusUpdateInput = {

@@ -196,12 +196,20 @@ def run_agent_test(
         catalog_result = CatalogRetrievalResult(retrieval_attempted=False)
 
     # ── Build system prompt (deferred until after retrieval) ──────────────────
+    ps_response_style = getattr(prompt_settings, "response_style", None)
+    ps_language_mode = getattr(prompt_settings, "language_mode", None)
+    ps_knowledge_only = getattr(prompt_settings, "knowledge_only", False)
+    ps_show_sources = getattr(prompt_settings, "show_sources", False)
+
     system = build_system_prompt(
         agent_name=agent.name,
         agent_description=agent.description,
         system_prompt=prompt_settings.system_prompt,
         persona=prompt_settings.persona,
-        response_style=getattr(prompt_settings, "response_style", None),
+        response_style=ps_response_style,
+        language_mode=ps_language_mode,
+        knowledge_only=ps_knowledge_only,
+        show_sources=ps_show_sources,
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
     )
@@ -212,7 +220,7 @@ def run_agent_test(
             user_id=user_id,
             has_custom_instructions=bool(prompt_settings.system_prompt),
             has_tone=bool(getattr(prompt_settings, "persona", None)),
-            response_style=getattr(prompt_settings, "response_style", None),
+            response_style=ps_response_style,
             has_knowledge_context=bool(rag_context),
             has_catalog_context=bool(catalog_result.context_block),
             system_prompt=system,
@@ -425,8 +433,10 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
     stub = AgentPromptSettings.__new__(AgentPromptSettings)
     stub.system_prompt = system_prompt
     stub.persona = persona
-    stub.response_style = None
-    stub.language_mode = None
+    stub.response_style = None   # defaults to "balanced" in builder
+    stub.language_mode = None    # defaults to "auto" in builder
+    stub.knowledge_only = False
+    stub.show_sources = False
     return stub
 
 

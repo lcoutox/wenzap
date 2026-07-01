@@ -711,7 +711,8 @@ def test_response_style_concise_injects_brevity_block(db: Session, workspace_a: 
     assert "50 and 120 words" in ctx.system_prompt
 
 
-def test_response_style_none_no_brevity_block(db: Session, workspace_a: Workspace):
+def test_response_style_none_defaults_to_balanced(db: Session, workspace_a: Workspace):
+    # When response_style is None the builder falls back to "balanced".
     agent = _agent_with_response_style(db, workspace_a, response_style=None)
     conv = _conversation(db, workspace_a, agent)
     trigger = _message(db, workspace_a, conv, "Oi.")
@@ -719,7 +720,9 @@ def test_response_style_none_no_brevity_block(db: Session, workspace_a: Workspac
 
     ctx = _build(db, workspace_a, conv, agent, trigger)
 
-    assert "RESPONSE STYLE" not in ctx.system_prompt
+    assert "RESPONSE STYLE" in ctx.system_prompt
+    # balanced block must NOT contain the concise word-limit rule
+    assert "50 and 120 words" not in ctx.system_prompt
 
 
 def test_response_style_concise_appears_before_safety_rules(
@@ -748,3 +751,137 @@ def test_safety_rules_contain_anti_overpromise(db: Session, workspace_a: Workspa
     ctx = _build(db, workspace_a, conv, agent, trigger)
 
     assert "Do not promise features" in ctx.system_prompt
+
+
+# ── Response style — balanced and detailed ────────────────────────────────────
+
+def test_response_style_balanced_injects_balanced_block(db: Session, workspace_a: Workspace):
+    agent = _agent_with_response_style(db, workspace_a, response_style="balanced")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "RESPONSE STYLE" in ctx.system_prompt
+    assert "50 and 120 words" not in ctx.system_prompt  # that's the concise block
+
+
+def test_response_style_detailed_injects_detailed_block(db: Session, workspace_a: Workspace):
+    agent = _agent_with_response_style(db, workspace_a, response_style="detailed")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "RESPONSE STYLE" in ctx.system_prompt
+    assert "50 and 120 words" not in ctx.system_prompt
+
+
+# ── Language mode ─────────────────────────────────────────────────────────────
+
+def _agent_with_language_mode(
+    db: Session,
+    workspace: Workspace,
+    language_mode: str | None,
+) -> Agent:
+    agent = Agent(workspace_id=workspace.id, name="Lang Agent", status="active")
+    db.add(agent)
+    db.flush()
+    db.add(AgentPromptSettings(
+        agent_id=agent.id,
+        system_prompt="Instructions.",
+        persona=None,
+        language_mode=language_mode,
+    ))
+    db.flush()
+    return agent
+
+
+def test_language_mode_auto_instructs_respond_in_user_language(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent_with_language_mode(db, workspace_a, language_mode="auto")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "LANGUAGE" in ctx.system_prompt
+    assert "same language" in ctx.system_prompt
+
+
+def test_language_mode_pt_instructs_portuguese(db: Session, workspace_a: Workspace):
+    agent = _agent_with_language_mode(db, workspace_a, language_mode="pt")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Portuguese" in ctx.system_prompt
+
+
+def test_language_mode_en_instructs_english(db: Session, workspace_a: Workspace):
+    agent = _agent_with_language_mode(db, workspace_a, language_mode="en")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "English" in ctx.system_prompt
+
+
+def test_language_mode_es_instructs_spanish(db: Session, workspace_a: Workspace):
+    agent = _agent_with_language_mode(db, workspace_a, language_mode="es")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Spanish" in ctx.system_prompt
+
+
+# ── knowledge_only ────────────────────────────────────────────────────────────
+
+def _agent_with_knowledge_only(
+    db: Session,
+    workspace: Workspace,
+    knowledge_only: bool,
+) -> Agent:
+    agent = Agent(workspace_id=workspace.id, name="KO Agent", status="active")
+    db.add(agent)
+    db.flush()
+    db.add(AgentPromptSettings(
+        agent_id=agent.id,
+        system_prompt="Instructions.",
+        knowledge_only=knowledge_only,
+    ))
+    db.flush()
+    return agent
+
+
+def test_knowledge_only_true_injects_restriction_block(db: Session, workspace_a: Workspace):
+    agent = _agent_with_knowledge_only(db, workspace_a, knowledge_only=True)
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "KNOWLEDGE RESTRICTION" in ctx.system_prompt
+
+
+def test_knowledge_only_false_no_restriction_block(db: Session, workspace_a: Workspace):
+    agent = _agent_with_knowledge_only(db, workspace_a, knowledge_only=False)
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "KNOWLEDGE RESTRICTION" not in ctx.system_prompt

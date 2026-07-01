@@ -20,6 +20,8 @@ class AgentPromptSettings(Base):
     persona: Mapped[str | None] = mapped_column(Text, nullable=True)
     response_style: Mapped[str | None] = mapped_column(String(50), nullable=True)
     language_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    knowledge_only: Mapped[bool] = mapped_column(nullable=False, default=False)
+    show_sources: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

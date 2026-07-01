@@ -41,8 +41,9 @@ other special formatting.
 - Keep messages short, clear, and easy to read on a mobile screen.
 - Write naturally, as you would in a regular text conversation."""
 
-# Injected when the operator sets response_style="concise".
-# Placed after persona and before RAG so it is prominent but not mixed with reference data.
+# Response style blocks — injected based on operator's response_style setting.
+# Placed after persona and before RAG so they are prominent but not mixed with reference data.
+
 _RESPONSE_STYLE_CONCISE = """\
 RESPONSE STYLE (operator requirement — follow strictly):
 - Keep answers short and direct.
@@ -51,6 +52,54 @@ RESPONSE STYLE (operator requirement — follow strictly):
 - Do not use long bullet lists unless the user explicitly asks for one.
 - Do not dump all features or capabilities at once.
 - Answer only what was asked. Do not volunteer unrelated information."""
+
+_RESPONSE_STYLE_BALANCED = """\
+RESPONSE STYLE (operator requirement — follow strictly):
+- Respond with clarity and enough context, without excessive detail.
+- Do not present all features or capabilities at once.
+- Go deeper only if the user asks."""
+
+_RESPONSE_STYLE_DETAILED = """\
+RESPONSE STYLE (operator guidance):
+- You may provide more complete answers when that genuinely helps the user.
+- Even so, do not fabricate information and do not promise features not confirmed as available."""
+
+# Language mode blocks — injected based on operator's language_mode setting.
+
+_LANGUAGE_MODE_AUTO = """\
+LANGUAGE: Respond in the same language the user is writing in."""
+
+_LANGUAGE_MODE_PT = """\
+LANGUAGE: Always respond in Brazilian Portuguese (Português do Brasil), regardless of the \
+language the user writes in."""
+
+_LANGUAGE_MODE_EN = """\
+LANGUAGE: Always respond in English, regardless of the language the user writes in."""
+
+_LANGUAGE_MODE_ES = """\
+LANGUAGE: Always respond in Spanish (Español), regardless of the language the user writes in."""
+
+_LANGUAGE_MODE_MAP: dict[str, str] = {
+    "auto": _LANGUAGE_MODE_AUTO,
+    "pt":   _LANGUAGE_MODE_PT,
+    "en":   _LANGUAGE_MODE_EN,
+    "es":   _LANGUAGE_MODE_ES,
+}
+
+# Injected when knowledge_only=True.
+_KNOWLEDGE_ONLY_BLOCK = """\
+KNOWLEDGE RESTRICTION (operator requirement — follow strictly):
+- Only answer based on information explicitly provided in these instructions, the connected \
+knowledge bases, or the catalog.
+- If you do not have enough information to answer accurately and safely, say clearly that you \
+do not have that information — do not improvise or fabricate.
+- When you cannot help, offer to connect the user with a human team member."""
+
+# Injected when show_sources=True and RAG context is present.
+_SHOW_SOURCES_BLOCK = """\
+SOURCES: When your answer draws on the knowledge base, mention the source briefly if it is \
+identifiable (e.g., "According to [Source 1]…"). Do not invent source names or citations. \
+If no identifiable source is available, omit the source reference."""
 
 _RAG_DIVIDER = "──────────────────────────────────────────────────────"
 
@@ -100,6 +149,9 @@ def build_system_prompt(
     system_prompt: str,
     persona: str | None,
     response_style: str | None = None,
+    language_mode: str | None = None,
+    knowledge_only: bool = False,
+    show_sources: bool = False,
     rag_context: str | None = None,
     catalog_context: str | None = None,
     channel_hint: str | None = None,
@@ -111,18 +163,24 @@ def build_system_prompt(
       1. Identity anchor (name + optional description)
       2. Operator instructions (labeled section — system_prompt text)
       3. Persona / tone guidance (optional)
-      4. Response style block (optional, when response_style="concise")
-      5. RAG context block (optional, Phase 4.3+)
-      6. Catalog context block (optional, Catálogo.3+)
-      7. Channel rules (optional)
-      8. Nexbrain platform safety rules (fixed, always last)
+      4. Response style block (concise / balanced / detailed)
+      5. Language mode block (auto / pt / en / es)
+      6. Knowledge restriction block (if knowledge_only=True)
+      7. RAG context block (optional, Phase 4.3+)
+      8. Show sources guidance (if show_sources=True and RAG present)
+      9. Catalog context block (optional, Catálogo.3+)
+     10. Channel rules (optional)
+     11. Nexbrain platform safety rules (fixed, always last)
 
     Args:
         agent_name:        Name of the agent (used as identity anchor).
         agent_description: Optional description of the agent's purpose.
         system_prompt:     Core instructions from agent_prompt_settings.
         persona:           Optional tone/personality guidance.
-        response_style:    When "concise", injects an explicit brevity block.
+        response_style:    "concise" | "balanced" | "detailed". Controls length/depth.
+        language_mode:     "auto" | "pt" | "en" | "es". Controls response language.
+        knowledge_only:    When True, restricts the agent to provided knowledge only.
+        show_sources:      When True, instructs the agent to cite RAG sources.
         rag_context:       Pre-built RAG block from build_rag_context_block, or None.
         catalog_context:   Pre-built catalog block from build_catalog_context_block, or None.
         channel_hint:      Channel type hint for formatting rules (e.g. "whatsapp").
@@ -145,11 +203,25 @@ def build_system_prompt(
     if persona and persona.strip():
         parts.append(f"Personality and tone: {persona.strip()}")
 
-    if response_style == "concise":
-        parts.append(_RESPONSE_STYLE_CONCISE)
+    # Response style — default to balanced when not set or unrecognised.
+    style_block = {
+        "concise":  _RESPONSE_STYLE_CONCISE,
+        "balanced": _RESPONSE_STYLE_BALANCED,
+        "detailed": _RESPONSE_STYLE_DETAILED,
+    }.get(response_style or "balanced", _RESPONSE_STYLE_BALANCED)
+    parts.append(style_block)
+
+    # Language mode — default to auto.
+    lang_block = _LANGUAGE_MODE_MAP.get(language_mode or "auto", _LANGUAGE_MODE_AUTO)
+    parts.append(lang_block)
+
+    if knowledge_only:
+        parts.append(_KNOWLEDGE_ONLY_BLOCK)
 
     if rag_context:
         parts.append(rag_context)
+        if show_sources:
+            parts.append(_SHOW_SOURCES_BLOCK)
 
     if catalog_context:
         parts.append(catalog_context)

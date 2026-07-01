@@ -1,9 +1,10 @@
-export type ConfigTab = "geral" | "instrucoes" | "modelo";
+export type ConfigTab = "geral" | "instrucoes" | "comportamento" | "modelo";
 
 const TABS: { id: ConfigTab; label: string }[] = [
-  { id: "geral",      label: "Geral" },
-  { id: "instrucoes", label: "Instruções" },
-  { id: "modelo",     label: "Modelo" },
+  { id: "geral",          label: "Geral" },
+  { id: "instrucoes",     label: "Instruções" },
+  { id: "comportamento",  label: "Comportamento" },
+  { id: "modelo",         label: "Modelo" },
 ];
 
 export function ConfigTabs({

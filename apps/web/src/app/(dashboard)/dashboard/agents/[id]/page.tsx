@@ -15,8 +15,10 @@ import { AgentChat }           from "@/components/agents/workspace/tabs/AgentCha
 import { ImplantarTab } from "@/components/agents/workspace/tabs/ImplantarTab";
 import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
 import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
+import { ConfigComportamento }  from "@/components/agents/workspace/tabs/ConfigComportamento";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
 import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
+import type { LanguageMode, ResponseStyle } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +87,10 @@ export default function AgentWorkspacePage() {
   const [aiModelId,    setAiModelId]    = useState<string | null>(null);
   const [temperature,  setTemperature]  = useState("0.7");
   const [catalogEnabled, setCatalogEnabled] = useState(true);
+  const [responseStyle,  setResponseStyle]  = useState<ResponseStyle>("balanced");
+  const [languageMode,   setLanguageMode]   = useState<LanguageMode>("auto");
+  const [knowledgeOnly,  setKnowledgeOnly]  = useState(false);
+  const [showSources,    setShowSources]    = useState(false);
 
   // UI state — initialise from ?tab= query param, fallback to "chat"
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
@@ -131,6 +137,10 @@ export default function AgentWorkspacePage() {
         setAiModelId(agentData.ai_model_id);
         setTemperature(String(agentData.temperature));
         setCatalogEnabled(agentData.catalog_enabled);
+        setResponseStyle(agentData.response_style);
+        setLanguageMode(agentData.language_mode);
+        setKnowledgeOnly(agentData.knowledge_only);
+        setShowSources(agentData.show_sources);
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -168,6 +178,10 @@ export default function AgentWorkspacePage() {
         ai_model_id: aiModelId,
         temperature: tempNum,
         catalog_enabled: catalogEnabled,
+        response_style: responseStyle,
+        language_mode: languageMode,
+        knowledge_only: knowledgeOnly,
+        show_sources: showSources,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -230,7 +244,7 @@ export default function AgentWorkspacePage() {
   const readonly    = isArchived || !canWrite;
 
   // Config tabs that have real save functionality
-  const isSaveable = ["geral", "instrucoes", "modelo"].includes(configTab);
+  const isSaveable = ["geral", "instrucoes", "comportamento", "modelo"].includes(configTab);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -308,6 +322,23 @@ export default function AgentWorkspacePage() {
                   saveSuccess={saveSuccess}
                   onSystemPromptChange={setSystemPrompt}
                   onPersonaChange={setPersona}
+                />
+              )}
+
+              {configTab === "comportamento" && (
+                <ConfigComportamento
+                  responseStyle={responseStyle}
+                  languageMode={languageMode}
+                  knowledgeOnly={knowledgeOnly}
+                  showSources={showSources}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onResponseStyleChange={setResponseStyle}
+                  onLanguageModeChange={setLanguageMode}
+                  onKnowledgeOnlyChange={setKnowledgeOnly}
+                  onShowSourcesChange={setShowSources}
                 />
               )}
 
