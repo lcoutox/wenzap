@@ -163,27 +163,9 @@ def get_or_create_usage_counter(db: Session, workspace_id: uuid.UUID) -> UsageCo
     return counter
 
 
-def check_and_count_new_conversation(db: Session, workspace_id: uuid.UUID) -> None:
-    """Check monthly conversation limit and increment atomically. Raises HTTP 402 if exceeded."""
-    from app.services.plan_feature_service import get_workspace_plan_code  # noqa: PLC0415
-
-    plan_code = get_workspace_plan_code(db, workspace_id)
-    plan = db.scalar(select(Plan).where(Plan.code == plan_code))
-    monthly_limit = plan.monthly_conversations if plan else 0
-
-    if monthly_limit <= 0:
-        return
-
-    counter = get_or_create_usage_counter(db, workspace_id)
-
-    if counter.conversations_count >= monthly_limit:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=(
-                f"Monthly conversation limit reached ({monthly_limit} conversations). "
-                "Upgrade your plan to continue receiving conversations."
-            ),
-        )
+def count_new_conversation(db: Session, workspace_id: uuid.UUID) -> None:
+    """Increment conversations_count as an operational metric. Does not enforce any limit."""
+    get_or_create_usage_counter(db, workspace_id)
 
     now = datetime.now(timezone.utc)
     db.execute(
@@ -195,3 +177,7 @@ def check_and_count_new_conversation(db: Session, workspace_id: uuid.UUID) -> No
         )
         .values(conversations_count=UsageCounter.conversations_count + 1)
     )
+
+
+# Keep old name as alias so any external callers still work during migration.
+check_and_count_new_conversation = count_new_conversation

@@ -1,5 +1,5 @@
 """
-Tests for Billing/Plans.1 — Free Plan Matrix, Feature Gates & Limit Enforcement.
+Tests for Billing/Plans.1 & Plans.3 — Free Plan Matrix, Feature Gates & Limit Enforcement.
 
 Covers:
   - Feature gate: WhatsApp channel blocked on Free plan (HTTP 402)
@@ -8,12 +8,9 @@ Covers:
   - Feature gate: plan_allows_feature helper (remove_powered_by, pipelines)
   - Usage counter: get_or_create_usage_counter creates on-demand
   - Usage counter: get_or_create_usage_counter returns existing row
-  - Conversation limit: blocked at limit (HTTP 402)
-  - Conversation limit: allowed below limit
-  - Conversation limit: check_and_count_new_conversation increments counter
-  - Conversation limit: monthly_conversations=0 means unlimited
-  - Dashboard conversation creation: enforces limit
-  - Widget conversation creation: enforces limit
+  - Conversations: count_new_conversation increments counter (Plans.3: no blocking)
+  - Conversations: counter increments even when conversations_count > monthly_conversations
+  - Conversations: conversations_count=0 means unlimited is no longer relevant (never blocked)
   - Users limit: check_users_limit raises 402 at limit
   - Users limit: check_users_limit allows below limit
   - Plan service: get_or_create_usage_counter idempotent (two calls same counter)
@@ -40,7 +37,7 @@ from app.services.plan_feature_service import (
     plan_allows_feature,
 )
 from app.services.plan_service import (
-    check_and_count_new_conversation,
+    count_new_conversation,
     get_or_create_usage_counter,
 )
 
@@ -291,56 +288,51 @@ def test_get_or_create_is_idempotent(db: Session):
 
 
 # ---------------------------------------------------------------------------
-# check_and_count_new_conversation
+# count_new_conversation (Plans.3: metric only, never blocks)
 # ---------------------------------------------------------------------------
 
-def test_conversation_allowed_below_limit(db: Session):
-    plan = _make_plan(db, code=f"starter_{uuid.uuid4().hex[:6]}", monthly_conversations=5)
-    ws = _make_workspace(db)
-    _make_subscription(db, ws, plan)
-    _make_counter(db, ws, conversations_count=3)
-    db.commit()
-
-    # Should not raise
-    check_and_count_new_conversation(db, ws.id)
-
-
-def test_conversation_blocked_at_limit(db: Session):
-    plan = _make_plan(db, code=f"starter_{uuid.uuid4().hex[:6]}", monthly_conversations=2)
-    ws = _make_workspace(db)
-    _make_subscription(db, ws, plan)
-    _make_counter(db, ws, conversations_count=2)
-    db.commit()
-
-    with pytest.raises(HTTPException) as exc_info:
-        check_and_count_new_conversation(db, ws.id)
-
-    assert exc_info.value.status_code == 402
-
-
 def test_conversation_increments_counter(db: Session):
-    plan = _make_plan(db, code=f"starter_{uuid.uuid4().hex[:6]}", monthly_conversations=10)
+    """count_new_conversation increments conversations_count."""
     ws = _make_workspace(db)
-    _make_subscription(db, ws, plan)
     _make_counter(db, ws, conversations_count=0)
     db.commit()
 
-    check_and_count_new_conversation(db, ws.id)
+    count_new_conversation(db, ws.id)
     db.commit()
 
     counter = get_or_create_usage_counter(db, ws.id)
     assert counter.conversations_count == 1
 
 
-def test_conversation_unlimited_when_limit_zero(db: Session):
-    plan = _make_plan(db, code=f"starter_{uuid.uuid4().hex[:6]}", monthly_conversations=0)
+def test_conversation_never_blocks_even_at_limit(db: Session):
+    """Conversations exceeding monthly_conversations must not raise HTTP 402."""
+    plan = _make_plan(db, code=f"starter_{uuid.uuid4().hex[:6]}", monthly_conversations=2)
+    ws = _make_workspace(db)
+    _make_subscription(db, ws, plan)
+    _make_counter(db, ws, conversations_count=2)
+    db.commit()
+
+    # Must not raise — conversations are a metric, not a hard gate
+    count_new_conversation(db, ws.id)
+    db.commit()
+
+    counter = get_or_create_usage_counter(db, ws.id)
+    assert counter.conversations_count == 3
+
+
+def test_conversation_increments_well_above_limit(db: Session):
+    """Counter can exceed monthly_conversations without any error."""
+    plan = _make_plan(db, code=f"starter_{uuid.uuid4().hex[:6]}", monthly_conversations=1)
     ws = _make_workspace(db)
     _make_subscription(db, ws, plan)
     _make_counter(db, ws, conversations_count=9999)
     db.commit()
 
-    # Should not raise — 0 means unlimited
-    check_and_count_new_conversation(db, ws.id)
+    count_new_conversation(db, ws.id)
+    db.commit()
+
+    counter = get_or_create_usage_counter(db, ws.id)
+    assert counter.conversations_count == 10000
 
 
 # ---------------------------------------------------------------------------

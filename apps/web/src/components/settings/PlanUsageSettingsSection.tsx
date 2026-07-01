@@ -33,10 +33,7 @@ export function PlanUsageSettingsSection() {
   const creditsState = usage && plan
     ? getLimitState(usage.ai_credits_used, plan.monthly_ai_credits)
     : "normal";
-  const convsState = usage && plan
-    ? getLimitState(usage.conversations_count, plan.monthly_conversations)
-    : "normal";
-  const atLimit = creditsState === "exceeded" || convsState === "exceeded";
+  const atLimit = creditsState === "exceeded";
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -89,8 +86,18 @@ export function PlanUsageSettingsSection() {
               })}
             </span>
           </div>
-          <PlanLimitBar label="Créditos IA"  used={usage.ai_credits_used}      limit={plan.monthly_ai_credits}  unit="créditos" />
-          <PlanLimitBar label="Conversas"    used={usage.conversations_count}   limit={plan.monthly_conversations} />
+          <PlanLimitBar label="Créditos IA" used={usage.ai_credits_used} limit={plan.monthly_ai_credits} unit="créditos" />
+          <div className="pt-2 border-t border-nb-border/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-nb-muted">Conversas iniciadas</span>
+              <span className="text-xs font-semibold text-nb-text tabular-nums">
+                {usage.conversations_count.toLocaleString("pt-BR")}
+              </span>
+            </div>
+            <p className="text-[10px] text-nb-muted mt-1 leading-relaxed">
+              Apenas métrica operacional — conversas não são limitadas por plano.
+            </p>
+          </div>
         </div>
       )}
 

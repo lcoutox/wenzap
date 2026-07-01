@@ -1,4 +1,4 @@
-# Free Plan Matrix — Billing/Plans.1
+# Free Plan Matrix — Billing/Plans.1 + Plans.3
 
 ## Plan Limits (starter / Free)
 
@@ -11,8 +11,12 @@
 | Channels | 1 | 5 | 20 | Unlimited |
 | Pipelines | 0 | 3 | 10 | Unlimited |
 | Monthly AI Credits | 200 | 2,000 | 10,000 | Custom |
-| Monthly Conversations | 50 | 500 | 5,000 | Custom |
+| Monthly Conversations | — (metric only) | — (metric only) | — (metric only) | — (metric only) |
 | Max File Size | 5 MB | 20 MB | 50 MB | 100 MB |
+
+> **Plans.3 decision:** Conversations/month is **not a blocking limit**. It is recorded as an
+> operational metric for analytics and dashboards. The primary variable usage limit is
+> **AI Credits/month**. See [Enforcement Rules](#enforcement-rules) below.
 
 ## Channel Type Gates
 
@@ -41,11 +45,16 @@
 
 ## Enforcement Rules
 
-### Conversations (`monthly_conversations = 50` on Free)
-- Checked at conversation creation time (dashboard, web widget, WhatsApp inbound).
-- Blocked with HTTP 402 when `conversations_count >= monthly_conversations`.
+### Conversations — Metric Only (Plans.3)
+- `conversations_count` is incremented every time a new conversation is created (dashboard, web widget, WhatsApp inbound).
 - Counter incremented atomically via `UPDATE ... SET conversations_count = conversations_count + 1`.
-- Counter is auto-created on-demand if missing (`get_or_create_usage_counter`).
+- Counter is auto-created on-demand (`get_or_create_usage_counter`).
+- **`monthly_conversations` is NOT used as a blocking gate.** The column remains in the database for compatibility but the application never raises HTTP 402 based on it.
+- The UI shows "Conversas iniciadas" as an informational metric without a progress bar or limit state.
+
+> Rationale: Limiting by conversations creates commercial ambiguity (when does a conversation
+> start? when does it end? does a returning contact count again?). AI Credits already indirectly
+> limit conversation volume and depth because every AI reply consumes credits.
 
 ### AI Credits (`monthly_ai_credits = 200` on Free)
 - Checked before each AI reply in `agent_test_service` and `conversation_agent_reply_service`.
@@ -81,11 +90,11 @@
 | File | Change |
 |---|---|
 | `app/services/plan_feature_service.py` | New — feature gate helpers |
-| `app/services/plan_service.py` | `get_or_create_usage_counter`, `check_and_count_new_conversation` |
+| `app/services/plan_service.py` | `get_or_create_usage_counter`, `count_new_conversation` (Plans.3: metric only) |
 | `app/services/channel_service.py` | `check_channel_type_or_402` on create |
 | `app/services/member_service.py` | `check_users_limit` placeholder |
-| `app/services/conversation_service.py` | Conversation limit check on create |
-| `app/services/public_widget_service.py` | Conversation limit check on widget session |
-| `app/services/whatsapp_inbound_service.py` | Conversation limit check on new conversation |
+| `app/services/conversation_service.py` | `count_new_conversation` — increment only, no block |
+| `app/services/public_widget_service.py` | `count_new_conversation` — increment only, no block |
+| `app/services/whatsapp_inbound_service.py` | `count_new_conversation` — increment only, no block |
 | `app/services/agent_test_service.py` | Use `get_or_create_usage_counter` |
 | `app/services/conversation_agent_reply_service.py` | Use `get_or_create_usage_counter` |

@@ -181,8 +181,8 @@ def _get_or_create_conversation(
     )
 
     if conversation is None:
-        from app.services.plan_service import check_and_count_new_conversation  # noqa: PLC0415
-        check_and_count_new_conversation(db, workspace_id)
+        from app.services.plan_service import count_new_conversation  # noqa: PLC0415
+        count_new_conversation(db, workspace_id)
         now = datetime.now(timezone.utc)
         conversation = Conversation(
             workspace_id=workspace_id,
