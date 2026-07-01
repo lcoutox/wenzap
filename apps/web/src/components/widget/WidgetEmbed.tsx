@@ -131,6 +131,7 @@ function makeOptimistic(content: string): WidgetMessage {
 // ── WidgetEmbed ───────────────────────────────────────────────────────────────
 
 export function WidgetEmbed({ publicKey }: { publicKey: string }) {
+  const [configStatus, setConfigStatus] = useState<"loading" | "ready" | "error">("loading");
   const [config, setConfig] = useState<PublicWidgetConfig | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [messages, setMessages] = useState<WidgetMessage[]>([]);
@@ -141,6 +142,8 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
   const [initError, setInitError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [initDone, setInitDone] = useState(false);
+  // If wenzap:open arrives before config is ready, honour it once ready.
+  const pendingOpenRef = useRef(false);
   // Contact capture state
   const [contactCaptured, setContactCaptured] = useState(true); // true = no form needed
   const [captureForm, setCaptureForm] = useState<ContactCaptureData>({});
@@ -173,10 +176,12 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
 
     async function init() {
       try {
-        // 1. Fetch config
+        // 1. Fetch config — set ready before any session work so the widget
+        //    renders with the real colours/avatar and no flash.
         const cfg = await publicWidgetApi.getConfig(publicKey);
         if (cancelled) return;
         setConfig(cfg);
+        setConfigStatus("ready");
 
         // 2. Wait for pageContext from widget.js, or fall back after 600ms.
         //    The Promise resolves early if the listener fires first.
@@ -222,15 +227,17 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
           // Sandboxed iframe or same-origin — ignore.
         }
 
-        // 5. Auto-open
-        if (cfg.auto_open) {
-          const delay = (cfg.auto_open_delay_seconds ?? 0) * 1000;
+        // 5. Auto-open or honour a pending open requested before config was ready.
+        if (cfg.auto_open || pendingOpenRef.current) {
+          pendingOpenRef.current = false;
+          const delay = cfg.auto_open ? (cfg.auto_open_delay_seconds ?? 0) * 1000 : 0;
           setTimeout(() => {
             if (!cancelled) setOpen(true);
           }, delay);
         }
       } catch {
         if (!cancelled) {
+          setConfigStatus("error");
           setInitError("Não foi possível carregar o atendimento. Tente recarregar a página.");
         }
       }
@@ -274,14 +281,19 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
   }, [open, sessionToken, publicKey, initDone]);
 
   // Allow parent page to open the widget via postMessage { type: "wenzap:open" }.
+  // If config is not ready yet, record the intent and honour it once ready.
   useEffect(() => {
     function handleParentMessage(event: MessageEvent) {
       if (!event.data || event.data.type !== "wenzap:open") return;
-      setOpen(true);
+      if (configStatus === "ready") {
+        setOpen(true);
+      } else {
+        pendingOpenRef.current = true;
+      }
     }
     window.addEventListener("message", handleParentMessage);
     return () => window.removeEventListener("message", handleParentMessage);
-  }, []);
+  }, [configStatus]);
 
   // Scroll to bottom whenever messages change or chat opens.
   useEffect(() => {
@@ -371,10 +383,15 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
-  const resolvedTheme = config ? resolveTheme(config.theme) : "dark";
+  // ── Early exit — render nothing until config is resolved ───────────────────
+  if (configStatus === "loading") return null;
+  if (configStatus === "error" || !config) return null;
+
+  // ── Derived values (config is guaranteed non-null below) ────────────────────
+  const resolvedTheme = resolveTheme(config.theme);
   const t = resolvedTheme === "dark" ? DARK : LIGHT;
-  const primaryColor = config?.primary_color ?? "#7167F0";
-  const position = config?.position ?? "bottom-right";
+  const primaryColor = config.primary_color;
+  const position = config.position;
   const isLeft = position === "bottom-left";
 
   // ── Render ──────────────────────────────────────────────────────────────────
