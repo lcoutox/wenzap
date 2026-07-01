@@ -659,3 +659,92 @@ def test_whatsapp_safety_rules_still_present(
     channel_pos = ctx.system_prompt.find("Channel rules (WhatsApp)")
     safety_pos = ctx.system_prompt.find("Mandatory security")
     assert channel_pos < safety_pos
+
+
+# ── Operator instructions label ───────────────────────────────────────────────
+
+def test_system_prompt_labeled_as_operator_instructions(db: Session, workspace_a: Workspace):
+    agent = _agent(db, workspace_a, system_prompt="Be concise.")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "OPERATOR INSTRUCTIONS" in ctx.system_prompt
+    assert "Be concise." in ctx.system_prompt
+    # Label must appear before the actual instruction text
+    label_pos = ctx.system_prompt.find("OPERATOR INSTRUCTIONS")
+    text_pos = ctx.system_prompt.find("Be concise.")
+    assert label_pos < text_pos
+
+
+# ── Response style ────────────────────────────────────────────────────────────
+
+def _agent_with_response_style(
+    db: Session,
+    workspace: Workspace,
+    response_style: str | None,
+) -> Agent:
+    agent = Agent(workspace_id=workspace.id, name="Style Agent", status="active")
+    db.add(agent)
+    db.flush()
+    db.add(AgentPromptSettings(
+        agent_id=agent.id,
+        system_prompt="Default instructions.",
+        persona=None,
+        response_style=response_style,
+    ))
+    db.flush()
+    return agent
+
+
+def test_response_style_concise_injects_brevity_block(db: Session, workspace_a: Workspace):
+    agent = _agent_with_response_style(db, workspace_a, response_style="concise")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "RESPONSE STYLE" in ctx.system_prompt
+    assert "50 and 120 words" in ctx.system_prompt
+
+
+def test_response_style_none_no_brevity_block(db: Session, workspace_a: Workspace):
+    agent = _agent_with_response_style(db, workspace_a, response_style=None)
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "RESPONSE STYLE" not in ctx.system_prompt
+
+
+def test_response_style_concise_appears_before_safety_rules(
+    db: Session, workspace_a: Workspace
+):
+    agent = _agent_with_response_style(db, workspace_a, response_style="concise")
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    style_pos = ctx.system_prompt.find("RESPONSE STYLE")
+    safety_pos = ctx.system_prompt.find("Mandatory security")
+    assert style_pos < safety_pos
+
+
+# ── Anti-overpromise rule ─────────────────────────────────────────────────────
+
+def test_safety_rules_contain_anti_overpromise(db: Session, workspace_a: Workspace):
+    agent = _agent(db, workspace_a)
+    conv = _conversation(db, workspace_a, agent)
+    trigger = _message(db, workspace_a, conv, "Oi.")
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "Do not promise features" in ctx.system_prompt

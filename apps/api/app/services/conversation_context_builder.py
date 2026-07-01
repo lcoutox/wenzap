@@ -15,6 +15,7 @@ Separation from agent_context_builder:
   (build_system_prompt, build_rag_context_block) are reused unchanged.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,6 +36,8 @@ from app.services.catalog_retrieval_service import (
     retrieve_catalog_context,
 )
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
+
+logger = logging.getLogger(__name__)
 
 # Maps (direction, sender_type) to the label shown in the conversation history block.
 # Kept explicit so new roles can be added without guessing.
@@ -158,10 +161,24 @@ def build_conversation_context(
         agent_description=agent.description,
         system_prompt=prompt_settings.system_prompt or "",
         persona=prompt_settings.persona,
+        response_style=getattr(prompt_settings, "response_style", None),
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
         channel_hint=conversation.channel_type,
     )
+
+    if app_settings.ai_prompt_debug:
+        _log_prompt_debug(
+            agent_id=agent.id,
+            conversation_id=conversation.id,
+            channel_type=conversation.channel_type,
+            has_custom_instructions=bool(prompt_settings.system_prompt),
+            has_tone=bool(prompt_settings.persona),
+            response_style=getattr(prompt_settings, "response_style", None),
+            has_knowledge_context=bool(rag_context),
+            has_catalog_context=bool(catalog_result.context_block),
+            system_prompt=system,
+        )
 
     return ConversationContext(
         system_prompt=system,
@@ -270,6 +287,64 @@ def _truncate_chunks_to_limit(
     return result
 
 
+# ── Debug helpers ─────────────────────────────────────────────────────────────
+
+def _log_prompt_debug(
+    *,
+    agent_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    channel_type: str | None,
+    has_custom_instructions: bool,
+    has_tone: bool,
+    response_style: str | None,
+    has_knowledge_context: bool,
+    has_catalog_context: bool,
+    system_prompt: str,
+) -> None:
+    """Log structured prompt metadata when AI_PROMPT_DEBUG=true.
+
+    Never logs sensitive customer data. In dev (non-production), also logs the
+    first 2000 chars of the assembled system prompt for inspection.
+    """
+    from app.config import settings as _settings  # noqa: PLC0415 — avoid module-level import
+
+    sections: list[str] = ["identity"]
+    if has_custom_instructions:
+        sections.append("operator_instructions")
+    if has_tone:
+        sections.append("persona")
+    if response_style:
+        sections.append(f"response_style:{response_style}")
+    if has_knowledge_context:
+        sections.append("rag")
+    if has_catalog_context:
+        sections.append("catalog")
+    sections.append("safety_rules")
+
+    logger.info(
+        "AI_PROMPT_DEBUG agent_id=%s conversation_id=%s channel_type=%s "
+        "sections=%s system_prompt_length=%d "
+        "has_custom_instructions=%s has_tone=%s response_style=%s "
+        "has_knowledge_context=%s has_catalog_context=%s",
+        agent_id,
+        conversation_id,
+        channel_type,
+        ",".join(sections),
+        len(system_prompt),
+        has_custom_instructions,
+        has_tone,
+        response_style,
+        has_knowledge_context,
+        has_catalog_context,
+    )
+
+    # Preview only in dev — never in production to avoid leaking operator config.
+    is_dev = not _settings.auth_cookie_secure  # auth_cookie_secure=True only in prod
+    if is_dev:
+        preview = system_prompt[:2000]
+        logger.info("AI_PROMPT_DEBUG system_prompt_preview:\n%s", preview)
+
+
 # ── Prompt settings loader ────────────────────────────────────────────────────
 
 def _load_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
@@ -290,4 +365,6 @@ def _load_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
     stub = AgentPromptSettings.__new__(AgentPromptSettings)
     stub.system_prompt = agent.system_prompt or ""
     stub.persona = agent.persona
+    stub.response_style = None
+    stub.language_mode = None
     return stub

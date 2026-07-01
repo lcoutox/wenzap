@@ -40,6 +40,7 @@ RAG policy (Phase 4.3):
   rank (lowest similarity first) — never cut mid-text.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -68,6 +69,8 @@ from app.services.agent_guardrails import detect_prompt_injection, get_safe_refu
 from app.services.ai_model_service import PLAN_TIER
 from app.services.catalog_retrieval_service import retrieve_catalog_context
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
+
+logger = logging.getLogger(__name__)
 
 # Phase 3: only these Anthropic model_name values can be executed.
 # Both provider=anthropic and provider=nexbrain models are allowed
@@ -198,9 +201,22 @@ def run_agent_test(
         agent_description=agent.description,
         system_prompt=prompt_settings.system_prompt,
         persona=prompt_settings.persona,
+        response_style=getattr(prompt_settings, "response_style", None),
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
     )
+
+    if app_settings.ai_prompt_debug:
+        _log_playground_prompt_debug(
+            agent_id=agent.id,
+            user_id=user_id,
+            has_custom_instructions=bool(prompt_settings.system_prompt),
+            has_tone=bool(getattr(prompt_settings, "persona", None)),
+            response_style=getattr(prompt_settings, "response_style", None),
+            has_knowledge_context=bool(rag_context),
+            has_catalog_context=bool(catalog_result.context_block),
+            system_prompt=system,
+        )
 
     request = LLMRequest(
         model_name=model.model_name,
@@ -409,6 +425,8 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
     stub = AgentPromptSettings.__new__(AgentPromptSettings)
     stub.system_prompt = system_prompt
     stub.persona = persona
+    stub.response_style = None
+    stub.language_mode = None
     return stub
 
 
@@ -586,6 +604,54 @@ def _log_run(
     )
     db.add(run)
     return run
+
+
+# ── Debug helpers ─────────────────────────────────────────────────────────────
+
+def _log_playground_prompt_debug(
+    *,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    has_custom_instructions: bool,
+    has_tone: bool,
+    response_style: str | None,
+    has_knowledge_context: bool,
+    has_catalog_context: bool,
+    system_prompt: str,
+) -> None:
+    sections: list[str] = ["identity"]
+    if has_custom_instructions:
+        sections.append("operator_instructions")
+    if has_tone:
+        sections.append("persona")
+    if response_style:
+        sections.append(f"response_style:{response_style}")
+    if has_knowledge_context:
+        sections.append("rag")
+    if has_catalog_context:
+        sections.append("catalog")
+    sections.append("safety_rules")
+
+    logger.info(
+        "AI_PROMPT_DEBUG[playground] agent_id=%s user_id=%s "
+        "sections=%s system_prompt_length=%d "
+        "has_custom_instructions=%s has_tone=%s response_style=%s "
+        "has_knowledge_context=%s has_catalog_context=%s",
+        agent_id,
+        user_id,
+        ",".join(sections),
+        len(system_prompt),
+        has_custom_instructions,
+        has_tone,
+        response_style,
+        has_knowledge_context,
+        has_catalog_context,
+    )
+
+    is_dev = not app_settings.auth_cookie_secure
+    if is_dev:
+        preview = system_prompt[:2000]
+        logger.info("AI_PROMPT_DEBUG[playground] system_prompt_preview:\n%s", preview)
 
 
 # ── Plan helpers (local — avoids coupling to plan_service internals) ──────────

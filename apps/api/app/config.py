@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     # ── Observability ─────────────────────────────────────────────────────────
     sentry_dsn: str = ""
 
+    # ── AI prompt debug ───────────────────────────────────────────────────────
+    # When True, logs a structured summary of each assembled system prompt
+    # (sections included, lengths, flags). In dev only, also logs the first
+    # 2000 chars of the assembled prompt. Never logs sensitive customer data.
+    ai_prompt_debug: bool = False
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
