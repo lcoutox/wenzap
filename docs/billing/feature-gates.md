@@ -1,4 +1,4 @@
-# Feature Gates — Billing/Plans.5
+# Feature Gates — Billing/Plans.4
 
 ## Por que feature gates foram migrados para banco
 
@@ -48,8 +48,8 @@ CREATE TABLE plan_features (
 | enabled     | boolean | true = liberado, false = bloqueado          |
 | created_at  | datetime| Data de criação da linha                    |
 
-**Nota:** A tabela usa `plan_code` (string) e não FK para `plans.id`, para evitar cascata
-de problemas se um plano for removido ou renomeado no futuro. É uma decisão deliberada.
+**Nota:** `plan_code` possui FK referenciando `plans.code` (UNIQUE) com `ON DELETE CASCADE`.
+A FK garante integridade referencial sem acoplamento ao `plans.id` interno.
 
 ---
 
@@ -82,7 +82,7 @@ FEATURE_KEYS = frozenset([
 | playground               | ✅      | ✅     | ✅    | ✅         |
 | whatsapp                 | ❌      | ✅     | ✅    | ✅         |
 | whatsapp_channel         | ❌      | ✅     | ✅    | ✅         |
-| catalog                  | ❌      | ✅     | ✅    | ✅         |
+| catalog                  | ✅      | ✅     | ✅    | ✅         |
 | pipelines                | ❌      | ✅     | ✅    | ✅         |
 | multiple_knowledge_bases | ❌      | ✅     | ✅    | ✅         |
 | api_access               | ❌      | ✅     | ✅    | ✅         |
@@ -95,7 +95,7 @@ FEATURE_KEYS = frozenset([
 | analytics                | ❌      | ❌     | ✅    | ✅         |
 | external_integrations    | ❌      | ❌     | ✅    | ✅         |
 | premium_models           | ❌      | ❌     | ✅    | ✅         |
-| remove_powered_by        | ❌      | ❌     | ✅    | ✅         |
+| remove_powered_by        | ❌      | ❌     | ❌    | ✅         |
 | slack                    | ❌      | ❌     | ❌    | ✅         |
 
 ---

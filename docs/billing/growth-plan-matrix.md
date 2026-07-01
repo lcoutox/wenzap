@@ -111,25 +111,22 @@ WHERE code = 'growth';
 
 ## Feature Gates (backend)
 
+Feature gates são armazenados na tabela `plan_features` (Billing/Plans.4).
+Não existem mais dicts hardcoded — as permissões vêm do banco de dados.
+
 Arquivo: `apps/api/app/services/plan_feature_service.py`
 
 ```python
-_FEATURE_MIN_PLAN = {
-    # Growth+
-    "whatsapp_channel":         "growth",
-    "pipelines":                "growth",
-    "catalog":                  "growth",
-    "multiple_knowledge_bases": "growth",
-    "api_access":               "growth",
-    # Scale+ (bloqueados no Growth)
-    "remove_powered_by":        "scale",
-    "http_tools":               "scale",
-    "follow_up":                "scale",
-    "webhooks":                 "scale",
-    "custom_model":             "scale",
-    "analytics":                "scale",
-}
+plan_allows_feature(db, plan_code, feature_key) -> bool
+plan_allows_channel_type(db, plan_code, channel_type) -> bool
+workspace_allows_feature(db, workspace_id, feature_key) -> bool
+check_channel_type_or_402(db, workspace_id, channel_type) -> None
 ```
+
+Seed canônico: `apps/api/app/seeds/billing_plans.py`
+Documentação: `docs/billing/feature-gates.md`
+
+**Nota:** `remove_powered_by` é Enterprise-only (não Growth, não Scale).
 
 ---
 

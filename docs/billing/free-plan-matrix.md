@@ -37,7 +37,7 @@
 | Remove "Powered by Wenzap" branding | Growth |
 | Pipelines | Growth |
 | Integrations | Growth |
-| Catalog | Growth |
+| Catalog | Free (limited to 50 items) |
 | Multiple Knowledge Bases | Growth |
 | Custom AI model | Scale |
 | Analytics | Scale |
@@ -75,9 +75,9 @@
 - Quando o fluxo de convite for implementado, chamar `check_users_limit(db, workspace_id)` antes de criar o `WorkspaceMember`.
 
 ### "Powered by Wenzap" Branding
-- Mandatory on Free plan — cannot be disabled.
-- Gate: `plan_allows_feature(plan_code, "remove_powered_by")` returns False for Free.
-- Widget config must never suppress branding for Free workspaces.
+- Mandatory on Free, Growth, and Scale plans — cannot be disabled.
+- Enterprise-only: `plan_allows_feature(db, plan_code, "remove_powered_by")` returns True only for `enterprise`.
+- Widget config must never suppress branding unless the workspace's plan allows `remove_powered_by`.
 
 ## Migration Reference
 
