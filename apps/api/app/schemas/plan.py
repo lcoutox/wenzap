@@ -22,6 +22,8 @@ class PlanOut(BaseModel):
     channels_limit: int
     monthly_ai_credits: int
     monthly_conversations: int
+    is_public: bool
+    sort_order: int
 
     model_config = {"from_attributes": True}
 

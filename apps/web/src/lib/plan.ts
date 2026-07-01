@@ -23,16 +23,16 @@ const FEATURE_MIN_PLAN: Record<string, string> = {
   whatsapp_channel:         "growth",
   pipelines:                "growth",
   integrations:             "growth",
-  catalog:                  "growth",
   multiple_knowledge_bases: "growth",
   api_access:               "growth",
-  // Scale+ (not available on Growth)
-  remove_powered_by:        "scale",
+  // Scale+ (internal plan — show generic label in UI)
   http_tools:               "scale",
   follow_up:                "scale",
   webhooks:                 "scale",
   custom_model:             "scale",
   analytics:                "scale",
+  // Enterprise-only (internal plan — show generic label in UI)
+  remove_powered_by:        "enterprise",
 };
 
 export type LimitState = "normal" | "warning" | "danger" | "exceeded";
@@ -91,9 +91,11 @@ export function planLabel(planCode: string): string {
   return map[planCode] ?? planCode;
 }
 
-/** Minimum plan name for a feature. */
+/** Minimum plan name for a feature.
+ *  Scale and Enterprise are internal plans — return a generic label instead. */
 export function minPlanLabel(feature: string): string {
   const minPlan = FEATURE_MIN_PLAN[feature];
   if (!minPlan) return "";
+  if (minPlan === "scale" || minPlan === "enterprise") return "Planos superiores";
   return planLabel(minPlan);
 }

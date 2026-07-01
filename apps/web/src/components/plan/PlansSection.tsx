@@ -187,16 +187,16 @@ export function PlansSection({ subscription }: { subscription: Subscription | nu
               </thead>
               <tbody>
                 <FeatureRow label="Agentes"              free="1"       growth="3" />
-                <FeatureRow label="Usuários"             free="1"       growth="5" />
+                <FeatureRow label="Usuários"             free="3"       growth="5" />
                 <FeatureRow label="Bases de conhecimento" free="1"      growth="5" />
-                <FeatureRow label="Fontes por base"      free="10"      growth="100" />
+                <FeatureRow label="Fontes por base"      free="20"      growth="100" />
                 <FeatureRow label="Itens no Catálogo"    free="50"      growth="500" />
                 <FeatureRow label="Canais"               free="1"       growth="5" />
                 <FeatureRow label="Créditos IA/mês"      free="200"     growth="7.500" />
-                <FeatureRow label="Tamanho máx. por arquivo" free="5 MB" growth="10 MB" />
+                <FeatureRow label="Tamanho máx. por arquivo" free="2 MB" growth="10 MB" />
                 <FeatureRow label="Web Widget"           free={true}    growth={true} />
                 <FeatureRow label="WhatsApp Business"    free={false}   growth={true} />
-                <FeatureRow label="Catálogo de produtos" free={false}   growth={true} />
+                <FeatureRow label="Catálogo de produtos" free={true}    growth={true} />
                 <FeatureRow label="Pipelines"            free={false}   growth={true} />
                 <FeatureRow label="HTTP Tools"           free={false}   growth={false} />
                 <FeatureRow label="Webhooks"             free={false}   growth={false} />
@@ -208,7 +208,7 @@ export function PlansSection({ subscription }: { subscription: Subscription | nu
         </div>
 
         <p className="text-[10px] text-nb-muted text-center">
-          HTTP Tools, Webhooks e Follow-up automático estarão disponíveis em planos Scale e superiores.
+          HTTP Tools, Webhooks e Follow-up automático estarão disponíveis em planos superiores.
         </p>
       </div>
     </>

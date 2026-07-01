@@ -121,6 +121,40 @@ def test_seed_updates_existing_feature(db: Session):
     assert row.enabled is True  # seed restores canonical value
 
 
+def test_seed_starter_is_public(db: Session):
+    seed_billing_plans(db)
+    plan = db.scalar(select(Plan).where(Plan.code == "starter"))
+    assert plan.is_public is True
+    assert plan.sort_order == 10
+
+
+def test_seed_growth_is_public(db: Session):
+    seed_billing_plans(db)
+    plan = db.scalar(select(Plan).where(Plan.code == "growth"))
+    assert plan.is_public is True
+    assert plan.sort_order == 20
+
+
+def test_seed_scale_is_not_public(db: Session):
+    seed_billing_plans(db)
+    plan = db.scalar(select(Plan).where(Plan.code == "scale"))
+    assert plan.is_public is False
+    assert plan.sort_order == 30
+
+
+def test_seed_enterprise_is_not_public(db: Session):
+    seed_billing_plans(db)
+    plan = db.scalar(select(Plan).where(Plan.code == "enterprise"))
+    assert plan.is_public is False
+    assert plan.sort_order == 40
+
+
+def test_all_plans_remain_active(db: Session):
+    seed_billing_plans(db)
+    plans = db.scalars(select(Plan)).all()
+    assert all(p.is_active for p in plans)
+
+
 def test_seed_is_idempotent(db: Session):
     seed_billing_plans(db)
     db.commit()

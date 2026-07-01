@@ -246,10 +246,10 @@ _FEATURE_MATRIX = [
 
 
 _SEED_PLANS = [
-    ("starter",    "Free"),
-    ("growth",     "Growth"),
-    ("scale",      "Scale"),
-    ("enterprise", "Enterprise"),
+    ("starter",    "Free",       True,  10),
+    ("growth",     "Growth",     True,  20),
+    ("scale",      "Scale",      False, 30),
+    ("enterprise", "Enterprise", False, 40),
 ]
 
 
@@ -266,9 +266,9 @@ def _seed_feature_matrix(db: Session) -> None:
 
     now = datetime.now(timezone.utc)
 
-    for code, name in _SEED_PLANS:
+    for code, name, is_public, sort_order in _SEED_PLANS:
         if not db.scalar(_select(Plan).where(Plan.code == code)):
-            db.add(Plan(code=code, name=name))
+            db.add(Plan(code=code, name=name, is_public=is_public, sort_order=sort_order))
     db.flush()
 
     for plan_code, feature_key, enabled in _FEATURE_MATRIX:
@@ -315,6 +315,8 @@ def plan(db: Session) -> Plan:
             monthly_ai_credits=1000,
             monthly_conversations=500,
             is_active=True,
+            is_public=True,
+            sort_order=10,
         )
         db.add(p)
         db.commit()
@@ -362,6 +364,8 @@ def growth_plan(db: Session) -> Plan:
             monthly_ai_credits=7500,
             monthly_conversations=0,
             is_active=True,
+            is_public=True,
+            sort_order=20,
         )
         db.add(p)
         db.commit()

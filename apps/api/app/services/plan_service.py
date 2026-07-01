@@ -17,7 +17,13 @@ from app.schemas.plan import SubscriptionOut, UsageOut
 
 
 def list_plans(db: Session) -> list[Plan]:
-    return list(db.scalars(select(Plan).where(Plan.is_active == True)).all())  # noqa: E712
+    return list(
+        db.scalars(
+            select(Plan)
+            .where(Plan.is_active == True, Plan.is_public == True)  # noqa: E712
+            .order_by(Plan.sort_order)
+        ).all()
+    )
 
 
 def get_workspace_subscription(db: Session, workspace_id: uuid.UUID) -> SubscriptionOut:

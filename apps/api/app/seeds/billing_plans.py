@@ -39,6 +39,8 @@ _PLANS = [
         "monthly_ai_credits": 200,
         "monthly_conversations": 50,        # metric only, not a blocking quota
         "is_active": True,
+        "is_public": True,
+        "sort_order": 10,
     },
     {
         "code": "growth",
@@ -59,6 +61,8 @@ _PLANS = [
         "monthly_ai_credits": 7_500,
         "monthly_conversations": 0,         # metric only
         "is_active": True,
+        "is_public": True,
+        "sort_order": 20,
     },
     # Scale and Enterprise limits below are PROVISIONAL.
     # A dedicated phase (Billing/Plans.Scale) will set definitive commercial values.
@@ -81,6 +85,8 @@ _PLANS = [
         "monthly_ai_credits": 20_000,
         "monthly_conversations": 0,         # metric only
         "is_active": True,
+        "is_public": False,                 # internal — pending Scale phase
+        "sort_order": 30,
     },
     {
         "code": "enterprise",
@@ -101,6 +107,8 @@ _PLANS = [
         "monthly_ai_credits": 999_999,
         "monthly_conversations": 0,         # metric only
         "is_active": True,
+        "is_public": False,                 # internal — negotiated separately
+        "sort_order": 40,
     },
 ]
 
