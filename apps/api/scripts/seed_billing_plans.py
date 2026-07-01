@@ -11,21 +11,21 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.database import SessionLocal
+from sqlalchemy.orm import Session
+
+from app.database import engine
 from app.seeds.billing_plans import seed_billing_plans
 
 
 def main() -> None:
-    db = SessionLocal()
-    try:
-        seed_billing_plans(db)
-        db.commit()
-        print("Billing plans seed completed.")
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    with Session(engine) as db:
+        try:
+            seed_billing_plans(db)
+            db.commit()
+            print("Billing plans seed completed.")
+        except Exception:
+            db.rollback()
+            raise
 
 
 if __name__ == "__main__":
