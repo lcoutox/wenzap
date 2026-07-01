@@ -180,8 +180,13 @@ def test_free_plan_cannot_remove_powered_by():
     assert plan_allows_feature("starter", "remove_powered_by") is False
 
 
-def test_growth_plan_can_remove_powered_by():
-    assert plan_allows_feature("growth", "remove_powered_by") is True
+def test_growth_plan_cannot_remove_powered_by():
+    # Plans.4: remove_powered_by moved to Scale+ (growth no longer allowed)
+    assert plan_allows_feature("growth", "remove_powered_by") is False
+
+
+def test_scale_plan_can_remove_powered_by():
+    assert plan_allows_feature("scale", "remove_powered_by") is True
 
 
 def test_free_plan_cannot_use_pipelines():

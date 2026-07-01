@@ -19,15 +19,20 @@ const PLAN_CHANNEL_TYPES: Record<string, Set<string>> = {
 };
 
 const FEATURE_MIN_PLAN: Record<string, string> = {
-  whatsapp_channel:      "growth",
-  remove_powered_by:     "growth",
-  pipelines:             "growth",
-  integrations:          "growth",
-  catalog:               "growth",
+  // Growth+
+  whatsapp_channel:         "growth",
+  pipelines:                "growth",
+  integrations:             "growth",
+  catalog:                  "growth",
   multiple_knowledge_bases: "growth",
-  custom_model:          "scale",
-  analytics:             "scale",
-  api_access:            "growth",
+  api_access:               "growth",
+  // Scale+ (not available on Growth)
+  remove_powered_by:        "scale",
+  http_tools:               "scale",
+  follow_up:                "scale",
+  webhooks:                 "scale",
+  custom_model:             "scale",
+  analytics:                "scale",
 };
 
 export type LimitState = "normal" | "warning" | "danger" | "exceeded";
