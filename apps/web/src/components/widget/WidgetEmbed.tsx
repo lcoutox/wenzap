@@ -840,6 +840,13 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
       >
         {open ? (
           <X style={{ width: 22, height: 22, color: "#ffffff" }} />
+        ) : config?.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={config.avatar_url}
+            alt=""
+            style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover" }}
+          />
         ) : (
           <MessageCircle style={{ width: 22, height: 22, color: "#ffffff" }} />
         )}

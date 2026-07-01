@@ -680,7 +680,6 @@ export type WebWidgetConfig = {
   header_title: string;
   header_subtitle: string;
   placeholder: string;
-  avatar_url: string | null;
   auto_open: boolean;
   auto_open_delay_seconds: number;
   // Visitor identity / lead capture

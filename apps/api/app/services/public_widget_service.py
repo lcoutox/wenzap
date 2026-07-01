@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.agent import Agent
 from app.models.channel import Channel
 from app.models.contact import Contact
 from app.models.conversation import Conversation
@@ -27,6 +28,7 @@ from app.schemas.public_widget import (
     WidgetPageContext,
     WidgetSessionOut,
 )
+from app.services.agent_avatar_service import get_avatar_url
 
 _SESSION_TOKEN_PREFIX = "wss_"
 _SESSION_TOKEN_MAX_RETRIES = 5
@@ -40,7 +42,6 @@ _CONFIG_DEFAULTS: dict = {
     "header_title": "Atendimento",
     "header_subtitle": "Resposta em segundos",
     "placeholder": "Digite sua mensagem...",
-    "avatar_url": None,
     "auto_open": False,
     "auto_open_delay_seconds": 3,
     # Contact capture defaults
@@ -127,6 +128,9 @@ def get_public_widget_config(
 
     cfg = _get_cfg(channel)
 
+    agent = db.get(Agent, channel.agent_id) if channel.agent_id else None
+    avatar_url = get_avatar_url(agent) if agent else None
+
     return PublicWidgetConfigOut(
         public_key=channel.public_key,
         name=channel.name,
@@ -137,7 +141,7 @@ def get_public_widget_config(
         header_title=cfg["header_title"],
         header_subtitle=cfg["header_subtitle"],
         placeholder=cfg["placeholder"],
-        avatar_url=cfg["avatar_url"],
+        avatar_url=avatar_url,
         auto_open=cfg["auto_open"],
         auto_open_delay_seconds=cfg["auto_open_delay_seconds"],
         contact_capture_enabled=cfg["contact_capture_enabled"],

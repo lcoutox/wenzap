@@ -275,3 +275,70 @@ def test_custom_config_returned_correctly(
     assert body["welcome_message"] == "Bem-vindo!"
     assert body["auto_open"] is True
     assert body["auto_open_delay_seconds"] == 5
+
+
+# ── Avatar source-of-truth tests ───────────────────────────────────────────────
+
+def test_avatar_url_null_when_agent_has_no_avatar(
+    db: Session, workspace_a: Workspace, public_client
+):
+    agent = _make_agent(db, workspace_a.id)
+    ch = _make_channel(db, workspace_a.id, agent.id)
+
+    resp = _get_config(public_client, ch.public_key)
+
+    assert resp.status_code == 200
+    assert resp.json()["avatar_url"] is None
+
+
+def test_avatar_url_comes_from_agent_not_config_json(
+    db: Session, workspace_a: Workspace, public_client
+):
+    agent = _make_agent(db, workspace_a.id)
+    agent.avatar_file_key = "workspaces/x/agents/y/avatar/test.png"
+    agent.avatar_mime_type = "image/png"
+    db.commit()
+
+    ch = _make_channel(
+        db, workspace_a.id, agent.id,
+        config_json={"avatar_url": "https://legacy.example.com/old-avatar.png"},
+    )
+
+    resp = _get_config(public_client, ch.public_key)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Must NOT return the legacy config_json URL
+    assert body["avatar_url"] != "https://legacy.example.com/old-avatar.png"
+
+
+def test_legacy_config_json_avatar_url_is_ignored(
+    db: Session, workspace_a: Workspace, public_client
+):
+    agent = _make_agent(db, workspace_a.id)
+    ch = _make_channel(
+        db, workspace_a.id, agent.id,
+        config_json={"avatar_url": "https://legacy.example.com/avatar.png"},
+    )
+
+    resp = _get_config(public_client, ch.public_key)
+
+    assert resp.status_code == 200
+    # Agent has no avatar → avatar_url must be null, ignoring config_json value
+    assert resp.json()["avatar_url"] is None
+
+
+def test_avatar_file_key_never_exposed(
+    db: Session, workspace_a: Workspace, public_client
+):
+    agent = _make_agent(db, workspace_a.id)
+    agent.avatar_file_key = "workspaces/x/agents/y/avatar/secret.png"
+    agent.avatar_mime_type = "image/png"
+    db.commit()
+
+    ch = _make_channel(db, workspace_a.id, agent.id)
+
+    resp = _get_config(public_client, ch.public_key)
+
+    assert resp.status_code == 200
+    assert "avatar_file_key" not in resp.json()

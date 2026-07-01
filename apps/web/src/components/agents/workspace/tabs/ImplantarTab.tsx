@@ -139,7 +139,6 @@ const DEFAULT_CONFIG: WebWidgetConfig = {
   header_title: "Atendimento",
   header_subtitle: "Resposta em segundos",
   placeholder: "Digite sua mensagem...",
-  avatar_url: null,
   auto_open: false,
   auto_open_delay_seconds: 3,
   contact_capture_enabled: false,
@@ -157,7 +156,6 @@ type WidgetFormState = {
   header_title: string;
   header_subtitle: string;
   placeholder: string;
-  avatar_url: string;
   auto_open: boolean;
   auto_open_delay_seconds: number;
   allowed_origins_raw: string;
@@ -178,7 +176,6 @@ function channelToWidgetForm(ch?: WebWidgetChannel): WidgetFormState {
     header_title: cfg.header_title,
     header_subtitle: cfg.header_subtitle,
     placeholder: cfg.placeholder,
-    avatar_url: cfg.avatar_url ?? "",
     auto_open: cfg.auto_open,
     auto_open_delay_seconds: cfg.auto_open_delay_seconds,
     allowed_origins_raw: (ch?.allowed_origins ?? []).join("\n"),
@@ -210,7 +207,6 @@ function widgetFormToPayload(
     header_title: f.header_title,
     header_subtitle: f.header_subtitle,
     placeholder: f.placeholder,
-    avatar_url: f.avatar_url.trim() || null,
     auto_open: f.auto_open,
     auto_open_delay_seconds: f.auto_open_delay_seconds,
     contact_capture_enabled: f.contact_capture_enabled,
@@ -307,9 +303,10 @@ function WidgetForm({
           </Field>
         )}
       </div>
-      <Field label="URL do avatar" hint="Opcional. Imagem exibida no header do widget.">
-        <input type="url" value={form.avatar_url} onChange={(e) => set("avatar_url", e.target.value)} placeholder="https://exemplo.com/avatar.png" className={baseInput} />
-      </Field>
+      <div className="flex items-start gap-2.5 p-3 rounded-xl border border-nb-border/60 bg-nb-elevated/30 text-xs text-nb-muted">
+        <span className="mt-0.5 text-nb-primary">ℹ</span>
+        <span>O avatar exibido no widget é o avatar do agente. Configure-o na aba <strong className="text-nb-secondary">Config → Geral</strong>.</span>
+      </div>
       <div className="flex flex-col gap-3 p-4 rounded-xl border border-nb-border/60 bg-nb-elevated/30">
         <p className="text-xs font-semibold text-nb-secondary uppercase tracking-wide">Coleta de dados do visitante</p>
         <label className="flex items-center gap-3 cursor-pointer">
