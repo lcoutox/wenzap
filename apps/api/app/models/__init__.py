@@ -24,6 +24,7 @@ from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_source import KnowledgeSource
 from app.models.password_reset_token import PasswordResetToken
 from app.models.plan import Plan
+from app.models.plan_feature import PlanFeature
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
 from app.models.user_auth_credential import UserAuthCredential
@@ -38,6 +39,7 @@ __all__ = [
     "Workspace",
     "WorkspaceMember",
     "Plan",
+    "PlanFeature",
     "WorkspaceSubscription",
     "UsageCounter",
     "Agent",

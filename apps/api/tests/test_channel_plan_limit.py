@@ -12,16 +12,22 @@ from tests.conftest import _make_client, _make_subscription, _make_user, _make_w
 
 
 def _plan_with_channels_limit(db: Session, limit: int) -> Plan:
-    p = Plan(
-        code=f"test_channels_limit_{limit}_{uuid.uuid4().hex[:6]}",
-        name=f"Channels Limit {limit} Plan",
-        monthly_price_cents=0, currency="BRL",
-        agents_limit=99, knowledge_bases_limit=99, sources_per_kb_limit=99,
-        max_source_chars=9999999, users_limit=99, pipelines_limit=99,
-        integrations_limit=99, catalog_items_limit=9999, channels_limit=limit,
-        monthly_ai_credits=99999, monthly_conversations=9999, is_active=True,
-    )
-    db.add(p)
+    from sqlalchemy import select as _sel  # noqa: PLC0415
+
+    p = db.scalar(_sel(Plan).where(Plan.code == "starter"))
+    if p is None:
+        p = Plan(
+            code="starter",
+            name=f"Channels Limit {limit} Plan",
+            monthly_price_cents=0, currency="BRL",
+            agents_limit=99, knowledge_bases_limit=99, sources_per_kb_limit=99,
+            max_source_chars=9999999, users_limit=99, pipelines_limit=99,
+            integrations_limit=99, catalog_items_limit=9999, channels_limit=limit,
+            monthly_ai_credits=99999, monthly_conversations=9999, is_active=True,
+        )
+        db.add(p)
+    else:
+        p.channels_limit = limit
     db.commit()
     db.refresh(p)
     return p
@@ -35,7 +41,7 @@ def _make_agent(db: Session, workspace_id: uuid.UUID) -> Agent:
     return agent
 
 
-def test_channel_limit_one_blocks_second(db: Session):
+def test_channel_limit_one_blocks_second(db: Session, feature_matrix):
     user = _make_user(db, "channel-limit@test.com", "Channel Limit User")
     ws = _make_workspace(db, user, "ch-limit-ws", "Ch Limit WS")
     plan = _plan_with_channels_limit(db, 1)
@@ -52,7 +58,7 @@ def test_channel_limit_one_blocks_second(db: Session):
         assert r2.status_code == 402
 
 
-def test_archived_channel_does_not_count_toward_limit(db: Session):
+def test_archived_channel_does_not_count_toward_limit(db: Session, feature_matrix):
     user = _make_user(db, "channel-archived@test.com", "Ch Archived User")
     ws = _make_workspace(db, user, "ch-archived-ws", "Ch Archived WS")
     plan = _plan_with_channels_limit(db, 1)

@@ -27,6 +27,7 @@ from app.main import app
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.plan import Plan
+from app.models.plan_feature import PlanFeature
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
@@ -146,6 +147,148 @@ def _make_auth_session(db: Session, user: User) -> str:
     return token
 
 
+# ── Feature-gate seed ─────────────────────────────────────────────────────────
+
+_FEATURE_MATRIX = [
+    # starter
+    ("starter", "web_widget",               True),
+    ("starter", "api",                      True),
+    ("starter", "knowledge_base",           True),
+    ("starter", "inbox",                    True),
+    ("starter", "playground",               True),
+    ("starter", "whatsapp",                 False),
+    ("starter", "instagram",                False),
+    ("starter", "telegram",                 False),
+    ("starter", "slack",                    False),
+    ("starter", "catalog",                  True),   # starter: catalog enabled (limited qty)
+    ("starter", "pipelines",                False),
+    ("starter", "multiple_knowledge_bases", False),
+    ("starter", "whatsapp_channel",         False),
+    ("starter", "api_access",               False),
+    ("starter", "http_tools",               False),
+    ("starter", "follow_up",                False),
+    ("starter", "webhooks",                 False),
+    ("starter", "custom_model",             False),
+    ("starter", "analytics",                False),
+    ("starter", "external_integrations",    False),
+    ("starter", "remove_powered_by",        False),
+    ("starter", "premium_models",           False),
+    # growth
+    ("growth",  "web_widget",               True),
+    ("growth",  "api",                      True),
+    ("growth",  "knowledge_base",           True),
+    ("growth",  "inbox",                    True),
+    ("growth",  "playground",               True),
+    ("growth",  "whatsapp",                 True),
+    ("growth",  "catalog",                  True),
+    ("growth",  "pipelines",                True),
+    ("growth",  "multiple_knowledge_bases", True),
+    ("growth",  "whatsapp_channel",         True),
+    ("growth",  "api_access",               True),
+    ("growth",  "instagram",                False),
+    ("growth",  "telegram",                 False),
+    ("growth",  "slack",                    False),
+    ("growth",  "http_tools",               False),
+    ("growth",  "follow_up",                False),
+    ("growth",  "webhooks",                 False),
+    ("growth",  "custom_model",             False),
+    ("growth",  "analytics",                False),
+    ("growth",  "external_integrations",    False),
+    ("growth",  "remove_powered_by",        False),
+    ("growth",  "premium_models",           False),
+    # scale
+    ("scale",   "web_widget",               True),
+    ("scale",   "api",                      True),
+    ("scale",   "knowledge_base",           True),
+    ("scale",   "inbox",                    True),
+    ("scale",   "playground",               True),
+    ("scale",   "whatsapp",                 True),
+    ("scale",   "instagram",                True),
+    ("scale",   "telegram",                 True),
+    ("scale",   "catalog",                  True),
+    ("scale",   "pipelines",                True),
+    ("scale",   "multiple_knowledge_bases", True),
+    ("scale",   "whatsapp_channel",         True),
+    ("scale",   "api_access",               True),
+    ("scale",   "http_tools",               True),
+    ("scale",   "follow_up",                True),
+    ("scale",   "webhooks",                 True),
+    ("scale",   "custom_model",             True),
+    ("scale",   "analytics",                True),
+    ("scale",   "external_integrations",    True),
+    ("scale",   "remove_powered_by",        False),  # Enterprise-only
+    ("scale",   "premium_models",           True),
+    ("scale",   "slack",                    False),
+    # enterprise
+    ("enterprise", "web_widget",               True),
+    ("enterprise", "api",                      True),
+    ("enterprise", "knowledge_base",           True),
+    ("enterprise", "inbox",                    True),
+    ("enterprise", "playground",               True),
+    ("enterprise", "whatsapp",                 True),
+    ("enterprise", "instagram",                True),
+    ("enterprise", "telegram",                 True),
+    ("enterprise", "slack",                    True),
+    ("enterprise", "catalog",                  True),
+    ("enterprise", "pipelines",                True),
+    ("enterprise", "multiple_knowledge_bases", True),
+    ("enterprise", "whatsapp_channel",         True),
+    ("enterprise", "api_access",               True),
+    ("enterprise", "http_tools",               True),
+    ("enterprise", "follow_up",                True),
+    ("enterprise", "webhooks",                 True),
+    ("enterprise", "custom_model",             True),
+    ("enterprise", "analytics",                True),
+    ("enterprise", "external_integrations",    True),
+    ("enterprise", "remove_powered_by",        True),
+    ("enterprise", "premium_models",           True),
+]
+
+
+_SEED_PLANS = [
+    ("starter",    "Free"),
+    ("growth",     "Growth"),
+    ("scale",      "Scale"),
+    ("enterprise", "Enterprise"),
+]
+
+
+def _seed_feature_matrix(db: Session) -> None:
+    """Populate plan_features with the standard feature matrix.
+
+    Creates minimal plan rows for starter/growth/scale/enterprise if they don't
+    exist yet (required by the FK plan_code → plans.code). Uses get-or-create so
+    this is safe regardless of whether the `plan` fixture has already run.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from sqlalchemy import select as _select  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc)
+
+    for code, name in _SEED_PLANS:
+        if not db.scalar(_select(Plan).where(Plan.code == code)):
+            db.add(Plan(code=code, name=name))
+    db.flush()
+
+    for plan_code, feature_key, enabled in _FEATURE_MATRIX:
+        db.add(
+            PlanFeature(
+                plan_code=plan_code,
+                feature_key=feature_key,
+                enabled=enabled,
+                created_at=now,
+            )
+        )
+    db.commit()
+
+
+@pytest.fixture()
+def feature_matrix(db: Session) -> None:
+    """Seed the plan_features table for tests that call plan_allows_feature / plan_allows_channel_type."""
+    _seed_feature_matrix(db)
+
+
 # ── Common fixtures ────────────────────────────────────────────────────────────
 
 @pytest.fixture()
@@ -155,23 +298,27 @@ def ai_model(db: Session) -> AiModel:
 
 @pytest.fixture()
 def plan(db: Session) -> Plan:
-    p = Plan(
-        code="starter_test",
-        name="Starter Test",
-        monthly_price_cents=0,
-        currency="BRL",
-        agents_limit=1,
-        knowledge_bases_limit=1,
-        users_limit=3,
-        pipelines_limit=1,
-        integrations_limit=0,
-        monthly_ai_credits=1000,
-        monthly_conversations=500,
-        is_active=True,
-    )
-    db.add(p)
-    db.commit()
-    db.refresh(p)
+    from sqlalchemy import select as _sel  # noqa: PLC0415
+
+    p = db.scalar(_sel(Plan).where(Plan.code == "starter"))
+    if p is None:
+        p = Plan(
+            code="starter",
+            name="Starter Test",
+            monthly_price_cents=0,
+            currency="BRL",
+            agents_limit=1,
+            knowledge_bases_limit=1,
+            users_limit=3,
+            pipelines_limit=1,
+            integrations_limit=0,
+            monthly_ai_credits=1000,
+            monthly_conversations=500,
+            is_active=True,
+        )
+        db.add(p)
+        db.commit()
+        db.refresh(p)
     return p
 
 
@@ -196,13 +343,57 @@ def workspace_b(db: Session, user_b: User) -> Workspace:
 
 
 @pytest.fixture()
-def subscription_a(db: Session, workspace_a: Workspace, plan: Plan) -> WorkspaceSubscription:
+def growth_plan(db: Session) -> Plan:
+    """Growth plan for tests that need WhatsApp or other growth+ features."""
+    from sqlalchemy import select as _sel  # noqa: PLC0415
+
+    p = db.scalar(_sel(Plan).where(Plan.code == "growth"))
+    if p is None:
+        p = Plan(
+            code="growth",
+            name="Growth Test",
+            monthly_price_cents=29700,
+            currency="BRL",
+            agents_limit=3,
+            knowledge_bases_limit=5,
+            users_limit=5,
+            pipelines_limit=5,
+            integrations_limit=5,
+            monthly_ai_credits=7500,
+            monthly_conversations=0,
+            is_active=True,
+        )
+        db.add(p)
+        db.commit()
+        db.refresh(p)
+    return p
+
+
+@pytest.fixture()
+def subscription_a(db: Session, workspace_a: Workspace, plan: Plan, feature_matrix) -> WorkspaceSubscription:
     return _make_subscription(db, workspace_a, plan)
 
 
 @pytest.fixture()
-def subscription_b(db: Session, workspace_b: Workspace, plan: Plan) -> WorkspaceSubscription:
+def subscription_b(db: Session, workspace_b: Workspace, plan: Plan, feature_matrix) -> WorkspaceSubscription:
     return _make_subscription(db, workspace_b, plan)
+
+
+@pytest.fixture()
+def growth_subscription_a(
+    db: Session, workspace_a: Workspace, subscription_a: WorkspaceSubscription, growth_plan: Plan, feature_matrix
+) -> WorkspaceSubscription:
+    """Upgrade workspace_a's existing subscription to the Growth plan."""
+    from sqlalchemy import update as _update  # noqa: PLC0415
+
+    db.execute(
+        _update(WorkspaceSubscription)
+        .where(WorkspaceSubscription.workspace_id == workspace_a.id)
+        .values(plan_id=growth_plan.id, status="active")
+    )
+    db.commit()
+    db.refresh(subscription_a)
+    return subscription_a
 
 
 # ── Client factories ──────────────────────────────────────────────────────────

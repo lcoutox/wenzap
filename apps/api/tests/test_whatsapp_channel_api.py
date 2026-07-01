@@ -39,6 +39,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.services.channel_service import get_whatsapp_channel_by_phone_number_id
+from app.models.workspace_subscription import WorkspaceSubscription
 from tests.conftest import _make_client, _make_user
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -115,7 +116,7 @@ def _make_whatsapp_channel(
 
 
 def test_owner_creates_whatsapp_channel(
-    db: Session, workspace_a: Workspace, client_a: TestClient
+    db: Session, workspace_a: Workspace, client_a: TestClient, growth_subscription_a: WorkspaceSubscription
 ):
     agent = _make_agent(db, workspace_a.id)
     resp = client_a.post("/channels", json=_whatsapp_payload(agent.id))
@@ -126,7 +127,7 @@ def test_owner_creates_whatsapp_channel(
 
 
 def test_admin_creates_whatsapp_channel(
-    db: Session, workspace_a: Workspace, client_a: TestClient
+    db: Session, workspace_a: Workspace, client_a: TestClient, growth_subscription_a: WorkspaceSubscription
 ):
     admin = _make_member(db, workspace_a, MemberRole.admin)
     agent = _make_agent(db, workspace_a.id)
@@ -160,6 +161,7 @@ def test_agent_from_other_workspace_rejected(
     workspace_a: Workspace,
     workspace_b: Workspace,
     client_a: TestClient,
+    growth_subscription_a: WorkspaceSubscription,
 ):
     agent_b = _make_agent(db, workspace_b.id)
     resp = client_a.post("/channels", json=_whatsapp_payload(agent_b.id))
@@ -167,7 +169,7 @@ def test_agent_from_other_workspace_rejected(
 
 
 def test_whatsapp_public_key_starts_with_wap(
-    db: Session, workspace_a: Workspace, client_a: TestClient
+    db: Session, workspace_a: Workspace, client_a: TestClient, growth_subscription_a: WorkspaceSubscription
 ):
     agent = _make_agent(db, workspace_a.id)
     resp = client_a.post("/channels", json=_whatsapp_payload(agent.id))
@@ -189,7 +191,7 @@ def test_web_widget_public_key_still_starts_with_wgt(
 
 
 def test_channel_out_does_not_expose_raw_token(
-    db: Session, workspace_a: Workspace, client_a: TestClient
+    db: Session, workspace_a: Workspace, client_a: TestClient, growth_subscription_a: WorkspaceSubscription
 ):
     """access_token_ref is a reference string, never a real token."""
     agent = _make_agent(db, workspace_a.id)

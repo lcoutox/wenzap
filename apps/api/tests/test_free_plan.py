@@ -148,57 +148,67 @@ def _make_counter(
 # Feature gate: channel types
 # ---------------------------------------------------------------------------
 
-def test_plan_allows_web_widget_on_free():
-    assert plan_allows_channel_type("starter", "web_widget") is True
+def test_plan_allows_web_widget_on_free(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "starter", "web_widget") is True
 
 
-def test_plan_allows_api_on_free():
-    assert plan_allows_channel_type("starter", "api") is True
+def test_plan_allows_api_on_free(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "starter", "api") is True
 
 
-def test_plan_blocks_whatsapp_on_free():
-    assert plan_allows_channel_type("starter", "whatsapp") is False
+def test_plan_blocks_whatsapp_on_free(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "starter", "whatsapp") is False
 
 
-def test_plan_allows_whatsapp_on_growth():
-    assert plan_allows_channel_type("growth", "whatsapp") is True
+def test_plan_allows_whatsapp_on_growth(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "growth", "whatsapp") is True
 
 
-def test_plan_blocks_instagram_on_growth():
-    assert plan_allows_channel_type("growth", "instagram") is False
+def test_plan_blocks_instagram_on_growth(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "growth", "instagram") is False
 
 
-def test_plan_allows_instagram_on_scale():
-    assert plan_allows_channel_type("scale", "instagram") is True
+def test_plan_allows_instagram_on_scale(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "scale", "instagram") is True
 
 
 # ---------------------------------------------------------------------------
 # Feature gate: features
 # ---------------------------------------------------------------------------
 
-def test_free_plan_cannot_remove_powered_by():
-    assert plan_allows_feature("starter", "remove_powered_by") is False
+def test_free_plan_cannot_remove_powered_by(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "starter", "remove_powered_by") is False
 
 
-def test_growth_plan_cannot_remove_powered_by():
-    # Plans.4: remove_powered_by moved to Scale+ (growth no longer allowed)
-    assert plan_allows_feature("growth", "remove_powered_by") is False
+def test_growth_plan_cannot_remove_powered_by(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "remove_powered_by") is False
 
 
-def test_scale_plan_can_remove_powered_by():
-    assert plan_allows_feature("scale", "remove_powered_by") is True
+def test_scale_plan_cannot_remove_powered_by(db: Session, feature_matrix):
+    # remove_powered_by is Enterprise-only
+    assert plan_allows_feature(db, "scale", "remove_powered_by") is False
 
 
-def test_free_plan_cannot_use_pipelines():
-    assert plan_allows_feature("starter", "pipelines") is False
+def test_enterprise_plan_can_remove_powered_by(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "enterprise", "remove_powered_by") is True
 
 
-def test_growth_plan_can_use_pipelines():
-    assert plan_allows_feature("growth", "pipelines") is True
+def test_free_plan_can_use_catalog(db: Session, feature_matrix):
+    # Catalog is available on starter so users can test a core feature
+    assert plan_allows_feature(db, "starter", "catalog") is True
 
 
-def test_unknown_feature_is_allowed():
-    assert plan_allows_feature("starter", "nonexistent_feature") is True
+def test_free_plan_cannot_use_pipelines(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "starter", "pipelines") is False
+
+
+def test_growth_plan_can_use_pipelines(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "pipelines") is True
+
+
+def test_unknown_feature_default_deny(db: Session, feature_matrix):
+    # Default deny: absent feature_key → False
+    assert plan_allows_feature(db, "starter", "nonexistent_feature") is False
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +241,7 @@ def _get_or_make_starter_plan(db: Session) -> Plan:
     return plan
 
 
-def test_whatsapp_blocked_for_free_plan(db: Session):
+def test_whatsapp_blocked_for_free_plan(db: Session, feature_matrix):
     plan = _get_or_make_starter_plan(db)
     ws = _make_workspace(db)
     _make_subscription(db, ws, plan)
@@ -244,7 +254,7 @@ def test_whatsapp_blocked_for_free_plan(db: Session):
     assert "whatsapp" in exc_info.value.detail.lower()
 
 
-def test_web_widget_allowed_for_free_plan(db: Session):
+def test_web_widget_allowed_for_free_plan(db: Session, feature_matrix):
     plan = _get_or_make_starter_plan(db)
     ws = _make_workspace(db)
     _make_subscription(db, ws, plan)

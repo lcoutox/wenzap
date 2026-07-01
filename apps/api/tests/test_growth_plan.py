@@ -21,6 +21,8 @@ from app.services.plan_feature_service import (
     plan_allows_feature,
 )
 
+# feature_matrix fixture is defined in conftest.py
+
 # ---------------------------------------------------------------------------
 # Growth plan limits (constant assertions — fast, no DB)
 # ---------------------------------------------------------------------------
@@ -80,88 +82,93 @@ def test_growth_plan_limits_from_db(db: Session):
 # Channel type gates
 # ---------------------------------------------------------------------------
 
-def test_growth_allows_web_widget():
-    assert plan_allows_channel_type("growth", "web_widget") is True
+def test_growth_allows_web_widget(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "growth", "web_widget") is True
 
 
-def test_growth_allows_whatsapp():
-    assert plan_allows_channel_type("growth", "whatsapp") is True
+def test_growth_allows_whatsapp(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "growth", "whatsapp") is True
 
 
-def test_starter_blocks_whatsapp():
-    assert plan_allows_channel_type("starter", "whatsapp") is False
+def test_starter_blocks_whatsapp(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "starter", "whatsapp") is False
 
 
-def test_starter_allows_web_widget():
-    assert plan_allows_channel_type("starter", "web_widget") is True
+def test_starter_allows_web_widget(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "starter", "web_widget") is True
 
 
-def test_growth_does_not_allow_instagram():
-    assert plan_allows_channel_type("growth", "instagram") is False
+def test_growth_does_not_allow_instagram(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "growth", "instagram") is False
 
 
-def test_growth_does_not_allow_telegram():
-    assert plan_allows_channel_type("growth", "telegram") is False
+def test_growth_does_not_allow_telegram(db: Session, feature_matrix):
+    assert plan_allows_channel_type(db, "growth", "telegram") is False
 
 
 # ---------------------------------------------------------------------------
 # Feature gates — Growth allows
 # ---------------------------------------------------------------------------
 
-def test_growth_allows_catalog():
-    assert plan_allows_feature("growth", "catalog") is True
+def test_growth_allows_catalog(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "catalog") is True
 
 
-def test_growth_allows_pipelines():
-    assert plan_allows_feature("growth", "pipelines") is True
+def test_growth_allows_pipelines(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "pipelines") is True
 
 
-def test_growth_allows_multiple_kbs():
-    assert plan_allows_feature("growth", "multiple_knowledge_bases") is True
+def test_growth_allows_multiple_kbs(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "multiple_knowledge_bases") is True
 
 
-def test_growth_allows_whatsapp_channel_feature():
-    assert plan_allows_feature("growth", "whatsapp_channel") is True
+def test_growth_allows_whatsapp_channel_feature(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "whatsapp_channel") is True
 
 
 # ---------------------------------------------------------------------------
 # Feature gates — Growth blocks
 # ---------------------------------------------------------------------------
 
-def test_growth_blocks_http_tools():
-    assert plan_allows_feature("growth", "http_tools") is False
+def test_growth_blocks_http_tools(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "http_tools") is False
 
 
-def test_growth_blocks_follow_up():
-    assert plan_allows_feature("growth", "follow_up") is False
+def test_growth_blocks_follow_up(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "follow_up") is False
 
 
-def test_growth_blocks_webhooks():
-    assert plan_allows_feature("growth", "webhooks") is False
+def test_growth_blocks_webhooks(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "webhooks") is False
 
 
-def test_growth_blocks_remove_powered_by():
-    assert plan_allows_feature("growth", "remove_powered_by") is False
+def test_growth_blocks_remove_powered_by(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "remove_powered_by") is False
 
 
-def test_growth_blocks_custom_model():
-    assert plan_allows_feature("growth", "custom_model") is False
+def test_growth_blocks_custom_model(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "growth", "custom_model") is False
 
 
-def test_starter_blocks_remove_powered_by():
-    assert plan_allows_feature("starter", "remove_powered_by") is False
+def test_starter_blocks_remove_powered_by(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "starter", "remove_powered_by") is False
 
 
-def test_scale_allows_remove_powered_by():
-    assert plan_allows_feature("scale", "remove_powered_by") is True
+def test_scale_blocks_remove_powered_by(db: Session, feature_matrix):
+    # remove_powered_by is Enterprise-only; scale is blocked
+    assert plan_allows_feature(db, "scale", "remove_powered_by") is False
 
 
-def test_scale_allows_http_tools():
-    assert plan_allows_feature("scale", "http_tools") is True
+def test_enterprise_allows_remove_powered_by(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "enterprise", "remove_powered_by") is True
 
 
-def test_scale_allows_webhooks():
-    assert plan_allows_feature("scale", "webhooks") is True
+def test_scale_allows_http_tools(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "scale", "http_tools") is True
+
+
+def test_scale_allows_webhooks(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "scale", "webhooks") is True
 
 
 # ---------------------------------------------------------------------------

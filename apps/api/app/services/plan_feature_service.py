@@ -1,8 +1,8 @@
 """
-Feature gate helpers (Option B — hardcoded).
+Feature gate helpers — DB-backed (Plans.5).
 
-No DB round-trip for flag lookups; plan code is fetched once and gates are
-evaluated against in-memory dictionaries.
+Feature gates are stored in the `plan_features` table and queried per request.
+Default deny: an absent row is treated as disabled.
 """
 
 import uuid
@@ -12,55 +12,46 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.plan import Plan
+from app.models.plan_feature import PlanFeature
 from app.models.workspace_subscription import WorkspaceSubscription
 
 # ---------------------------------------------------------------------------
-# Tier order
+# Public constants — canonical set of feature keys
 # ---------------------------------------------------------------------------
 
-_PLAN_TIER: dict[str, int] = {
-    "starter": 1,
-    "growth": 2,
-    "scale": 3,
-    "enterprise": 4,
-}
+FEATURE_KEYS: frozenset[str] = frozenset(
+    [
+        # Channel types
+        "web_widget",
+        "api",
+        "whatsapp",
+        "instagram",
+        "telegram",
+        "slack",
+        # General features
+        "knowledge_base",
+        "catalog",
+        "inbox",
+        "playground",
+        "pipelines",
+        "multiple_knowledge_bases",
+        "whatsapp_channel",
+        "api_access",
+        "http_tools",
+        "follow_up",
+        "webhooks",
+        "custom_model",
+        "analytics",
+        "external_integrations",
+        "remove_powered_by",
+        "premium_models",
+    ]
+)
 
 # ---------------------------------------------------------------------------
-# Channel type allowlist per plan
+# Plan helpers
 # ---------------------------------------------------------------------------
 
-_PLAN_CHANNEL_TYPES: dict[str, set[str]] = {
-    "starter": {"web_widget", "api"},
-    "growth": {"web_widget", "api", "whatsapp"},
-    "scale": {"web_widget", "api", "whatsapp", "instagram", "telegram"},
-    "enterprise": {"web_widget", "api", "whatsapp", "instagram", "telegram", "slack"},
-}
-
-# ---------------------------------------------------------------------------
-# Feature → minimum plan required
-# ---------------------------------------------------------------------------
-
-_FEATURE_MIN_PLAN: dict[str, str] = {
-    # Growth+
-    "whatsapp_channel":         "growth",
-    "pipelines":                "growth",
-    "integrations":             "growth",
-    "catalog":                  "growth",
-    "multiple_knowledge_bases": "growth",
-    "api_access":               "growth",
-    # Scale+ (not available on Growth)
-    "remove_powered_by":        "scale",
-    "http_tools":               "scale",
-    "follow_up":                "scale",
-    "webhooks":                 "scale",
-    "custom_model":             "scale",
-    "analytics":                "scale",
-}
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def get_workspace_plan_code(db: Session, workspace_id: uuid.UUID) -> str:
     sub = db.scalar(
@@ -75,29 +66,53 @@ def get_workspace_plan_code(db: Session, workspace_id: uuid.UUID) -> str:
     return plan.code if plan else "starter"
 
 
-def plan_tier(plan_code: str) -> int:
-    return _PLAN_TIER.get(plan_code, 1)
+# ---------------------------------------------------------------------------
+# Feature gate — DB-backed, default deny
+# ---------------------------------------------------------------------------
 
 
-def plan_allows_channel_type(plan_code: str, channel_type: str) -> bool:
-    allowed = _PLAN_CHANNEL_TYPES.get(plan_code)
-    if allowed is None:
-        return True  # Unknown/custom plan codes are not restricted
-    return channel_type in allowed
+def plan_allows_feature(db: Session, plan_code: str, feature_key: str) -> bool:
+    """Return True only if plan_features has an enabled row for (plan_code, feature_key)."""
+    row = db.scalar(
+        select(PlanFeature).where(
+            PlanFeature.plan_code == plan_code,
+            PlanFeature.feature_key == feature_key,
+        )
+    )
+    if row is None:
+        return False
+    return row.enabled
 
 
-def plan_allows_feature(plan_code: str, feature: str) -> bool:
-    min_plan = _FEATURE_MIN_PLAN.get(feature)
-    if min_plan is None:
-        return True
-    return plan_tier(plan_code) >= plan_tier(min_plan)
+def plan_allows_channel_type(db: Session, plan_code: str, channel_type: str) -> bool:
+    """Channel type checks reuse plan_allows_feature (channel_type == feature_key)."""
+    return plan_allows_feature(db, plan_code, channel_type)
+
+
+def workspace_allows_feature(
+    db: Session, workspace_id: uuid.UUID, feature_key: str
+) -> bool:
+    plan_code = get_workspace_plan_code(db, workspace_id)
+    return plan_allows_feature(db, plan_code, feature_key)
+
+
+def workspace_allows_channel_type(
+    db: Session, workspace_id: uuid.UUID, channel_type: str
+) -> bool:
+    plan_code = get_workspace_plan_code(db, workspace_id)
+    return plan_allows_channel_type(db, plan_code, channel_type)
+
+
+# ---------------------------------------------------------------------------
+# Enforcement helpers
+# ---------------------------------------------------------------------------
 
 
 def check_channel_type_or_402(
     db: Session, workspace_id: uuid.UUID, channel_type: str
 ) -> None:
-    plan_code = get_workspace_plan_code(db, workspace_id)
-    if not plan_allows_channel_type(plan_code, channel_type):
+    if not workspace_allows_channel_type(db, workspace_id, channel_type):
+        plan_code = get_workspace_plan_code(db, workspace_id)
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
@@ -109,11 +124,7 @@ def check_channel_type_or_402(
 
 
 def check_users_limit(db: Session, workspace_id: uuid.UUID) -> None:
-    """Raises HTTP 402 if the workspace has reached its users_limit.
-
-    Call this from the invite / member-add flow before creating a new member.
-    No invite endpoint exists yet — placeholder for future implementation.
-    """
+    """Raises HTTP 402 if the workspace has reached its users_limit."""
     from sqlalchemy import func  # noqa: PLC0415
 
     from app.enums import MemberStatus  # noqa: PLC0415
@@ -124,12 +135,15 @@ def check_users_limit(db: Session, workspace_id: uuid.UUID) -> None:
     if plan is None or plan.users_limit <= 0:
         return
 
-    active_count = db.scalar(
-        select(func.count()).where(
-            WorkspaceMember.workspace_id == workspace_id,
-            WorkspaceMember.status == MemberStatus.active,
+    active_count = (
+        db.scalar(
+            select(func.count()).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.status == MemberStatus.active,
+            )
         )
-    ) or 0
+        or 0
+    )
 
     if active_count >= plan.users_limit:
         raise HTTPException(
