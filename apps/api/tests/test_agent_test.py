@@ -689,7 +689,8 @@ def test_provider_error_does_not_consume_credits(db):
     assert updated.ai_credits_used == 100  # unchanged
 
 
-def test_missing_usage_counter_returns_402(db):
+def test_missing_usage_counter_is_created_on_demand(db):
+    # Counter is auto-created now — no more 402 for missing counter.
     user = _make_user(db, f"noctr-{uuid.uuid4().hex[:6]}@test.com", "No Counter")
     ws = _make_workspace(db, user, f"noctr-{uuid.uuid4().hex[:6]}", "No Counter WS")
     plan = _make_plan(db, monthly_ai_credits=10_000)
@@ -697,13 +698,12 @@ def test_missing_usage_counter_returns_402(db):
     provider = _make_anthropic_provider(db)
     model = _make_model(db, provider)
     agent = _make_agent(db, ws.id, model)
-    # Deliberately NO usage counter created
+    # Deliberately NO usage counter created — get_or_create will make one
 
-    with patch("app.llm.client.complete") as mock_llm:
+    with patch("app.llm.client.complete", return_value=_mock_llm_response()):
         with _make_client(db, user, ws) as client:
             r = _post_test(client, agent.id)
-    assert r.status_code == 402
-    mock_llm.assert_not_called()
+    assert r.status_code == 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

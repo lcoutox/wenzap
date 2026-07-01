@@ -513,12 +513,13 @@ def test_model_inactive_returns_failed_run(db: Session):
 
 # ── Credits ───────────────────────────────────────────────────────────────────
 
-def test_no_usage_counter_returns_failed_run(db: Session):
+def test_no_usage_counter_is_created_on_demand(db: Session):
+    # Counter is auto-created now — the run proceeds and either succeeds or fails on credits.
     owner = _make_user(db, f"u{uuid.uuid4().hex[:6]}@t.com", "Owner")
     ws = _make_workspace(db, owner, f"ws-{uuid.uuid4().hex[:6]}", "WS")
     plan = _make_plan(db)
     _make_subscription(db, ws, plan)
-    # No usage counter created
+    # No usage counter created — get_or_create will make one
     provider = _make_provider(db)
     model = _make_model(db, provider)
     agent = _make_agent(db, ws.id, model)
@@ -526,11 +527,13 @@ def test_no_usage_counter_returns_failed_run(db: Session):
     trigger = _make_trigger(db, ws.id, conv)
     db.commit()
 
-    run = generate_conversation_agent_reply(db, ws.id, conv, trigger)
+    from unittest.mock import patch  # noqa: PLC0415
+
+    with patch("app.llm.client.complete", return_value=_mock_llm()):
+        run = generate_conversation_agent_reply(db, ws.id, conv, trigger)
 
     assert run is not None
-    assert run.status == "failed"
-    assert run.error_code == "no_credits"
+    assert run.status in ("completed", "success")
 
 
 def test_credits_exhausted_returns_failed_run(db: Session):

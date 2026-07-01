@@ -29,6 +29,7 @@ from app.schemas.public_widget import (
     WidgetSessionOut,
 )
 from app.services.agent_avatar_service import get_avatar_url
+from app.services.plan_service import check_and_count_new_conversation
 
 _SESSION_TOKEN_PREFIX = "wss_"
 _SESSION_TOKEN_MAX_RETRIES = 5
@@ -229,6 +230,7 @@ def _create_anonymous_contact(db: Session, channel: Channel) -> Contact:
 def _create_widget_conversation(
     db: Session, channel: Channel, contact: Contact
 ) -> Conversation:
+    check_and_count_new_conversation(db, channel.workspace_id)
     conv = Conversation(
         workspace_id=channel.workspace_id,
         contact_id=contact.id,

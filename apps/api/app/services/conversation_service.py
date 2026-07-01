@@ -13,6 +13,7 @@ from app.models.workspace_member import WorkspaceMember
 from app.schemas.contact import ContactCreate
 from app.schemas.conversation import ConversationCreate, ConversationUpdate
 from app.services.contact_service import create_contact
+from app.services.plan_service import check_and_count_new_conversation
 
 _MAX_LIMIT = 100
 
@@ -161,6 +162,8 @@ def create_conversation(
     if data.agent_id is not None:
         _require_agent(db, workspace_id, data.agent_id)
         agent_id = data.agent_id
+
+    check_and_count_new_conversation(db, workspace_id)
 
     conv = Conversation(
         workspace_id=workspace_id,

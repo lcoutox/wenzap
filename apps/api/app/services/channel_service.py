@@ -13,6 +13,7 @@ from app.models.channel import Channel
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.channel import ChannelCreate, ChannelOut, ChannelUpdate, _parse_config_by_type
+from app.services.plan_feature_service import check_channel_type_or_402
 
 _MAX_LIMIT = 100
 _PUBLIC_KEY_MAX_RETRIES = 5
@@ -113,6 +114,7 @@ def create_channel(
     workspace_id: uuid.UUID,
     data: ChannelCreate,
 ) -> ChannelOut:
+    check_channel_type_or_402(db, workspace_id, data.channel_type)
     _check_channels_limit(db, workspace_id)
     _resolve_agent_or_404(db, workspace_id, data.agent_id)
 

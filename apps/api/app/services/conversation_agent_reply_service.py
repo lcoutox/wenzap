@@ -502,16 +502,11 @@ def _get_workspace_plan_code(db: Session, workspace_id: uuid.UUID) -> str:
 
 
 def _get_usage_counter(db: Session, workspace_id: uuid.UUID) -> UsageCounter | None:
-    now = datetime.now(timezone.utc)
-    return db.scalar(
-        select(UsageCounter)
-        .where(
-            UsageCounter.workspace_id == workspace_id,
-            UsageCounter.period_start <= now,
-            UsageCounter.period_end >= now,
-        )
-        .order_by(UsageCounter.period_start.desc())
-    )
+    from app.services.plan_service import get_or_create_usage_counter  # noqa: PLC0415
+    try:
+        return get_or_create_usage_counter(db, workspace_id)
+    except Exception:
+        return None
 
 
 def _has_credits(

@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.plan import Plan
@@ -67,4 +68,90 @@ def get_workspace_usage(db: Session, workspace_id: uuid.UUID) -> UsageOut:
         messages_count=counter.messages_count,
         period_start=counter.period_start,
         period_end=counter.period_end,
+    )
+
+
+def get_or_create_usage_counter(db: Session, workspace_id: uuid.UUID) -> UsageCounter:
+    """Return the active UsageCounter for the current month, creating it on-demand."""
+    now = datetime.now(timezone.utc)
+    counter = db.scalar(
+        select(UsageCounter)
+        .where(
+            UsageCounter.workspace_id == workspace_id,
+            UsageCounter.period_start <= now,
+            UsageCounter.period_end >= now,
+        )
+        .order_by(UsageCounter.period_start.desc())
+    )
+    if counter is not None:
+        return counter
+
+    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if period_start.month == 12:
+        next_month = period_start.replace(year=period_start.year + 1, month=1, day=1)
+    else:
+        next_month = period_start.replace(month=period_start.month + 1, day=1)
+    period_end = next_month - timedelta(seconds=1)
+
+    try:
+        sp = db.begin_nested()
+        counter = UsageCounter(
+            workspace_id=workspace_id,
+            period_start=period_start,
+            period_end=period_end,
+            ai_credits_used=0,
+            conversations_count=0,
+            messages_count=0,
+        )
+        db.add(counter)
+        db.flush()
+        sp.commit()
+    except (IntegrityError, Exception):
+        sp.rollback()
+        counter = db.scalar(
+            select(UsageCounter)
+            .where(
+                UsageCounter.workspace_id == workspace_id,
+                UsageCounter.period_start <= now,
+                UsageCounter.period_end >= now,
+            )
+            .order_by(UsageCounter.period_start.desc())
+        )
+        if counter is None:
+            raise
+
+    return counter
+
+
+def check_and_count_new_conversation(db: Session, workspace_id: uuid.UUID) -> None:
+    """Check monthly conversation limit and increment atomically. Raises HTTP 402 if exceeded."""
+    from app.services.plan_feature_service import get_workspace_plan_code  # noqa: PLC0415
+
+    plan_code = get_workspace_plan_code(db, workspace_id)
+    plan = db.scalar(select(Plan).where(Plan.code == plan_code))
+    monthly_limit = plan.monthly_conversations if plan else 0
+
+    if monthly_limit <= 0:
+        return
+
+    counter = get_or_create_usage_counter(db, workspace_id)
+
+    if counter.conversations_count >= monthly_limit:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Monthly conversation limit reached ({monthly_limit} conversations). "
+                "Upgrade your plan to continue receiving conversations."
+            ),
+        )
+
+    now = datetime.now(timezone.utc)
+    db.execute(
+        update(UsageCounter)
+        .where(
+            UsageCounter.workspace_id == workspace_id,
+            UsageCounter.period_start <= now,
+            UsageCounter.period_end >= now,
+        )
+        .values(conversations_count=UsageCounter.conversations_count + 1)
     )

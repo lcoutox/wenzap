@@ -517,25 +517,8 @@ def _validate_runtime_support(model: AiModel, provider: AiModelProvider) -> None
 
 
 def _get_usage_counter_or_402(db: Session, workspace_id: uuid.UUID) -> UsageCounter:
-    now = datetime.now(timezone.utc)
-    counter = db.scalar(
-        select(UsageCounter)
-        .where(
-            UsageCounter.workspace_id == workspace_id,
-            UsageCounter.period_start <= now,
-            UsageCounter.period_end >= now,
-        )
-        .order_by(UsageCounter.period_start.desc())
-    )
-    if counter is None:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=(
-                "No active billing period found for this workspace. "
-                "Please contact support or check your subscription."
-            ),
-        )
-    return counter
+    from app.services.plan_service import get_or_create_usage_counter  # noqa: PLC0415
+    return get_or_create_usage_counter(db, workspace_id)
 
 
 def _validate_credits(
