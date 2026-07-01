@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
@@ -300,6 +301,20 @@ async def upload_agent_avatar(
     prompt = agent_service._get_prompt_settings(db, updated.id)
     model_cfg = agent_service._get_model_settings(db, updated.id)
     return agent_service._build_agent_out(updated, prompt, model_cfg)
+
+
+@router.get("/{agent_id}/avatar/file")
+def serve_agent_avatar(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve avatar bytes directly — fallback for local storage where file:// URLs are blocked."""
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    agent_obj = agent_service._get_agent_or_404(db, current_workspace.id, agent_id)
+    data, mime = agent_avatar_service.read_avatar_bytes(agent_obj)
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "max-age=3600"})
 
 
 @router.delete("/{agent_id}/avatar", response_model=AgentOut)

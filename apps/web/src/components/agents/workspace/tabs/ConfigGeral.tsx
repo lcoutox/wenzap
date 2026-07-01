@@ -84,7 +84,8 @@ function AvatarUploader({
     }
   }
 
-  const hasAvatar = !!agent.avatar_url;
+  const avatarUrl = api.agents.resolveAvatarUrl(agent);
+  const hasAvatar = !!avatarUrl;
 
   return (
     <div className="flex items-center gap-5">
@@ -94,7 +95,7 @@ function AvatarUploader({
           {hasAvatar ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={agent.avatar_url!}
+              src={avatarUrl}
               alt={agent.name}
               className="w-full h-full object-cover"
             />

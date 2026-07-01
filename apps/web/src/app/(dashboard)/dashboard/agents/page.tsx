@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bot, Plus, Calendar, Cpu } from "lucide-react";
 import { api } from "@/lib/api";
+
 import type { Agent, MemberRole } from "@/lib/api";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
 
@@ -21,9 +22,9 @@ function AgentCard({ agent, role }: { agent: Agent; role: MemberRole | null }) {
     <div className="group bg-nb-panel rounded-2xl border border-nb-border hover:border-nb-border-strong transition-all duration-150 flex flex-col">
       <div className="p-5 flex items-start gap-4">
         <div className="w-10 h-10 rounded-xl bg-nb-primary-bg border border-nb-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
-          {agent.avatar_url ? (
+          {api.agents.resolveAvatarUrl(agent) ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={agent.avatar_url} alt={agent.name} className="w-full h-full object-cover" />
+            <img src={api.agents.resolveAvatarUrl(agent)!} alt={agent.name} className="w-full h-full object-cover" />
           ) : (
             <Bot className="w-5 h-5 text-nb-primary-strong" />
           )}

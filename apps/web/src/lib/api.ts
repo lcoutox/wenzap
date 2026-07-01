@@ -1151,6 +1151,17 @@ export const api = {
     },
     deleteAvatar: (id: string) =>
       cookieFetch<Agent>(`/agents/${id}/avatar`, { method: "DELETE" }),
+    /**
+     * Resolve the best avatar URL for an agent.
+     * - If avatar_url is set (e.g. R2 public URL), use it directly.
+     * - If the agent has an avatar but avatar_url is null (local storage),
+     *   fall back to the API serve endpoint with credentials.
+     */
+    resolveAvatarUrl: (agent: Agent): string | null => {
+      if (agent.avatar_url) return agent.avatar_url;
+      if (agent.avatar_mime_type) return `${API_URL}/agents/${agent.id}/avatar/file`;
+      return null;
+    },
     test: (id: string, message: string, sessionId?: string) =>
       cookieFetch<AgentTestResponse>(`/agents/${id}/test`, {
         method: "POST",

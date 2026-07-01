@@ -180,12 +180,36 @@ def delete_avatar(
 
 def get_avatar_url(agent: Agent, storage: StorageProvider | None = None) -> str | None:
     """
-    Return a URL for the agent's avatar, or None if no avatar or storage not configured.
+    Return a URL for the agent's avatar, or None if no avatar or URL is not browser-accessible.
+
+    Local storage returns file:// paths which browsers block — return None in that case.
+    Callers should fall back to the /agents/{id}/avatar/file serve endpoint.
     """
     if not agent.avatar_file_key:
         return None
     try:
         resolved = storage or get_storage_provider()
-        return resolved.generate_presigned_url(agent.avatar_file_key)
+        url = resolved.generate_presigned_url(agent.avatar_file_key)
+        # file:// URLs are inaccessible in browsers — signal that serve endpoint is needed
+        if url.startswith("file://"):
+            return None
+        return url
     except StorageError:
         return None
+
+
+def read_avatar_bytes(agent: Agent, storage: StorageProvider | None = None) -> tuple[bytes, str]:
+    """
+    Read the raw avatar bytes from storage.
+
+    Returns (data, mime_type). Raises HTTPException on missing avatar or storage error.
+    """
+    if not agent.avatar_file_key:
+        raise HTTPException(status_code=404, detail="Este agente não possui avatar.")
+    try:
+        resolved = storage or get_storage_provider()
+        data = resolved.get_file(agent.avatar_file_key)
+    except StorageError as exc:
+        raise HTTPException(status_code=503, detail=f"Erro ao ler avatar: {exc}") from exc
+    mime = agent.avatar_mime_type or "image/jpeg"
+    return data, mime
