@@ -1,15 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Subscription, Usage } from "@/lib/api";
+import { PlanLimitBar } from "@/components/plan/PlanLimitBar";
+import { getLimitState } from "@/lib/plan";
 
-function fmt(n: number) {
-  return n.toLocaleString("pt-BR");
-}
+const UPGRADE_MSG =
+  "Planos pagos estarão disponíveis em breve. Fale com a equipe para liberar mais uso.";
 
 export function PlanUsageSettingsSection() {
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [sub, setSub]     = useState<Subscription | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
@@ -19,66 +22,93 @@ export function PlanUsageSettingsSection() {
 
   const plan = sub?.plan;
 
-  return (
-    <div className="max-w-2xl space-y-4">
-      <div className="mb-4">
-        <h2 className="text-sm font-semibold text-nb-text">Plano e uso</h2>
-        <p className="text-xs text-nb-muted mt-0.5">Seu plano atual e consumo do período.</p>
+  if (!plan && !usage) {
+    return (
+      <div className="h-32 flex items-center justify-center text-sm text-nb-muted">
+        Carregando…
       </div>
+    );
+  }
 
+  const creditsState = usage && plan
+    ? getLimitState(usage.ai_credits_used, plan.monthly_ai_credits)
+    : "normal";
+  const convsState = usage && plan
+    ? getLimitState(usage.conversations_count, plan.monthly_conversations)
+    : "normal";
+  const atLimit = creditsState === "exceeded" || convsState === "exceeded";
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      {/* Plan header */}
       {plan && (
         <div className="bg-nb-panel rounded-2xl border border-nb-border p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold text-nb-text">{plan.name}</h3>
-            <span className="text-[10px] font-semibold px-2 py-1 bg-nb-primary-bg text-nb-primary-strong rounded-lg border border-nb-primary/20 uppercase tracking-widest">
-              {sub?.status}
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-nb-text">{plan.name}</h2>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-nb-primary-bg text-nb-primary-strong rounded-lg border border-nb-primary/20 uppercase tracking-widest">
+                {sub?.status}
+              </span>
+            </div>
+            <Link
+              href="/dashboard/plan"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-nb-primary-bg border border-nb-primary/20 text-nb-primary-strong hover:bg-nb-primary/20 transition-colors"
+            >
+              <Zap className="w-3 h-3" />
+              Upgrade
+            </Link>
+          </div>
+          {plan.description && (
+            <p className="text-sm text-nb-muted mb-0">{plan.description}</p>
+          )}
+        </div>
+      )}
+
+      {/* Resource usage */}
+      {plan && usage && (
+        <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-nb-text">Recursos</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <PlanLimitBar label="Agentes"               used={usage.agents_count}           limit={plan.agents_limit} />
+            <PlanLimitBar label="Bases de conhecimento" used={usage.knowledge_bases_count}   limit={plan.knowledge_bases_limit} />
+            <PlanLimitBar label="Itens do Catálogo"     used={usage.catalog_items_count}     limit={plan.catalog_items_limit} />
+            <PlanLimitBar label="Canais"                used={usage.channels_count}          limit={plan.channels_limit} />
+          </div>
+        </div>
+      )}
+
+      {/* Monthly usage */}
+      {plan && usage && (
+        <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-nb-text">Consumo no período</h3>
+            <span className="text-xs text-nb-muted">
+              Reinicia em{" "}
+              {new Date(usage.period_end).toLocaleDateString("pt-BR", {
+                day: "numeric", month: "long",
+              })}
             </span>
           </div>
-          <p className="text-sm text-nb-muted mb-4">{plan.description}</p>
-
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              ["Agentes", plan.agents_limit],
-              ["Bases de conhecimento", plan.knowledge_bases_limit],
-              ["Usuários", plan.users_limit],
-              ["Pipelines", plan.pipelines_limit],
-              ["Integrações", plan.integrations_limit],
-              ["Créditos de IA/mês", plan.monthly_ai_credits],
-              ["Conversas/mês", plan.monthly_conversations],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="text-sm">
-                <span className="text-nb-muted">{label}: </span>
-                <span className="font-medium text-nb-text">{fmt(Number(value))}</span>
-              </div>
-            ))}
-          </div>
+          <PlanLimitBar label="Créditos IA"  used={usage.ai_credits_used}      limit={plan.monthly_ai_credits}  unit="créditos" />
+          <PlanLimitBar label="Conversas"    used={usage.conversations_count}   limit={plan.monthly_conversations} />
         </div>
       )}
 
-      {usage && (
-        <div className="bg-nb-panel rounded-2xl border border-nb-border p-5">
-          <h3 className="text-sm font-semibold text-nb-text mb-4">Uso no período atual</h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Créditos IA</p>
-              <p className="text-2xl font-bold text-nb-text">{fmt(usage.ai_credits_used)}</p>
-              {plan && <p className="text-xs text-nb-muted">de {fmt(plan.monthly_ai_credits)}</p>}
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Conversas</p>
-              <p className="text-2xl font-bold text-nb-text">{fmt(usage.conversations_count)}</p>
-              {plan && <p className="text-xs text-nb-muted">de {fmt(plan.monthly_conversations)}</p>}
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-1">Mensagens</p>
-              <p className="text-2xl font-bold text-nb-text">{fmt(usage.messages_count)}</p>
-            </div>
+      {/* Upgrade prompt */}
+      {atLimit && (
+        <div className="rounded-xl border border-nb-danger/20 bg-nb-danger/5 p-4 flex items-start gap-3">
+          <Zap className="w-4 h-4 text-nb-danger flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-nb-text mb-0.5">Limite atingido</p>
+            <p className="text-xs text-nb-muted">{UPGRADE_MSG}</p>
           </div>
         </div>
       )}
-
-      {!plan && !usage && (
-        <div className="h-32 flex items-center justify-center text-sm text-nb-muted">Carregando...</div>
+      {!atLimit && (
+        <div className="rounded-xl border border-nb-border bg-nb-elevated/30 p-4 flex items-start gap-3">
+          <Zap className="w-4 h-4 text-nb-muted flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-nb-muted">{UPGRADE_MSG}</p>
+        </div>
       )}
     </div>
   );

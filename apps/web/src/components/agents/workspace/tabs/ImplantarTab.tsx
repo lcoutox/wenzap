@@ -27,6 +27,8 @@ import type {
   WebWidgetConfig,
 } from "@/lib/api";
 import { EmbeddedSignupButton } from "@/components/agents/workspace/whatsapp/EmbeddedSignupButton";
+import { planAllowsChannelType } from "@/lib/plan";
+import { PlanGateBadge } from "@/components/plan/PlanGateBadge";
 
 // ── Permissions ───────────────────────────────────────────────────────────────
 
@@ -878,6 +880,7 @@ export function ImplantarTab({
   const [waChannels,     setWaChannels]     = useState<WhatsAppChannel[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [loadError,      setLoadError]      = useState<string | null>(null);
+  const [planCode,       setPlanCode]       = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
   // Modal state
@@ -900,9 +903,13 @@ export function ImplantarTab({
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     try {
-      const data = await api.channels.list({ agent_id: agentId });
+      const [data, sub] = await Promise.all([
+        api.channels.list({ agent_id: agentId }),
+        api.plans.current().catch(() => null),
+      ]);
       setWidgetChannels(data.filter((c): c is WebWidgetChannel => c.channel_type === "web_widget"));
       setWaChannels(data.filter((c): c is WhatsAppChannel => c.channel_type === "whatsapp"));
+      setPlanCode(sub?.plan?.code ?? null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Erro ao carregar canais.");
     } finally {
@@ -1099,9 +1106,25 @@ export function ImplantarTab({
               <div className="flex items-center gap-2">
                 <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
                 <h3 className="text-sm font-semibold text-nb-secondary">WhatsApp</h3>
+                {planCode !== null && !planAllowsChannelType(planCode, "whatsapp") && (
+                  <PlanGateBadge label="Growth+" variant="premium" />
+                )}
               </div>
 
-              {waChannels.length === 0 ? (
+              {planCode !== null && !planAllowsChannelType(planCode, "whatsapp") ? (
+                <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 flex items-start gap-4">
+                  <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center flex-shrink-0">
+                    <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-nb-text mb-1">WhatsApp — Canal Premium</p>
+                    <p className="text-xs text-nb-muted leading-relaxed">
+                      A integração com WhatsApp Business está disponível nos planos Growth e superiores.
+                      Faça upgrade para conectar um número oficial da sua empresa.
+                    </p>
+                  </div>
+                </div>
+              ) : waChannels.length === 0 ? (
                 <WhatsAppConnectCard
                   agentId={agentId}
                   writable={writable}

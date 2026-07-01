@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { Bot, Plus, Calendar, Cpu } from "lucide-react";
 import { api } from "@/lib/api";
 
-import type { Agent, MemberRole } from "@/lib/api";
+import type { Agent, MemberRole, Plan, Usage } from "@/lib/api";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
+import { canCreateResource } from "@/lib/plan";
+import { LimitReachedBanner } from "@/components/plan/UpgradePrompt";
 
 function canCreate(role: MemberRole | null) {
   return role === "owner" || role === "admin" || role === "member";
@@ -90,15 +92,24 @@ function EmptyState({ canCreate }: { canCreate: boolean }) {
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [role, setRole] = useState<MemberRole | null>(null);
+  const [role,   setRole]   = useState<MemberRole | null>(null);
+  const [plan,   setPlan]   = useState<Plan | null>(null);
+  const [usage,  setUsage]  = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.agents.list(), api.me()])
-      .then(([agentList, me]) => {
+    Promise.all([
+      api.agents.list(),
+      api.me(),
+      api.plans.current().catch(() => null),
+      api.plans.usage().catch(() => null),
+    ])
+      .then(([agentList, me, sub, usageData]) => {
         setAgents(agentList);
         setRole(me.role);
+        setPlan(sub?.plan ?? null);
+        setUsage(usageData);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar agentes."))
       .finally(() => setLoading(false));
@@ -122,6 +133,10 @@ export default function AgentsPage() {
     );
   }
 
+  const agentsUsed  = usage?.agents_count ?? agents.length;
+  const agentsLimit = plan?.agents_limit ?? 0;
+  const atLimit     = agentsLimit > 0 && !canCreateResource(agentsUsed, agentsLimit);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -132,25 +147,39 @@ export default function AgentsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {agents.length > 0 && (
-            <span className="text-sm text-nb-muted font-medium">
-              {agents.length} agente{agents.length > 1 ? "s" : ""}
+          {plan && agentsLimit > 0 && (
+            <span className={`text-sm font-medium ${atLimit ? "text-nb-danger" : "text-nb-muted"}`}>
+              {agentsUsed} / {agentsLimit} agente{agentsLimit !== 1 ? "s" : ""}
             </span>
           )}
           {canCreate(role) && (
-            <Link
-              href="/dashboard/agents/new"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Novo agente
-            </Link>
+            atLimit ? (
+              <span
+                title="Limite de agentes atingido no seu plano."
+                className="inline-flex items-center gap-2 px-4 py-2 bg-nb-elevated border border-nb-border text-nb-muted text-sm font-medium rounded-xl cursor-not-allowed opacity-60"
+              >
+                <Plus className="w-4 h-4" />
+                Novo agente
+              </span>
+            ) : (
+              <Link
+                href="/dashboard/agents/new"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Novo agente
+              </Link>
+            )
           )}
         </div>
       </div>
 
+      {atLimit && (
+        <LimitReachedBanner resource="agentes" className="mb-6" />
+      )}
+
       {agents.length === 0 ? (
-        <EmptyState canCreate={canCreate(role)} />
+        <EmptyState canCreate={canCreate(role) && !atLimit} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {agents.map((agent) => (

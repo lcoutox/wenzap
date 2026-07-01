@@ -17,7 +17,8 @@ import {
   Upload,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { CatalogCategory, CatalogItem, CatalogItemStatus, MemberRole } from "@/lib/api";
+import type { CatalogCategory, CatalogItem, CatalogItemStatus, MemberRole, Plan, Usage } from "@/lib/api";
+import { canCreateResource } from "@/lib/plan";
 import { CatalogCategoryFormModal } from "@/components/catalog/CatalogCategoryFormModal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -347,6 +348,8 @@ function CatalogPageContent() {
   const [items,      setItems]      = useState<CatalogItem[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [role,       setRole]       = useState<MemberRole | null>(null);
+  const [plan,       setPlan]       = useState<Plan | null>(null);
+  const [usage,      setUsage]      = useState<Usage | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
 
@@ -375,11 +378,15 @@ function CatalogPageContent() {
       api.me(),
       api.catalog.items.list({ include_primary_media: true }),
       api.catalog.categories.list(true), // include inactive for management
+      api.plans.current().catch(() => null),
+      api.plans.usage().catch(() => null),
     ])
-      .then(([me, fetchedItems, fetchedCats]) => {
+      .then(([me, fetchedItems, fetchedCats, sub, usageData]) => {
         setRole(me.role);
         setItems(fetchedItems);
         setCategories(fetchedCats);
+        setPlan(sub?.plan ?? null);
+        setUsage(usageData);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Erro ao carregar catálogo."))
       .finally(() => setLoading(false));
@@ -461,7 +468,10 @@ function CatalogPageContent() {
   const write = canWrite(role);
 
   // Summary numbers
-  const totalActive = items.filter((i) => i.status === "active").length;
+  const totalActive    = items.filter((i) => i.status === "active").length;
+  const catalogUsed    = usage?.catalog_items_count ?? items.filter((i) => i.status !== "archived").length;
+  const catalogLimit   = plan?.catalog_items_limit ?? 0;
+  const catalogAtLimit = catalogLimit > 0 && !canCreateResource(catalogUsed, catalogLimit);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -509,9 +519,17 @@ function CatalogPageContent() {
             <FolderOpen className="w-3.5 h-3.5" />
             <span><span className="font-semibold text-nb-text">{activeCategories.length}</span> {activeCategories.length === 1 ? "categoria" : "categorias"}</span>
           </span>
-          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-nb-elevated border border-nb-border">
+          <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${catalogAtLimit ? "bg-nb-danger/5 border-nb-danger/20 text-nb-danger" : "bg-nb-elevated border-nb-border"}`}>
             <Package className="w-3.5 h-3.5" />
-            <span><span className="font-semibold text-nb-text">{totalActive}</span> itens ativos</span>
+            {catalogLimit > 0 ? (
+              <span>
+                <span className="font-semibold text-nb-text">{catalogUsed}</span>
+                <span className="text-nb-muted"> / {catalogLimit} itens</span>
+                {catalogAtLimit && <span className="ml-1 font-semibold text-nb-danger">— limite atingido</span>}
+              </span>
+            ) : (
+              <span><span className="font-semibold text-nb-text">{totalActive}</span> itens ativos</span>
+            )}
           </span>
           {uncategorizedCount > 0 && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-nb-warning/10 border border-nb-warning/20 text-nb-warning">

@@ -43,6 +43,8 @@ export type Plan = {
   users_limit: number;
   pipelines_limit: number;
   integrations_limit: number;
+  catalog_items_limit: number;
+  channels_limit: number;
   monthly_ai_credits: number;
   monthly_conversations: number;
 };
@@ -55,9 +57,15 @@ export type Subscription = {
 };
 
 export type Usage = {
+  // Metered (reset monthly)
   ai_credits_used: number;
   conversations_count: number;
   messages_count: number;
+  // Resource snapshots
+  agents_count: number;
+  knowledge_bases_count: number;
+  catalog_items_count: number;
+  channels_count: number;
   period_start: string;
   period_end: string;
 };

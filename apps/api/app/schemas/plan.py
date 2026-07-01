@@ -36,9 +36,15 @@ class SubscriptionOut(BaseModel):
 
 
 class UsageOut(BaseModel):
+    # Metered counters (reset monthly)
     ai_credits_used: int
     conversations_count: int
     messages_count: int
+    # Resource snapshots (current count, not metered)
+    agents_count: int = 0
+    knowledge_bases_count: int = 0
+    catalog_items_count: int = 0
+    channels_count: int = 0
     period_start: datetime
     period_end: datetime
 

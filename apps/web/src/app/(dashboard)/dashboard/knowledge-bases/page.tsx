@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, Calendar, Plus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { KnowledgeBase, MemberRole } from "@/lib/api";
+import type { KnowledgeBase, MemberRole, Plan, Usage } from "@/lib/api";
+import { canCreateResource } from "@/lib/plan";
+import { LimitReachedBanner } from "@/components/plan/UpgradePrompt";
 
 function canWrite(role: MemberRole | null) {
   return role === "owner" || role === "admin" || role === "member";
@@ -195,15 +197,27 @@ function CreateKbModal({
 }
 
 export default function KnowledgeBasesPage() {
-  const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
-  const [role, setRole] = useState<MemberRole | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [kbs,      setKbs]      = useState<KnowledgeBase[]>([]);
+  const [role,     setRole]     = useState<MemberRole | null>(null);
+  const [plan,     setPlan]     = useState<Plan | null>(null);
+  const [usage,    setUsage]    = useState<Usage | null>(null);
+  const [loading,  setLoading]  = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.knowledgeBases.list(), api.me()])
-      .then(([kbList, me]) => { setKbs(kbList); setRole(me.role); })
+    Promise.all([
+      api.knowledgeBases.list(),
+      api.me(),
+      api.plans.current().catch(() => null),
+      api.plans.usage().catch(() => null),
+    ])
+      .then(([kbList, me, sub, usageData]) => {
+        setKbs(kbList);
+        setRole(me.role);
+        setPlan(sub?.plan ?? null);
+        setUsage(usageData);
+      })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar bases de conhecimento."))
       .finally(() => setLoading(false));
   }, []);
@@ -237,6 +251,10 @@ export default function KnowledgeBasesPage() {
     );
   }
 
+  const kbsUsed  = usage?.knowledge_bases_count ?? kbs.length;
+  const kbsLimit = plan?.knowledge_bases_limit ?? 0;
+  const atLimit  = kbsLimit > 0 && !canCreateResource(kbsUsed, kbsLimit);
+
   return (
     <>
       {showCreate && (
@@ -250,20 +268,41 @@ export default function KnowledgeBasesPage() {
             Organize informações que seus agentes poderão usar para responder com mais precisão.
           </p>
         </div>
-        {canWrite(role) && (
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Nova Base
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {plan && kbsLimit > 0 && (
+            <span className={`text-sm font-medium ${atLimit ? "text-nb-danger" : "text-nb-muted"}`}>
+              {kbsUsed} / {kbsLimit} {kbsLimit !== 1 ? "bases" : "base"}
+            </span>
+          )}
+          {canWrite(role) && (
+            atLimit ? (
+              <span
+                title="Limite de bases de conhecimento atingido no seu plano."
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-nb-elevated border border-nb-border text-nb-muted text-sm font-medium rounded-xl cursor-not-allowed opacity-60"
+              >
+                <Plus className="w-4 h-4" />
+                Nova Base
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Nova Base
+              </button>
+            )
+          )}
+        </div>
       </div>
 
+      {atLimit && (
+        <LimitReachedBanner resource="bases de conhecimento" className="mb-6" />
+      )}
+
       {kbs.length === 0 ? (
-        <EmptyState canCreate={canWrite(role)} />
+        <EmptyState canCreate={canWrite(role) && !atLimit} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {kbs.map((kb) => (

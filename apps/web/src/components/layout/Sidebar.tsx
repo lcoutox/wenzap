@@ -54,26 +54,38 @@ function PlanCard({
   subscription: Subscription | null;
   usage: Usage | null;
 }) {
-  const plan = subscription?.plan;
+  const plan         = subscription?.plan;
   const creditsUsed  = usage?.ai_credits_used ?? 0;
   const creditsTotal = plan?.monthly_ai_credits ?? 1;
-  const pct = Math.min(100, Math.round((creditsUsed / creditsTotal) * 100));
+  const pct          = Math.min(100, Math.round((creditsUsed / creditsTotal) * 100));
+
+  const barColor     = pct >= 90 ? "bg-nb-danger" : pct >= 70 ? "bg-nb-warning" : "bg-nb-primary";
+  const isExhausted  = pct >= 100;
+  const isWarning    = pct >= 70 && pct < 100;
 
   if (collapsed) {
     return (
       <div className="px-3 pb-4">
         <div
           title={plan ? `${plan.name} — ${pct}% de créditos usados` : "Sem plano ativo"}
-          className="flex items-center justify-center w-8 h-8 rounded-lg bg-nb-primary-bg border border-nb-primary/20 cursor-default mx-auto"
+          className={`flex items-center justify-center w-8 h-8 rounded-lg border cursor-default mx-auto ${
+            isExhausted ? "bg-nb-danger/10 border-nb-danger/30" :
+            isWarning   ? "bg-nb-warning/10 border-nb-warning/30" :
+                          "bg-nb-primary-bg border-nb-primary/20"
+          }`}
         >
-          <Zap className="w-4 h-4 text-nb-primary" />
+          <Zap className={`w-4 h-4 ${isExhausted ? "text-nb-danger" : isWarning ? "text-nb-warning" : "text-nb-primary"}`} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-3 mb-4 p-3 rounded-xl bg-nb-elevated border border-nb-border">
+    <div className={`mx-3 mb-4 p-3 rounded-xl border ${
+      isExhausted ? "bg-nb-danger/5 border-nb-danger/20" :
+      isWarning   ? "bg-nb-warning/5 border-nb-warning/20" :
+                    "bg-nb-elevated border-nb-border"
+    }`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-nb-secondary truncate">
           {plan?.name ?? "Sem plano"}
@@ -83,25 +95,32 @@ function PlanCard({
 
       {plan && (
         <div className="mb-2">
-          <div className="flex justify-between text-[10px] text-nb-muted mb-1">
-            <span>Créditos IA</span>
-            <span>{creditsUsed.toLocaleString()} / {creditsTotal.toLocaleString()}</span>
+          <div className="flex justify-between text-[10px] mb-1">
+            <span className="text-nb-muted">Créditos IA</span>
+            {isExhausted
+              ? <span className="text-nb-danger font-semibold">Esgotado</span>
+              : <span className="text-nb-muted">{creditsUsed.toLocaleString("pt-BR")} / {creditsTotal.toLocaleString("pt-BR")}</span>
+            }
           </div>
           <div className="h-1 bg-nb-border rounded-full overflow-hidden">
-            <div
-              className="h-full bg-nb-primary rounded-full transition-all"
-              style={{ width: `${pct}%` }}
-            />
+            <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
           </div>
+          {isWarning && (
+            <p className="text-[10px] text-nb-warning mt-1">Perto do limite de créditos.</p>
+          )}
         </div>
       )}
 
       <Link
         href="/dashboard/plan"
-        className="mt-1 flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-xs font-medium bg-nb-primary-bg text-nb-primary-strong hover:bg-nb-primary/20 transition-colors"
+        className={`mt-1 flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${
+          isExhausted
+            ? "bg-nb-danger/10 text-nb-danger border border-nb-danger/20 hover:bg-nb-danger/20"
+            : "bg-nb-primary-bg text-nb-primary-strong hover:bg-nb-primary/20"
+        }`}
       >
         <Zap className="w-3 h-3" />
-        Upgrade
+        {isExhausted ? "Créditos esgotados" : "Upgrade"}
       </Link>
     </div>
   );

@@ -2,10 +2,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.agent import Agent
+from app.models.catalog_item import CatalogItem
+from app.models.channel import Channel
+from app.models.knowledge_base import KnowledgeBase
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
@@ -35,6 +39,39 @@ def get_workspace_subscription(db: Session, workspace_id: uuid.UUID) -> Subscrip
     )
 
 
+def _count_resources(db: Session, workspace_id: uuid.UUID) -> dict:
+    agents = db.scalar(
+        select(func.count()).where(
+            Agent.workspace_id == workspace_id,
+            Agent.status != "archived",
+        )
+    ) or 0
+    kbs = db.scalar(
+        select(func.count()).where(
+            KnowledgeBase.workspace_id == workspace_id,
+            KnowledgeBase.status != "archived",
+        )
+    ) or 0
+    catalog = db.scalar(
+        select(func.count()).where(
+            CatalogItem.workspace_id == workspace_id,
+            CatalogItem.status != "archived",
+        )
+    ) or 0
+    channels = db.scalar(
+        select(func.count()).where(
+            Channel.workspace_id == workspace_id,
+            Channel.status != "archived",
+        )
+    ) or 0
+    return {
+        "agents_count": agents,
+        "knowledge_bases_count": kbs,
+        "catalog_items_count": catalog,
+        "channels_count": channels,
+    }
+
+
 def get_workspace_usage(db: Session, workspace_id: uuid.UUID) -> UsageOut:
     now = datetime.now(timezone.utc)
     counter = db.scalar(
@@ -47,8 +84,9 @@ def get_workspace_usage(db: Session, workspace_id: uuid.UUID) -> UsageOut:
         .order_by(UsageCounter.period_start.desc())
     )
 
+    resources = _count_resources(db, workspace_id)
+
     if counter is None:
-        # Return zeroed counter when no usage exists yet
         sub = db.scalar(
             select(WorkspaceSubscription).where(WorkspaceSubscription.workspace_id == workspace_id)
         )
@@ -60,6 +98,7 @@ def get_workspace_usage(db: Session, workspace_id: uuid.UUID) -> UsageOut:
             messages_count=0,
             period_start=period_start,
             period_end=period_end,
+            **resources,
         )
 
     return UsageOut(
@@ -68,6 +107,7 @@ def get_workspace_usage(db: Session, workspace_id: uuid.UUID) -> UsageOut:
         messages_count=counter.messages_count,
         period_start=counter.period_start,
         period_end=counter.period_end,
+        **resources,
     )
 
 
