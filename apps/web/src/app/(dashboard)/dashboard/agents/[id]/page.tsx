@@ -18,6 +18,7 @@ import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigP
 import { ConfigComportamento }  from "@/components/agents/workspace/tabs/ConfigComportamento";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
 import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
+import { ConfigPipeline }       from "@/components/agents/workspace/tabs/ConfigPipeline";
 import type { LanguageMode, ResponseStyle } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -243,7 +244,7 @@ export default function AgentWorkspacePage() {
   const canWrite    = role === "owner" || role === "admin" || role === "member";
   const readonly    = isArchived || !canWrite;
 
-  // Config tabs that have real save functionality
+  // Config tabs that have real save functionality (pipeline has its own save button)
   const isSaveable = ["geral", "instrucoes", "comportamento", "modelo"].includes(configTab);
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -356,6 +357,14 @@ export default function AgentWorkspacePage() {
                 />
               )}
             </form>
+
+            {configTab === "pipeline" && (
+              <ConfigPipeline
+                agentId={id}
+                defaultPipelineId={null}
+                defaultPipelineStageId={null}
+              />
+            )}
           </div>
         )}
       </div>

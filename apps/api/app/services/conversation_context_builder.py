@@ -28,6 +28,8 @@ from app.models.agent import Agent
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
+from app.models.pipeline_entry import PipelineEntry
+from app.models.pipeline_stage import PipelineStage
 from app.services.agent_catalog_scope_service import get_allowed_category_ids
 from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
 from app.services.agent_guardrails import detect_prompt_injection
@@ -89,6 +91,9 @@ class ConversationContext:
 
     # All messages included in the history (for debugging / audit).
     history_messages: list[dict[str, Any]] = field(default_factory=list)
+
+    # Pipeline stage extra_prompt injection
+    pipeline_extra_prompt_injected: bool = False
 
 
 def build_conversation_context(
@@ -175,6 +180,23 @@ def build_conversation_context(
         channel_hint=conversation.channel_type,
     )
 
+    # ── Pipeline stage extra_prompt injection ─────────────────────────────────
+    pipeline_extra_prompt_injected = False
+    active_entry = db.scalar(
+        select(PipelineEntry).where(
+            PipelineEntry.conversation_id == conversation.id,
+            PipelineEntry.status == "active",
+        )
+    )
+    if active_entry is not None and active_entry.stage_id is not None:
+        active_stage = db.scalar(
+            select(PipelineStage).where(PipelineStage.id == active_entry.stage_id)
+        )
+        if active_stage is not None and active_stage.extra_prompt:
+            extra = active_stage.extra_prompt.strip()
+            system = system + f"\n\n## INSTRUÇÕES DESTA ETAPA\n\n{extra}"
+            pipeline_extra_prompt_injected = True
+
     if app_settings.ai_prompt_debug:
         _log_prompt_debug(
             agent_id=agent.id,
@@ -208,6 +230,7 @@ def build_conversation_context(
             }
             for m in messages
         ],
+        pipeline_extra_prompt_injected=pipeline_extra_prompt_injected,
     )
 
 

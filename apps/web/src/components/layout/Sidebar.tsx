@@ -13,6 +13,7 @@ import {
   BookOpen,
   Package,
   Users,
+  KanbanSquare,
 } from "lucide-react";
 import type { Subscription, Usage } from "@/lib/api";
 
@@ -42,6 +43,7 @@ const nav = [
   { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
   { href: "/dashboard/catalog",        label: "Catálogo",     icon: Package  },
   { href: "/dashboard/contacts",       label: "Clientes",     icon: Users    },
+  { href: "/dashboard/pipeline",       label: "Pipeline",     icon: KanbanSquare },
   { href: "/dashboard/settings",       label: "Configurações", icon: Settings },
 ];
 

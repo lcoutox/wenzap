@@ -17,6 +17,7 @@ const BREADCRUMBS: Record<string, string> = {
   "/dashboard/inbox":           "Inbox",
   "/dashboard/knowledge-bases": "Conhecimento",
   "/dashboard/contacts":        "Clientes",
+  "/dashboard/pipeline":        "Pipeline",
   "/dashboard/members":         "Membros",
   "/dashboard/settings":        "Configurações",
   "/dashboard/plan":            "Plano e uso",

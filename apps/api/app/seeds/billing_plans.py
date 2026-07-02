@@ -135,7 +135,7 @@ _FEATURE_MATRIX = [
     ("starter", "instagram",                False),  # roadmap
     ("starter", "telegram",                 False),  # roadmap
     ("starter", "slack",                    False),  # roadmap
-    ("starter", "pipelines",                False),  # implemented/not yet gated
+    ("starter", "pipelines",                True),
     ("starter", "multiple_knowledge_bases", False),  # implemented/not yet gated
     ("starter", "whatsapp_channel",         False),  # suspect/compatibility
     ("starter", "api_access",               False),  # suspect/compatibility

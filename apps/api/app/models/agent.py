@@ -36,6 +36,24 @@ class Agent(Base):
     avatar_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    default_pipeline_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "pipelines.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="agents_default_pipeline_id_fkey",
+        ),
+        nullable=True,
+    )
+    default_pipeline_stage_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "pipeline_stages.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="agents_default_pipeline_stage_id_fkey",
+        ),
+        nullable=True,
+    )
     # Nullable: user may be deleted after creating the agent.
     # Never used for authorization — workspace_id + membership is the authority.
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -41,12 +41,23 @@ TEST_DATABASE_URL = settings.database_test_url or settings.database_url.replace(
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
 
+def _reset_schema(engine) -> None:
+    """Drop and recreate the public schema to avoid FK circular-dependency issues."""
+    from sqlalchemy import text  # noqa: PLC0415
+
+    with engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    Base.metadata.drop_all(test_engine)
+    _reset_schema(test_engine)
     Base.metadata.create_all(test_engine)
     yield
-    Base.metadata.drop_all(test_engine)
+    _reset_schema(test_engine)
 
 
 @pytest.fixture(autouse=True)
@@ -163,7 +174,7 @@ _FEATURE_MATRIX = [
     ("starter", "telegram",                 False),
     ("starter", "slack",                    False),
     ("starter", "catalog",                  True),   # starter: catalog enabled (limited qty)
-    ("starter", "pipelines",                False),
+    ("starter", "pipelines",                True),
     ("starter", "multiple_knowledge_bases", False),
     ("starter", "whatsapp_channel",         False),
     ("starter", "api_access",               False),
@@ -400,6 +411,23 @@ def growth_subscription_a(
     db.commit()
     db.refresh(subscription_a)
     return subscription_a
+
+
+@pytest.fixture()
+def growth_subscription_b(
+    db: Session, workspace_b: Workspace, subscription_b: WorkspaceSubscription, growth_plan: Plan, feature_matrix
+) -> WorkspaceSubscription:
+    """Upgrade workspace_b's existing subscription to the Growth plan."""
+    from sqlalchemy import update as _update  # noqa: PLC0415
+
+    db.execute(
+        _update(WorkspaceSubscription)
+        .where(WorkspaceSubscription.workspace_id == workspace_b.id)
+        .values(plan_id=growth_plan.id, status="active")
+    )
+    db.commit()
+    db.refresh(subscription_b)
+    return subscription_b
 
 
 # ── Client factories ──────────────────────────────────────────────────────────

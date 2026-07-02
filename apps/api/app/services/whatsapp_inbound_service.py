@@ -31,6 +31,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.services.channel_service import get_whatsapp_channel_by_phone_number_id
+from app.services.pipeline_service import ensure_conversation_pipeline_entry
 from app.services.whatsapp_webhook_parser import WhatsAppInboundMessage
 
 logger = logging.getLogger(__name__)
@@ -198,6 +199,7 @@ def _get_or_create_conversation(
         )
         db.add(conversation)
         db.flush()
+        ensure_conversation_pipeline_entry(db, conversation)
         logger.info(
             "whatsapp_inbound created conversation id=%s workspace=%s contact=%s ai_enabled=%s",
             conversation.id,

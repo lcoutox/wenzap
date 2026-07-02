@@ -29,6 +29,7 @@ from app.schemas.public_widget import (
     WidgetSessionOut,
 )
 from app.services.agent_avatar_service import get_avatar_url
+from app.services.pipeline_service import ensure_conversation_pipeline_entry
 from app.services.plan_service import count_new_conversation
 
 _SESSION_TOKEN_PREFIX = "wss_"
@@ -242,6 +243,7 @@ def _create_widget_conversation(
     )
     db.add(conv)
     db.flush()
+    ensure_conversation_pipeline_entry(db, conv)
     return conv
 
 

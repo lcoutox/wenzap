@@ -83,7 +83,7 @@ FEATURE_KEYS = frozenset([
 | whatsapp                 | ❌      | ✅     | ✅    | ✅         |
 | whatsapp_channel         | ❌      | ✅     | ✅    | ✅         |
 | catalog                  | ✅      | ✅     | ✅    | ✅         |
-| pipelines                | ❌      | ✅     | ✅    | ✅         |
+| pipelines                | ✅      | ✅     | ✅    | ✅         |
 | multiple_knowledge_bases | ❌      | ✅     | ✅    | ✅         |
 | api_access               | ❌      | ✅     | ✅    | ✅         |
 | instagram                | ❌      | ❌     | ✅    | ✅         |
@@ -173,6 +173,31 @@ check_channel_type_or_402(db, workspace_id, channel_type) -> None  # raises 402
 check_users_limit(db, workspace_id) -> None  # raises 402
 get_workspace_plan_code(db, workspace_id) -> str
 ```
+
+---
+
+## Escopo de features com acesso parcial por plano
+
+Algumas features estão habilitadas no Free (`starter`) mas com escopo limitado.
+A gate booleana libera o acesso; a distinção de escopo é documental e de UI —
+automações avançadas não são executadas no backend nesta fase.
+
+### `pipelines` — Free inclui uso manual; automações ficam para Growth+
+
+O plano Free pode:
+- criar pipelines e etapas
+- adicionar conversas manualmente
+- mover conversas entre etapas manualmente
+- configurar pipeline padrão no agente
+
+O plano Free **não inclui**:
+- execução de webhooks de etapa
+- movimentação automática por condição de entrada
+- automação por tempo de permanência (stay_limit)
+- follow-up automático ao entrar/sair de etapa
+
+Essa distinção foi estabelecida em Pipeline.1.
+Ver: `docs/pipeline/conversation-pipeline-foundation.md`
 
 ---
 

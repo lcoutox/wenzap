@@ -25,6 +25,9 @@ from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_source import KnowledgeSource
 from app.models.password_reset_token import PasswordResetToken
+from app.models.pipeline import Pipeline
+from app.models.pipeline_entry import PipelineEntry
+from app.models.pipeline_stage import PipelineStage
 from app.models.plan import Plan
 from app.models.plan_feature import PlanFeature
 from app.models.usage_counter import UsageCounter
@@ -74,4 +77,7 @@ __all__ = [
     "AuthSession",
     "PasswordResetToken",
     "EmailVerificationToken",
+    "Pipeline",
+    "PipelineStage",
+    "PipelineEntry",
 ]

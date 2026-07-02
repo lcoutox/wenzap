@@ -834,6 +834,95 @@ export type ResetPasswordInput = {
   new_password: string;
 };
 
+// ── Pipelines ─────────────────────────────────────────────────────────────────
+
+export type Pipeline = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  show_inactive_conversations: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PipelineListOut = Pipeline[];
+
+export type PipelineCreateInput = {
+  name: string;
+  description?: string | null;
+};
+
+export type PipelineUpdateInput = {
+  name?: string;
+  description?: string | null;
+  is_active?: boolean;
+};
+
+export type PipelineStage = {
+  id: string;
+  workspace_id: string;
+  pipeline_id: string;
+  name: string;
+  description: string | null;
+  position: number;
+  assigned_agent_id: string | null;
+  entry_condition: string | null;
+  extra_prompt: string | null;
+  is_required: boolean;
+  is_removal_stage: boolean;
+  request_contact_info: boolean;
+  stay_limit_enabled: boolean;
+  stay_limit_minutes: number | null;
+  webhook_url: string | null;
+  webhook_auth_header: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PipelineStageCreateInput = {
+  name: string;
+  description?: string | null;
+  position?: number;
+  assigned_agent_id?: string | null;
+  extra_prompt?: string | null;
+  is_required?: boolean;
+  is_removal_stage?: boolean;
+  stay_limit_enabled?: boolean;
+  stay_limit_minutes?: number | null;
+  webhook_url?: string | null;
+  webhook_auth_header?: string | null;
+};
+
+export type PipelineStageUpdateInput = Partial<PipelineStageCreateInput>;
+
+export type PipelineEntry = {
+  id: string;
+  workspace_id: string;
+  pipeline_id: string | null;
+  stage_id: string | null;
+  conversation_id: string;
+  contact_id: string | null;
+  assigned_agent_id: string | null;
+  status: "active" | "inactive" | "removed";
+  entered_stage_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Denormalized
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  conversation_status: string | null;
+  conversation_channel_type: string | null;
+  conversation_last_message_at: string | null;
+};
+
+export type AgentPipelineSettingsInput = {
+  default_pipeline_id: string | null;
+  default_pipeline_stage_id: string | null;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -1265,6 +1354,11 @@ export const api = {
           method: "DELETE",
         }),
     },
+    updatePipelineSettings: (id: string, data: AgentPipelineSettingsInput) =>
+      cookieFetch<Agent>(`/agents/${id}/pipeline-settings`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     catalogScope: {
       get: (agentId: string) =>
         cookieFetch<AgentCatalogScope>(`/agents/${agentId}/tools/catalog`),
@@ -1273,6 +1367,52 @@ export const api = {
           method: "PUT",
           body: JSON.stringify(data),
         }),
+    },
+  },
+  pipelines: {
+    list: () => cookieFetch<PipelineListOut>("/pipelines"),
+    get: (id: string) => cookieFetch<Pipeline>(`/pipelines/${id}`),
+    create: (data: PipelineCreateInput) =>
+      cookieFetch<Pipeline>("/pipelines", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: PipelineUpdateInput) =>
+      cookieFetch<Pipeline>(`/pipelines/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    delete: (id: string) => cookieFetch<void>(`/pipelines/${id}`, { method: "DELETE" }),
+    stages: {
+      list: (pipelineId: string) =>
+        cookieFetch<PipelineStage[]>(`/pipelines/${pipelineId}/stages`),
+      create: (pipelineId: string, data: PipelineStageCreateInput) =>
+        cookieFetch<PipelineStage>(`/pipelines/${pipelineId}/stages`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (pipelineId: string, stageId: string, data: PipelineStageUpdateInput) =>
+        cookieFetch<PipelineStage>(`/pipelines/${pipelineId}/stages/${stageId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (pipelineId: string, stageId: string) =>
+        cookieFetch<void>(`/pipelines/${pipelineId}/stages/${stageId}`, { method: "DELETE" }),
+      reorder: (pipelineId: string, stages: { id: string; position: number }[]) =>
+        cookieFetch<PipelineStage[]>(`/pipelines/${pipelineId}/stages/reorder`, {
+          method: "POST",
+          body: JSON.stringify({ stages }),
+        }),
+    },
+    entries: {
+      list: (pipelineId: string) =>
+        cookieFetch<PipelineEntry[]>(`/pipelines/${pipelineId}/entries`),
+      create: (pipelineId: string, data: { conversation_id: string; stage_id: string }) =>
+        cookieFetch<PipelineEntry>(`/pipelines/${pipelineId}/entries`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      move: (pipelineId: string, entryId: string, stageId: string) =>
+        cookieFetch<PipelineEntry>(`/pipelines/${pipelineId}/entries/${entryId}/move`, {
+          method: "PATCH",
+          body: JSON.stringify({ stage_id: stageId }),
+        }),
+      delete: (pipelineId: string, entryId: string) =>
+        cookieFetch<void>(`/pipelines/${pipelineId}/entries/${entryId}`, { method: "DELETE" }),
     },
   },
   knowledgeBases: {

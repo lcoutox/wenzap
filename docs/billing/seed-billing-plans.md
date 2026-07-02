@@ -103,11 +103,20 @@ db.commit()
 
 ---
 
+## Histórico de mudanças relevantes no seed
+
+| Fase       | Mudança                                  | Motivo                                                   |
+|------------|------------------------------------------|----------------------------------------------------------|
+| Pipeline.1 | `starter: pipelines` `False` → `True`   | Uso manual de pipeline liberado no Free; automações avançadas continuam fora do escopo do starter. Ver `docs/pipeline/conversation-pipeline-foundation.md`. |
+
+---
+
 ## Feature key classification
 
 | Classificação | Keys |
 |---|---|
 | implemented / gated | `web_widget`, `api`, `whatsapp` |
-| implemented / not yet gated | `knowledge_base`, `catalog`, `inbox`, `playground`, `pipelines`, `multiple_knowledge_bases`, `remove_powered_by` |
+| implemented / not yet gated | `knowledge_base`, `catalog`, `inbox`, `playground`, `multiple_knowledge_bases`, `remove_powered_by` |
+| implemented / gated (Free=manual, Growth=automações) | `pipelines` |
 | roadmap | `instagram`, `telegram`, `slack`, `http_tools`, `follow_up`, `webhooks`, `custom_model`, `analytics`, `external_integrations`, `premium_models` |
 | suspect / compatibility | `whatsapp_channel`, `api_access` (legado do dict hardcoded anterior) |

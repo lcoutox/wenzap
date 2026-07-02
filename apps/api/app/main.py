@@ -22,6 +22,7 @@ from app.routers import (
     me,
     members,
     onboarding,
+    pipelines,
     plans,
     public_widgets,
     whatsapp_embedded_signup,
@@ -98,5 +99,6 @@ app.include_router(public_widgets.router)
 app.include_router(contacts.router)
 app.include_router(conversations.router)
 app.include_router(onboarding.router)
+app.include_router(pipelines.router)
 app.include_router(whatsapp_embedded_signup.router)
 app.include_router(whatsapp_webhooks.router)

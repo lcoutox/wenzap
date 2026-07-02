@@ -125,6 +125,8 @@ class AgentOut(BaseModel):
     avatar_url: str | None
     avatar_mime_type: str | None
     avatar_updated_at: datetime | None
+    default_pipeline_id: uuid.UUID | None = None
+    default_pipeline_stage_id: uuid.UUID | None = None
     created_by_user_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

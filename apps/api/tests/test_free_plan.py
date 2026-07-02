@@ -198,8 +198,9 @@ def test_free_plan_can_use_catalog(db: Session, feature_matrix):
     assert plan_allows_feature(db, "starter", "catalog") is True
 
 
-def test_free_plan_cannot_use_pipelines(db: Session, feature_matrix):
-    assert plan_allows_feature(db, "starter", "pipelines") is False
+def test_free_plan_can_use_pipelines(db: Session, feature_matrix):
+    # Pipeline.1: starter plan now includes pipelines (updated from False → True)
+    assert plan_allows_feature(db, "starter", "pipelines") is True
 
 
 def test_growth_plan_can_use_pipelines(db: Session, feature_matrix):

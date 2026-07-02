@@ -13,6 +13,7 @@ from app.models.workspace_member import WorkspaceMember
 from app.schemas.contact import ContactCreate
 from app.schemas.conversation import ConversationCreate, ConversationUpdate
 from app.services.contact_service import create_contact
+from app.services.pipeline_service import ensure_conversation_pipeline_entry
 from app.services.plan_service import count_new_conversation
 
 _MAX_LIMIT = 100
@@ -179,6 +180,8 @@ def create_conversation(
         last_message_at=None,
     )
     db.add(conv)
+    db.flush()
+    ensure_conversation_pipeline_entry(db, conv)
     db.commit()
     db.refresh(conv)
     return _conv_to_dict(conv, contact_name)
