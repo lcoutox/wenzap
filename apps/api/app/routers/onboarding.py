@@ -14,14 +14,18 @@ completion may need to be restricted to owner/admin role.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, get_current_workspace
+from app.auth.dependencies import get_current_user, get_current_workspace, get_verified_user
 from app.database import get_db
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.onboarding import OnboardingProfileCreate, OnboardingStatusOut
 from app.services.onboarding_service import get_onboarding_status, submit_onboarding_profile
 
-router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+router = APIRouter(
+    prefix="/onboarding",
+    tags=["onboarding"],
+    dependencies=[Depends(get_verified_user)],
+)
 
 
 @router.get("", response_model=OnboardingStatusOut)

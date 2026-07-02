@@ -9,6 +9,10 @@ const PUBLIC_PREFIXES = [
   "/embed",
   "/public",
   "/widget",
+  // Verification pages: public so anyone with the link can confirm.
+  // Authenticated users must NOT be redirected to /dashboard from these.
+  "/verify-email",
+  "/verify-email-required",
 ];
 
 const PROTECTED_PREFIXES = [
@@ -35,9 +39,15 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // /embed routes must never redirect authenticated users — doing so would cause
-  // the widget iframe to render the dashboard instead of the chat UI.
-  if (isPublic(pathname) && hasSession && !pathname.startsWith("/embed")) {
+  // Some public routes must be accessible to authenticated users too:
+  // /embed — would render dashboard in iframe instead of chat UI.
+  // /verify-email* — user may be authenticated but not yet verified.
+  if (
+    isPublic(pathname) &&
+    hasSession &&
+    !pathname.startsWith("/embed") &&
+    !pathname.startsWith("/verify-email")
+  ) {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";

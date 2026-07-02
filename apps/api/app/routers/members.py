@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, get_current_workspace
+from app.auth.dependencies import get_current_user, get_current_workspace, get_verified_user
 from app.database import get_db
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -11,7 +11,7 @@ from app.schemas.member import MemberOut, MemberRoleUpdate
 from app.services.member_service import get_member_out, list_members, update_member_role
 from app.services.workspace_service import get_current_member_role
 
-router = APIRouter(prefix="/workspaces/current/members")
+router = APIRouter(prefix="/workspaces/current/members", dependencies=[Depends(get_verified_user)])
 
 
 @router.get("", response_model=list[MemberOut])

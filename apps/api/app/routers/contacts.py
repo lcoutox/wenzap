@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, get_current_workspace
+from app.auth.dependencies import get_current_user, get_current_workspace, get_verified_user
 from app.database import get_db
 from app.enums import MemberRole
 from app.models.user import User
@@ -12,7 +12,7 @@ from app.schemas.contact import ContactCreate, ContactOut, ContactUpdate
 from app.services import contact_service
 from app.services.workspace_service import get_current_member_role
 
-router = APIRouter(prefix="/contacts")
+router = APIRouter(prefix="/contacts", dependencies=[Depends(get_verified_user)])
 
 _READ_ROLES = {MemberRole.owner, MemberRole.admin, MemberRole.member, MemberRole.viewer}
 _WRITE_ROLES = {MemberRole.owner, MemberRole.admin, MemberRole.member}

@@ -32,7 +32,12 @@ export default function SignInPage() {
 
     setLoading(true);
     try {
-      await login({ email: email.trim(), password });
+      const me = await login({ email: email.trim(), password });
+
+      if (!me.user.email_verified) {
+        router.push("/verify-email-required");
+        return;
+      }
 
       // Check onboarding status to decide where to redirect.
       try {

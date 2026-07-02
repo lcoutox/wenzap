@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     # ── Observability ─────────────────────────────────────────────────────────
     sentry_dsn: str = ""
 
+    # ── Email / SendGrid ──────────────────────────────────────────────────────
+    sendgrid_api_key: str = ""
+    email_from: str = ""
+    email_from_name: str = "Wenzap"
+    # Base URL used to build verification links, e.g. https://app.wenzap.com.br
+    app_url: str = "http://localhost:3000"
+    # Set to True to log emails instead of sending via SendGrid (dev/test).
+    email_sandbox_mode: bool = False
+
     # ── AI prompt debug ───────────────────────────────────────────────────────
     # When True, logs a structured summary of each assembled system prompt
     # (sections included, lengths, flags). In dev only, also logs the first

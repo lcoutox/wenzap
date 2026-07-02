@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, get_current_workspace
+from app.auth.dependencies import get_current_user, get_current_workspace, get_verified_user
 from app.database import get_db
 from app.enums import MemberRole
 from app.models.user import User
@@ -15,7 +15,7 @@ from app.services import knowledge_base_service, knowledge_source_service
 from app.services.upload_source_service import upload_knowledge_source
 from app.services.workspace_service import get_current_member_role
 
-router = APIRouter(prefix="/knowledge-bases")
+router = APIRouter(prefix="/knowledge-bases", dependencies=[Depends(get_verified_user)])
 
 _READ_ROLES = {MemberRole.owner, MemberRole.admin, MemberRole.member, MemberRole.viewer}
 _WRITE_ROLES = {MemberRole.owner, MemberRole.admin, MemberRole.member}

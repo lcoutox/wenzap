@@ -16,7 +16,7 @@ import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, get_current_workspace
+from app.auth.dependencies import get_current_user, get_current_workspace, get_verified_user
 from app.database import get_db
 from app.enums import MemberRole
 from app.models.user import User
@@ -32,7 +32,11 @@ from app.services.workspace_service import get_current_member_role
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/channels/whatsapp/embedded-signup", tags=["whatsapp-embedded-signup"])
+router = APIRouter(
+    prefix="/channels/whatsapp/embedded-signup",
+    tags=["whatsapp-embedded-signup"],
+    dependencies=[Depends(get_verified_user)],
+)
 
 _WRITE_ROLES = {MemberRole.owner, MemberRole.admin}
 

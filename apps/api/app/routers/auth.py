@@ -1,7 +1,8 @@
 """
 First-party authentication router.
 
-Provides signup, login, logout, /me, forgot-password and reset-password.
+Provides signup, login, logout, /me, forgot-password, reset-password,
+verify-email and resend-verification-email.
 Authentication uses wenzap_session HttpOnly cookies backed by auth_sessions table.
 """
 
@@ -18,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.cookies import clear_auth_cookie, set_auth_cookie
+from app.auth.dependencies import get_current_user
 from app.auth.password import hash_password, validate_password_strength, verify_password
 from app.auth.sessions import (
     create_session,
@@ -28,6 +30,7 @@ from app.auth.sessions import (
 from app.config import settings
 from app.database import get_db
 from app.enums import MemberRole, MemberStatus, WorkspaceStatus
+from app.models.email_verification_token import EmailVerificationToken
 from app.models.password_reset_token import PasswordResetToken
 from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
@@ -42,13 +45,59 @@ from app.schemas.auth import (
     AuthWorkspaceOut,
     ForgotPasswordRequest,
     LoginRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
     SignupRequest,
+    VerifyEmailRequest,
 )
+from app.services.email_service import get_email_service
+from app.services.email_templates import verification_email_html, verification_email_text
+from app.services.rate_limiter import _check
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_VERIFICATION_TOKEN_TTL_HOURS = 24
+_RESEND_LIMIT = 3
+_RESEND_WINDOW_SECONDS = 15 * 60  # 15 minutes
+
+
+def _generate_verification_token(user_id: uuid.UUID, db: Session) -> str:
+    """Generate a raw verification token, invalidate old ones, persist hash. Returns raw token."""
+    # Invalidate any existing unused tokens for this user
+    existing = db.scalars(
+        select(EmailVerificationToken).where(
+            EmailVerificationToken.user_id == user_id,
+            EmailVerificationToken.used_at.is_(None),
+        )
+    ).all()
+    now = datetime.now(timezone.utc)
+    for t in existing:
+        t.used_at = now  # mark as consumed so they can't be reused
+
+    raw = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw.encode()).hexdigest()
+    db.add(EmailVerificationToken(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=now + timedelta(hours=_VERIFICATION_TOKEN_TTL_HOURS),
+    ))
+    return raw
+
+
+def _send_verification_email(user: User, raw_token: str) -> None:
+    """Build verification URL and dispatch email (fake in dev, SendGrid in prod)."""
+    url = f"{settings.app_url}/verify-email?token={raw_token}"
+    html = verification_email_html(url)
+    text = verification_email_text(url)
+    get_email_service().send(
+        to=user.email,
+        subject="Confirme seu e-mail no Wenzap",
+        html=html,
+        text=text,
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -167,6 +216,7 @@ def signup(
         email=body.email,
         name=name,
         external_id=None,
+        email_verified=False,
     )
     db.add(user)
     db.flush()
@@ -178,8 +228,9 @@ def signup(
     ))
 
     workspace = _provision_workspace(user, db)
+    raw_token = _generate_verification_token(user.id, db)
 
-    _, token = create_session(
+    _, session_token = create_session(
         db,
         user.id,
         user_agent=request.headers.get("user-agent"),
@@ -196,7 +247,14 @@ def signup(
 
     db.refresh(user)
     db.refresh(workspace)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, session_token)
+
+    try:
+        _send_verification_email(user, raw_token)
+    except Exception:
+        logger.exception("Failed to send verification email to %s", user.email)
+        # Don't block signup if email delivery fails — user can resend
+
     logger.info("New user signed up: %s (workspace: %s)", user.id, workspace.slug)
     return _build_me_response(user, workspace)
 
@@ -264,6 +322,66 @@ def me(request: Request, db: Session = Depends(get_db)) -> AuthMeOut:
 
     workspace = _get_user_workspace(user, db)
     return _build_me_response(user, workspace)
+
+
+@router.post("/verify-email", status_code=status.HTTP_200_OK)
+def verify_email(body: VerifyEmailRequest, db: Session = Depends(get_db)) -> dict:
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    now = datetime.now(timezone.utc)
+    record = db.scalar(
+        select(EmailVerificationToken).where(
+            EmailVerificationToken.token_hash == token_hash,
+            EmailVerificationToken.expires_at > now,
+            EmailVerificationToken.used_at.is_(None),
+        )
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Link de verificação inválido ou expirado.",
+        )
+
+    user = db.scalar(select(User).where(User.id == record.user_id))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Usuário não encontrado."
+        )
+
+    user.email_verified = True
+    user.email_verified_at = now
+    record.used_at = now
+    db.commit()
+    logger.info("Email verified for user %s", user.id)
+    return {"message": "E-mail confirmado com sucesso."}
+
+
+@router.post("/resend-verification-email", status_code=status.HTTP_200_OK)
+def resend_verification_email(
+    request: Request,
+    _body: ResendVerificationRequest = ResendVerificationRequest(),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if current_user.email_verified:
+        return {"message": "E-mail já verificado."}
+
+    ip = request.client.host if request.client else "unknown"
+    _check(f"resend_verify:{current_user.id}", limit=_RESEND_LIMIT, window_seconds=_RESEND_WINDOW_SECONDS)  # noqa: E501
+    _check(f"resend_verify_ip:{ip}", limit=_RESEND_LIMIT, window_seconds=_RESEND_WINDOW_SECONDS)
+
+    raw_token = _generate_verification_token(current_user.id, db)
+    db.commit()
+
+    try:
+        _send_verification_email(current_user, raw_token)
+    except Exception:
+        logger.exception("Failed to resend verification email to %s", current_user.email)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível enviar o e-mail. Tente novamente em instantes.",
+        )
+
+    return {"message": "E-mail de verificação reenviado."}
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)

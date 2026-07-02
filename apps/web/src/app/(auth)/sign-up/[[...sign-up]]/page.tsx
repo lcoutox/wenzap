@@ -42,7 +42,7 @@ export default function SignUpPage() {
     setLoading(true);
     try {
       await signup({ name: name.trim(), email: email.trim(), password });
-      router.push("/onboarding");
+      router.push("/verify-email-required");
     } catch (err: unknown) {
       setError(authErrorMessage(err));
     } finally {

@@ -70,7 +70,9 @@ def db() -> Generator[Session, None, None]:
 # ── Factories ─────────────────────────────────────────────────────────────────
 
 def _make_user(db: Session, email: str, name: str) -> User:
-    u = User(external_id=None, email=email, name=name)
+    from datetime import datetime, timezone  # noqa: PLC0415
+    u = User(external_id=None, email=email, name=name, email_verified=True,
+             email_verified_at=datetime.now(timezone.utc))
     db.add(u)
     db.commit()
     db.refresh(u)

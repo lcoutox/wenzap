@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -16,6 +16,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

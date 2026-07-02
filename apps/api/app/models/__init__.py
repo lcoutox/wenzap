@@ -19,6 +19,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_agent_run import ConversationAgentRun
 from app.models.conversation_message import ConversationMessage
+from app.models.email_verification_token import EmailVerificationToken
 from app.models.knowledge_base import KnowledgeBase
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.knowledge_source import KnowledgeSource
@@ -70,4 +71,5 @@ __all__ = [
     "UserAuthCredential",
     "AuthSession",
     "PasswordResetToken",
+    "EmailVerificationToken",
 ]

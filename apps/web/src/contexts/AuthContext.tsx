@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
-import type { AuthUser, AuthWorkspace, LoginInput, SignupInput } from "@/lib/api";
+import type { AuthMe, AuthUser, AuthWorkspace, LoginInput, SignupInput } from "@/lib/api";
 
 type AuthState = {
   user: AuthUser | null;
@@ -20,8 +20,8 @@ type AuthState = {
 
 type AuthContextValue = AuthState & {
   refresh: () => Promise<void>;
-  login: (input: LoginInput) => Promise<void>;
-  signup: (input: SignupInput) => Promise<void>;
+  login: (input: LoginInput) => Promise<AuthMe>;
+  signup: (input: SignupInput) => Promise<AuthMe>;
   logout: () => Promise<void>;
 };
 
@@ -60,17 +60,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(
-    async (input: LoginInput) => {
+    async (input: LoginInput): Promise<AuthMe> => {
       const me = await api.auth.login(input);
       setState({ user: me.user, workspace: me.workspace, isLoaded: true, isSignedIn: true });
+      return me;
     },
     [],
   );
 
   const signup = useCallback(
-    async (input: SignupInput) => {
+    async (input: SignupInput): Promise<AuthMe> => {
       const me = await api.auth.signup(input);
       setState({ user: me.user, workspace: me.workspace, isLoaded: true, isSignedIn: true });
+      return me;
     },
     [],
   );

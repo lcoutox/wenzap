@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAppAuth } from "@/contexts/AuthContext";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 
@@ -23,7 +23,13 @@ export default function OnboardingPage() {
         if (status.completed) router.replace("/dashboard");
         else setChecking(false);
       })
-      .catch(() => setChecking(false));
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 403) {
+          router.replace("/verify-email-required");
+        } else {
+          setChecking(false);
+        }
+      });
   }, [isLoaded, isSignedIn, router]);
 
   if (checking) {

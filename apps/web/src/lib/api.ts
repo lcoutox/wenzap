@@ -775,6 +775,7 @@ export type AuthUser = {
   email: string;
   name: string;
   avatar_url: string | null;
+  email_verified: boolean;
 };
 
 export type AuthWorkspace = {
@@ -863,6 +864,16 @@ export const api = {
       cookieFetch<{ message: string }>("/auth/reset-password", {
         method: "POST",
         body: JSON.stringify(input),
+      }),
+    verifyEmail: (token: string) =>
+      cookieFetch<{ message: string }>("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      }),
+    resendVerificationEmail: () =>
+      cookieFetch<{ message: string }>("/auth/resend-verification-email", {
+        method: "POST",
+        body: JSON.stringify({}),
       }),
   },
   workspace: {

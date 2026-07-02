@@ -48,6 +48,18 @@ def get_current_user(
     return user
 
 
+def get_verified_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Requires authentication AND email_verified=True."""
+    if not current_user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="E-mail não verificado. Confirme seu e-mail para continuar.",
+        )
+    return current_user
+
+
 def get_current_workspace(
     x_workspace_id: str | None = Header(default=None),
     current_user: User = Depends(get_current_user),

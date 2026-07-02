@@ -36,7 +36,7 @@ export function DashboardShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isLoaded, isSignedIn } = useAppAuth();
+  const { isLoaded, isSignedIn, user } = useAppAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -56,10 +56,13 @@ export function DashboardShell({
   }, []);
 
   useEffect(() => {
-    if (isLoaded && !isSignedIn) {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
       router.replace("/sign-in");
+    } else if (user && !user.email_verified) {
+      router.replace("/verify-email-required");
     }
-  }, [isLoaded, isSignedIn, router]);
+  }, [isLoaded, isSignedIn, user, router]);
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -71,7 +74,7 @@ export function DashboardShell({
 
   const effectiveCollapsed = mounted ? collapsed : false;
 
-  if (isLoaded && !isSignedIn) {
+  if (isLoaded && (!isSignedIn || (user && !user.email_verified))) {
     return null;
   }
 
