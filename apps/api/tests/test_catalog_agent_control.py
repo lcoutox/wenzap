@@ -57,13 +57,13 @@ def _make_agent(
 # ── API endpoint — create ─────────────────────────────────────────────────────
 
 class TestAgentCreateCatalogEnabled:
-    def test_default_catalog_enabled_true(self, client_a, subscription_a, ai_model):
+    def test_default_catalog_enabled_false(self, client_a, subscription_a, ai_model):
         resp = client_a.post("/agents", json={
             "name": "Sales Agent",
             "ai_model_id": str(ai_model.id),
         })
         assert resp.status_code == 201
-        assert resp.json()["catalog_enabled"] is True
+        assert resp.json()["catalog_enabled"] is False
 
     def test_create_with_catalog_enabled_false(self, client_a, subscription_a, ai_model):
         resp = client_a.post("/agents", json={

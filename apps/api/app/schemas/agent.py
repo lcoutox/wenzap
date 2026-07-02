@@ -17,7 +17,7 @@ class AgentCreate(BaseModel):
     persona: str | None = None
     ai_model_id: uuid.UUID
     temperature: float = 0.7
-    catalog_enabled: bool = True
+    catalog_enabled: bool = False
     response_style: ResponseStyle = "balanced"
     language_mode: LanguageMode = "auto"
     knowledge_only: bool = False

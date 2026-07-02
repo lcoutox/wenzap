@@ -28,7 +28,7 @@ class Agent(Base):
         String(200), nullable=False, default="nexbrain-prime"
     )
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.70)
-    catalog_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    catalog_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Avatar fields
     avatar_file_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     avatar_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
