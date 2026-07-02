@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace, get_verified_user
@@ -8,7 +8,15 @@ from app.database import get_db
 from app.enums import MemberRole
 from app.models.user import User
 from app.models.workspace import Workspace
-from app.schemas.contact import ContactCreate, ContactOut, ContactUpdate
+from app.schemas.contact import (
+    ContactCreate,
+    ContactListOut,
+    ContactOut,
+    ContactUpdate,
+    ContactVariableCreate,
+    ContactVariableOut,
+    ContactVariableUpdate,
+)
 from app.services import contact_service
 from app.services.workspace_service import get_current_member_role
 
@@ -33,16 +41,21 @@ def _require_role(
     return role
 
 
-@router.get("", response_model=list[ContactOut])
+# ── Contact CRUD ──────────────────────────────────────────────────────────────
+
+@router.get("", response_model=ContactListOut)
 def list_contacts(
-    skip: int = 0,
-    limit: int = 50,
+    q: str | None = Query(default=None, description="Busca por nome, e-mail ou telefone"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     current_workspace: Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db),
-) -> list[ContactOut]:
+) -> ContactListOut:
     _require_role(_READ_ROLES, db, current_workspace, current_user)
-    return contact_service.list_contacts(db, current_workspace.id, skip=skip, limit=limit)
+    return contact_service.list_contacts(
+        db, current_workspace.id, q=q, limit=limit, offset=offset
+    )
 
 
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
@@ -77,3 +90,76 @@ def update_contact(
 ) -> ContactOut:
     _require_role(_WRITE_ROLES, db, current_workspace, current_user)
     return contact_service.update_contact(db, current_workspace.id, contact_id, data)
+
+
+@router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_contact(
+    contact_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    contact_service.delete_contact(db, current_workspace.id, contact_id)
+
+
+# ── Contact Variables ─────────────────────────────────────────────────────────
+
+@router.get("/{contact_id}/variables", response_model=list[ContactVariableOut])
+def list_variables(
+    contact_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> list[ContactVariableOut]:
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    return contact_service.list_variables(db, current_workspace.id, contact_id)
+
+
+@router.post(
+    "/{contact_id}/variables",
+    response_model=ContactVariableOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_variable(
+    contact_id: uuid.UUID,
+    data: ContactVariableCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ContactVariableOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return contact_service.create_variable(db, current_workspace.id, contact_id, data)
+
+
+@router.patch(
+    "/{contact_id}/variables/{variable_id}",
+    response_model=ContactVariableOut,
+)
+def update_variable(
+    contact_id: uuid.UUID,
+    variable_id: uuid.UUID,
+    data: ContactVariableUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> ContactVariableOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return contact_service.update_variable(
+        db, current_workspace.id, contact_id, variable_id, data
+    )
+
+
+@router.delete(
+    "/{contact_id}/variables/{variable_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_variable(
+    contact_id: uuid.UUID,
+    variable_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    contact_service.delete_variable(db, current_workspace.id, contact_id, variable_id)

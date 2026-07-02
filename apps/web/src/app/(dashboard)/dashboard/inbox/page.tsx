@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import type { Conversation, MemberRole } from "@/lib/api";
+import type { Contact, Conversation, MemberRole } from "@/lib/api";
 import { ConversationList } from "@/components/inbox/ConversationList";
 import { ConversationThread } from "@/components/inbox/ConversationThread";
 import { NewConversationModal } from "@/components/inbox/NewConversationModal";
@@ -48,14 +48,21 @@ function InboxContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("conv");
+  const contactIdParam = searchParams.get("contactId");
 
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
   const [listRefreshKey, setListRefreshKey] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [filterContact, setFilterContact] = useState<Contact | null>(null);
 
   useEffect(() => {
     api.me().then((me) => setUserRole(me.role)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!contactIdParam) { setFilterContact(null); return; }
+    api.contacts.get(contactIdParam).then(setFilterContact).catch(() => setFilterContact(null));
+  }, [contactIdParam]);
 
   const selectConversation = useCallback(
     (id: string) => {
@@ -88,6 +95,12 @@ function InboxContent() {
         refreshKey={listRefreshKey}
         canCreate={canWrite(userRole)}
         onNewConversation={() => setShowModal(true)}
+        filterContact={filterContact}
+        onClearContactFilter={() => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("contactId");
+          router.push(`/dashboard/inbox?${params.toString()}`, { scroll: false });
+        }}
       />
 
       <main className="flex-1 bg-nb-bg min-w-0 overflow-hidden">

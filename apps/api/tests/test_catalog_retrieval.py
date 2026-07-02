@@ -281,7 +281,7 @@ class TestConversationContextBuilderIntegration:
         owner = _make_user(db, f"ci1-{uuid.uuid4().hex[:6]}@test.com", "CI1")
         ws = _make_workspace(db, owner, f"ci-ws-{uuid.uuid4().hex[:6]}", "CI WS")
         _make_item(db, ws.id, "Produto Premium", searchable_text="produto premium plano")
-        agent = Agent(workspace_id=ws.id, name="Test Agent", status="active")
+        agent = Agent(workspace_id=ws.id, name="Test Agent", status="active", catalog_enabled=True)
         db.add(agent)
         db.flush()
         ps = AgentPromptSettings(agent_id=agent.id, system_prompt="Você é um assistente.")

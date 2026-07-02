@@ -12,6 +12,7 @@ import {
   Zap,
   BookOpen,
   Package,
+  Users,
 } from "lucide-react";
 import type { Subscription, Usage } from "@/lib/api";
 
@@ -40,6 +41,7 @@ const nav = [
   { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
   { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
   { href: "/dashboard/catalog",        label: "Catálogo",     icon: Package  },
+  { href: "/dashboard/contacts",       label: "Clientes",     icon: Users    },
   { href: "/dashboard/settings",       label: "Configurações", icon: Settings },
 ];
 

@@ -20,9 +20,11 @@ class Contact(Base):
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
     )
-    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     email: Mapped[str | None] = mapped_column(String(300), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    origin: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Channel-specific external identifier (e.g. WhatsApp phone hash, Instagram user_id).
     external_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

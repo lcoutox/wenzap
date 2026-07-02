@@ -65,6 +65,7 @@ def list_conversations(
     db: Session,
     workspace_id: uuid.UUID,
     status_filter: str | None = None,
+    contact_id: uuid.UUID | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> list[dict]:
@@ -78,10 +79,12 @@ def list_conversations(
         .outerjoin(Contact, Conversation.contact_id == Contact.id)
         .where(Conversation.workspace_id == workspace_id)
     )
+    if contact_id is not None:
+        q = q.where(Conversation.contact_id == contact_id)
     if status_filter is not None:
         q = q.where(Conversation.status == status_filter)
-    else:
-        # By default, exclude archived conversations.
+    elif contact_id is None:
+        # By default, exclude archived conversations (unless filtering by contact).
         q = q.where(Conversation.status != "archived")
     q = (
         q.order_by(

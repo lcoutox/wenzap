@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Conversation } from "@/lib/api";
+import type { Contact, Conversation } from "@/lib/api";
 import { ConversationItem } from "./ConversationItem";
 
 type Filter = "all" | "open" | "pending" | "resolved" | "archived";
@@ -40,12 +41,16 @@ export function ConversationList({
   refreshKey = 0,
   canCreate = false,
   onNewConversation,
+  filterContact = null,
+  onClearContactFilter,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
   refreshKey?: number;
   canCreate?: boolean;
   onNewConversation?: () => void;
+  filterContact?: Contact | null;
+  onClearContactFilter?: () => void;
 }) {
   const [activeFilter, setActiveFilter] = useState<Filter>("all");
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -53,13 +58,15 @@ export function ConversationList({
   const [error, setError] = useState<string | null>(null);
   // Keep filter in a ref so the polling closure always reads the latest value.
   const activeFilterRef = useRef<Filter>("all");
+  const filterContactRef = useRef<Contact | null>(null);
+  filterContactRef.current = filterContact ?? null;
 
-  const load = async (filter: Filter) => {
+  const load = async (filter: Filter, contactId?: string) => {
     setLoading(true);
     setError(null);
     try {
       const status = filter === "all" ? undefined : filter;
-      const data = await api.conversations.list({ status, limit: 50 });
+      const data = await api.conversations.list({ status, contact_id: contactId, limit: 50 });
       setConversations(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar conversas.");
@@ -72,16 +79,16 @@ export function ConversationList({
     if (document.hidden) return;
     try {
       const status = activeFilterRef.current === "all" ? undefined : activeFilterRef.current;
-      const data = await api.conversations.list({ status, limit: 50 });
+      const data = await api.conversations.list({ status, contact_id: filterContactRef.current?.id, limit: 50 });
       setConversations(data);
     } catch { /* silent */ }
   };
 
   useEffect(() => {
     activeFilterRef.current = activeFilter;
-    void load(activeFilter);
+    void load(activeFilter, filterContact?.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, refreshKey]);
+  }, [activeFilter, refreshKey, filterContact?.id]);
 
   // Polling — silent refresh every 5 s.
   useEffect(() => {
@@ -106,6 +113,25 @@ export function ConversationList({
           </button>
         )}
       </div>
+
+      {filterContact && (
+        <div className="px-3 py-2 border-b border-nb-border flex-shrink-0 bg-nb-primary-bg/30">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-nb-muted">Contato:</span>
+            <span className="text-xs font-medium text-nb-primary-strong truncate flex-1">
+              {filterContact.name || filterContact.email || filterContact.phone}
+            </span>
+            <button
+              type="button"
+              onClick={onClearContactFilter}
+              className="p-0.5 rounded hover:bg-nb-primary/20 text-nb-primary-strong transition-colors"
+              title="Limpar filtro"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-0 border-b border-nb-border flex-shrink-0 overflow-x-auto">
         {FILTERS.map((f) => (

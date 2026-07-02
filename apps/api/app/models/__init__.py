@@ -16,6 +16,7 @@ from app.models.catalog_media import CatalogMedia
 from app.models.channel import Channel
 from app.models.channel_credential import ChannelCredential
 from app.models.contact import Contact
+from app.models.contact_variable import ContactVariable
 from app.models.conversation import Conversation
 from app.models.conversation_agent_run import ConversationAgentRun
 from app.models.conversation_message import ConversationMessage
@@ -63,6 +64,7 @@ __all__ = [
     "AgentCatalogCategory",
     "AgentKnowledgeBase",
     "Contact",
+    "ContactVariable",
     "Conversation",
     "ConversationAgentRun",
     "ConversationMessage",

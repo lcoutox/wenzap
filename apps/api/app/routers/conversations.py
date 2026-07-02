@@ -39,6 +39,7 @@ def _require_role(
 @router.get("", response_model=list[ConversationOut])
 def list_conversations(
     status: str | None = None,
+    contact_id: uuid.UUID | None = None,
     skip: int = 0,
     limit: int = 50,
     current_user: User = Depends(get_current_user),
@@ -47,7 +48,12 @@ def list_conversations(
 ) -> list[ConversationOut]:
     _require_role(_READ_ROLES, db, current_workspace, current_user)
     return conversation_service.list_conversations(
-        db, current_workspace.id, status_filter=status, skip=skip, limit=limit
+        db,
+        current_workspace.id,
+        status_filter=status,
+        contact_id=contact_id,
+        skip=skip,
+        limit=limit,
     )
 
 

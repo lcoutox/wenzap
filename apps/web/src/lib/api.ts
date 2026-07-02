@@ -302,19 +302,29 @@ export type AgentKnowledgeBase = {
 export type Contact = {
   id: string;
   workspace_id: string;
-  name: string;
+  name: string | null;
   email: string | null;
   phone: string | null;
+  origin: string | null;
+  last_seen_at: string | null;
   external_id: string | null;
   metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
 
+export type ContactListOut = {
+  items: Contact[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type ContactCreateInput = {
-  name: string;
+  name?: string;
   email?: string;
   phone?: string;
+  origin?: string;
   external_id?: string;
 };
 
@@ -322,8 +332,23 @@ export type ContactUpdateInput = {
   name?: string;
   email?: string | null;
   phone?: string | null;
+  origin?: string | null;
   external_id?: string | null;
 };
+
+export type ContactVariable = {
+  id: string;
+  contact_id: string;
+  workspace_id: string;
+  key: string;
+  value: string;
+  source: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContactVariableCreateInput = { key: string; value: string; source?: string };
+export type ContactVariableUpdateInput = { value: string; source?: string };
 
 // ── Inbox — Conversations ─────────────────────────────────────────────────────
 
@@ -901,12 +926,13 @@ export const api = {
     list: () => cookieFetch<AiCatalog>("/ai-models"),
   },
   contacts: {
-    list: (params?: { skip?: number; limit?: number }) => {
+    list: (params?: { q?: string; limit?: number; offset?: number }) => {
       const qs = new URLSearchParams();
-      if (params?.skip != null) qs.set("skip", String(params.skip));
+      if (params?.q) qs.set("q", params.q);
       if (params?.limit != null) qs.set("limit", String(params.limit));
+      if (params?.offset != null) qs.set("offset", String(params.offset));
       const q = qs.toString();
-      return cookieFetch<Contact[]>(q ? `/contacts?${q}` : "/contacts");
+      return cookieFetch<ContactListOut>(q ? `/contacts?${q}` : "/contacts");
     },
     get: (contactId: string) => cookieFetch<Contact>(`/contacts/${contactId}`),
     create: (data: ContactCreateInput) =>
@@ -916,11 +942,32 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    delete: (contactId: string) =>
+      cookieFetch<void>(`/contacts/${contactId}`, { method: "DELETE" }),
+    variables: {
+      list: (contactId: string) =>
+        cookieFetch<ContactVariable[]>(`/contacts/${contactId}/variables`),
+      create: (contactId: string, data: ContactVariableCreateInput) =>
+        cookieFetch<ContactVariable>(`/contacts/${contactId}/variables`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (contactId: string, variableId: string, data: ContactVariableUpdateInput) =>
+        cookieFetch<ContactVariable>(`/contacts/${contactId}/variables/${variableId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (contactId: string, variableId: string) =>
+        cookieFetch<void>(`/contacts/${contactId}/variables/${variableId}`, {
+          method: "DELETE",
+        }),
+    },
   },
   conversations: {
-    list: (params?: { status?: string; skip?: number; limit?: number }) => {
+    list: (params?: { status?: string; contact_id?: string; skip?: number; limit?: number }) => {
       const qs = new URLSearchParams();
       if (params?.status) qs.set("status", params.status);
+      if (params?.contact_id) qs.set("contact_id", params.contact_id);
       if (params?.skip != null) qs.set("skip", String(params.skip));
       if (params?.limit != null) qs.set("limit", String(params.limit));
       const q = qs.toString();
