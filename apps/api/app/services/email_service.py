@@ -2,7 +2,7 @@
 Email delivery abstraction.
 
 In dev/test: FakeEmailService logs and captures sent emails (no external calls).
-In production: SendGridEmailService sends via SendGrid HTTP API using httpx.
+In production: ResendEmailService sends via Resend HTTP API using httpx.
 
 Usage:
     from app.services.email_service import get_email_service
@@ -11,7 +11,7 @@ Usage:
 
 Provider selection:
   - email_sandbox_mode=True (env: EMAIL_SANDBOX_MODE=true) → FakeEmailService
-  - Otherwise → SendGridEmailService (requires SENDGRID_API_KEY and EMAIL_FROM)
+  - Otherwise → ResendEmailService (requires RESEND_API_KEY and EMAIL_FROM)
 """
 
 import logging
@@ -41,35 +41,33 @@ class FakeEmailService:
         logger.info("[FakeEmail] To=%s Subject=%s", to, subject)
 
 
-# ── SendGrid (production) ─────────────────────────────────────────────────────
+# ── Resend (production) ───────────────────────────────────────────────────────
 
-class SendGridEmailService:
-    """Sends transactional email via SendGrid v3 API using httpx."""
+class ResendEmailService:
+    """Sends transactional email via Resend API using httpx."""
 
-    _SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
+    _RESEND_API_URL = "https://api.resend.com/emails"
 
     def send(self, *, to: str, subject: str, html: str, text: str) -> None:
-        api_key = settings.sendgrid_api_key
+        api_key = settings.resend_api_key
         email_from = settings.email_from
         if not api_key or not email_from:
             raise RuntimeError(
                 "Email delivery is not configured. "
-                "Set SENDGRID_API_KEY and EMAIL_FROM in your environment."
+                "Set RESEND_API_KEY and EMAIL_FROM in your environment."
             )
 
         payload = {
-            "personalizations": [{"to": [{"email": to}]}],
-            "from": {"email": email_from, "name": settings.email_from_name},
+            "from": f"{settings.email_from_name} <{email_from}>",
+            "to": [to],
             "subject": subject,
-            "content": [
-                {"type": "text/plain", "value": text},
-                {"type": "text/html", "value": html},
-            ],
+            "html": html,
+            "text": text,
         }
 
         with httpx.Client(timeout=10.0) as client:
             response = client.post(
-                self._SENDGRID_API_URL,
+                self._RESEND_API_URL,
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {api_key}",
@@ -77,15 +75,15 @@ class SendGridEmailService:
                 },
             )
 
-        if response.status_code not in (200, 202):
+        if response.status_code not in (200, 201):
             logger.error(
-                "SendGrid error: status=%s body=%s",
+                "Resend error: status=%s body=%s",
                 response.status_code,
                 response.text[:500],
             )
-            raise RuntimeError(f"Failed to send email via SendGrid (status {response.status_code})")
+            raise RuntimeError(f"Failed to send email via Resend (status {response.status_code})")
 
-        logger.info("Email sent via SendGrid: to=%s subject=%s", to, subject)
+        logger.info("Email sent via Resend: to=%s subject=%s", to, subject)
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
@@ -97,10 +95,10 @@ _instance: EmailService | None = None
 def get_email_service() -> EmailService:
     global _instance  # noqa: PLW0603
     if _instance is None:
-        if settings.email_sandbox_mode or not settings.sendgrid_api_key:
+        if settings.email_sandbox_mode or not settings.resend_api_key:
             _instance = FakeEmailService()
         else:
-            _instance = SendGridEmailService()
+            _instance = ResendEmailService()
     return _instance
 
 

@@ -89,13 +89,13 @@ class Settings(BaseSettings):
     # ── Observability ─────────────────────────────────────────────────────────
     sentry_dsn: str = ""
 
-    # ── Email / SendGrid ──────────────────────────────────────────────────────
-    sendgrid_api_key: str = ""
+    # ── Email / Resend ────────────────────────────────────────────────────────
+    resend_api_key: str = ""
     email_from: str = ""
     email_from_name: str = "Wenzap"
     # Base URL used to build verification links, e.g. https://app.wenzap.com.br
     app_url: str = "http://localhost:3000"
-    # Set to True to log emails instead of sending via SendGrid (dev/test).
+    # Set to True to log emails instead of sending via Resend (dev/test).
     email_sandbox_mode: bool = False
 
     # ── AI prompt debug ───────────────────────────────────────────────────────
