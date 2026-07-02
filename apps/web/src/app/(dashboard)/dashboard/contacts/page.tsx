@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Contact, ContactVariable, MemberRole } from "@/lib/api";
+import { PhoneInput } from "@/components/ui/PhoneInput";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -312,16 +313,12 @@ function ContactModal({
               disabled={readonly}
             />
           </Field>
-          <Field label="Telefone">
-            <input
-              type="tel"
-              className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:border-nb-primary transition-colors"
-              placeholder="+55 (11) 99999-0000"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={readonly}
-            />
-          </Field>
+          <PhoneInput
+            label="Telefone"
+            value={phone}
+            onChange={(val) => setPhone(val ?? "")}
+            disabled={readonly}
+          />
           <Field label="E-mail">
             <input
               type="email"

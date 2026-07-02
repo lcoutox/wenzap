@@ -120,9 +120,10 @@ type Props = {
   onChange: (normalized: string) => void;
   required?: boolean;
   error?: string;
+  disabled?: boolean;
 };
 
-export function PhoneInput({ label, value, onChange, required, error }: Props) {
+export function PhoneInput({ label, value, onChange, required, error, disabled }: Props) {
   const { country: initialCountry, national: initialNational } = parseValue(value);
 
   const [country, setCountry] = useState<Country>(initialCountry);
@@ -178,6 +179,7 @@ export function PhoneInput({ label, value, onChange, required, error }: Props) {
       <div
         className={`
           flex items-center bg-nb-elevated border rounded-xl transition-colors overflow-hidden
+          ${disabled ? "opacity-60 cursor-not-allowed" : ""}
           ${error ? "border-nb-danger" : "border-nb-border focus-within:border-nb-primary focus-within:ring-1 focus-within:ring-nb-primary/30"}
         `}
       >
@@ -185,8 +187,9 @@ export function PhoneInput({ label, value, onChange, required, error }: Props) {
         <div className="relative flex-shrink-0" ref={dropdownRef}>
           <button
             type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-sm text-nb-text hover:bg-nb-bg/40 transition-colors border-r border-nb-border cursor-pointer select-none"
+            onClick={() => !disabled && setOpen((v) => !v)}
+            disabled={disabled}
+            className="flex items-center gap-1.5 px-3 py-2.5 text-sm text-nb-text hover:bg-nb-bg/40 transition-colors border-r border-nb-border cursor-pointer select-none disabled:cursor-not-allowed"
             aria-label="Selecionar país"
           >
             <span className="text-base leading-none">{country.flag}</span>
@@ -234,7 +237,8 @@ export function PhoneInput({ label, value, onChange, required, error }: Props) {
           onChange={(e) => handleInput(e.target.value)}
           placeholder={placeholder}
           maxLength={country.mask.length}
-          className={`${inputClass} px-3 py-2.5`}
+          disabled={disabled}
+          className={`${inputClass} px-3 py-2.5 disabled:cursor-not-allowed`}
         />
       </div>
 

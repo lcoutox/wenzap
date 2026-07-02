@@ -27,7 +27,56 @@ def _normalise_email(email: str | None) -> str | None:
 
 
 def _normalise_phone(phone: str | None) -> str | None:
-    return phone.strip() if phone else None
+    """Normalise phone to E.164 format (+<dialcode><national digits>).
+
+    Accepted inputs (Brazilian examples that all become +5537999999999):
+      (37) 99999-9999   →  strips visual chars, prepends +55
+      37 99999-9999     →  same
+      5537999999999     →  no +, prepends +
+      +5537999999999    →  already E.164, kept as-is
+      +1 (555) 123-4567 →  non-BR E.164, kept normalised
+
+    Rules:
+      1. Strip whitespace. Return None if empty.
+      2. Strip all non-digit/+ chars to get a "clean" value.
+      3. If already starts with "+", treat as E.164 → validate min 7 digits.
+      4. If 10-11 digits (no country code), assume Brazil (+55).
+      5. If 12-13 digits (country code without +), prepend "+".
+      6. Reject values shorter than 7 digits after stripping.
+    """
+    if not phone:
+        return None
+    stripped = phone.strip()
+    if not stripped:
+        return None
+
+    # Keep leading + if present, remove all other non-digit chars
+    has_plus = stripped.startswith("+")
+    digits = "".join(c for c in stripped if c.isdigit())
+
+    if not digits:
+        return None
+
+    if has_plus:
+        # Already has country code — validate minimum length (7 national digits)
+        if len(digits) < 7:
+            raise ValueError("Número de telefone inválido.")
+        return f"+{digits}"
+
+    # No + prefix
+    if len(digits) < 7:
+        raise ValueError("Número de telefone inválido.")
+
+    if len(digits) <= 11:
+        # 10-11 digits: national number only → assume Brazil +55
+        return f"+55{digits}"
+
+    if len(digits) <= 13:
+        # 12-13 digits: country code already included, just prepend +
+        return f"+{digits}"
+
+    # Too many digits
+    raise ValueError("Número de telefone inválido.")
 
 
 def _check_dedup(
@@ -75,12 +124,21 @@ def list_contacts(
     effective_limit = min(limit, _MAX_LIMIT)
     base = select(Contact).where(Contact.workspace_id == workspace_id)
     if q:
-        term = f"%{q.strip()}%"
+        raw = q.strip()
+        term = f"%{raw}%"
+        # For phone search also try stripping non-digit chars so "(37) 9..." finds "+5537..."
+        digits = "".join(c for c in raw if c.isdigit())
+        digit_term = f"%{digits}%" if digits else None
+        phone_clause = (
+            or_(Contact.phone.ilike(term), Contact.phone.ilike(digit_term))
+            if digit_term
+            else Contact.phone.ilike(term)
+        )
         base = base.where(
             or_(
                 Contact.name.ilike(term),
                 Contact.email.ilike(term),
-                Contact.phone.ilike(term),
+                phone_clause,
             )
         )
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
@@ -94,13 +152,22 @@ def list_contacts(
     return ContactListOut(items=items, total=total, limit=effective_limit, offset=offset)
 
 
+def _safe_normalise_phone(phone: str | None) -> str | None:
+    try:
+        return _normalise_phone(phone)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+
 def create_contact(
     db: Session,
     workspace_id: uuid.UUID,
     data: ContactCreate,
 ) -> Contact:
     email = _normalise_email(data.email)
-    phone = _normalise_phone(data.phone)
+    phone = _safe_normalise_phone(data.phone)
     _check_dedup(db, workspace_id, email, phone)
     contact = Contact(
         workspace_id=workspace_id,
@@ -146,7 +213,7 @@ def update_contact(
     fields = data.model_fields_set
 
     email = _normalise_email(data.email) if "email" in fields else contact.email
-    phone = _normalise_phone(data.phone) if "phone" in fields else contact.phone
+    phone = _safe_normalise_phone(data.phone) if "phone" in fields else contact.phone
 
     if "email" in fields or "phone" in fields:
         _check_dedup(db, workspace_id, email, phone, exclude_id=contact_id)

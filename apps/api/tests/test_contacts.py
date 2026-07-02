@@ -727,3 +727,112 @@ def test_conversations_filter_contact_cross_tenant_returns_empty(
         r = client.get(f"/conversations?contact_id={c_b.id}")
     assert r.status_code == 200
     assert r.json() == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 10. PHONE E.164 NORMALISATION (Clientes.1.1)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_phone_e164_stored_as_is(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "+5537999999999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_national_11digits_normalised_to_br(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "37999999999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_national_10digits_normalised_to_br(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "3799999999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+553799999999"
+
+
+def test_phone_formatted_br_normalised(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "(37) 99999-9999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_with_spaces_normalised(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "37 99999-9999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_with_country_no_plus_normalised(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "5537999999999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_with_plus_spaces_normalised(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "+55 37 99999-9999"})
+    assert r.status_code == 201
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_dedup_equivalent_formats_rejected(db: Session, client_a, workspace_a):
+    r1 = client_a.post("/contacts", json={"phone": "+5537999999999"})
+    assert r1.status_code == 201
+
+    # Different format, same number
+    r2 = client_a.post("/contacts", json={"phone": "(37) 99999-9999"})
+    assert r2.status_code == 409
+
+
+def test_phone_dedup_no_plus_vs_e164(db: Session, client_a, workspace_a):
+    client_a.post("/contacts", json={"phone": "5537999999999"})
+
+    r = client_a.post("/contacts", json={"phone": "+5537999999999"})
+    assert r.status_code == 409
+
+
+def test_phone_same_number_other_workspace_allowed(
+    db: Session, client_a, workspace_b: Workspace,
+):
+    _seed_contact(db, workspace_b, phone="+5537999999999", name="WS-B")
+    db.commit()
+
+    r = client_a.post("/contacts", json={"phone": "+5537999999999"})
+    assert r.status_code == 201
+
+
+def test_phone_update_normalised(db: Session, client_a, workspace_a: Workspace):
+    c = _seed_contact(db, workspace_a, name="Test")
+    db.commit()
+
+    r = client_a.patch(f"/contacts/{c.id}", json={"phone": "(37) 99999-9999"})
+    assert r.status_code == 200
+    assert r.json()["phone"] == "+5537999999999"
+
+
+def test_phone_too_short_rejected(db: Session, client_a):
+    r = client_a.post("/contacts", json={"phone": "123"})
+    assert r.status_code == 422
+
+
+def test_phone_only_special_chars_treated_as_none(db: Session, client_a):
+    # Only dashes/spaces — after stripping digits it's empty, treated as None
+    # But we also need name or email for the contact to be valid
+    r = client_a.post("/contacts", json={"name": "Test", "phone": "---"})
+    # No digits → stored as None (not invalid, just empty)
+    assert r.status_code == 201
+    assert r.json()["phone"] is None
+
+
+def test_phone_search_by_formatted_finds_e164(db: Session, client_a, workspace_a: Workspace):
+    # Store in E.164
+    _seed_contact(db, workspace_a, phone="+5537999999999", name="Busca")
+    db.commit()
+
+    # Search with formatted version (digit-only fallback)
+    r = client_a.get("/contacts?q=37999999999")
+    assert r.status_code == 200
+    assert r.json()["total"] >= 1
+    phones = [c["phone"] for c in r.json()["items"]]
+    assert "+5537999999999" in phones
