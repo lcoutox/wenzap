@@ -34,6 +34,7 @@ FEATURE_KEYS: frozenset[str] = frozenset(
         "inbox",
         "playground",
         "pipelines",
+        "pipeline_automations",
         "multiple_knowledge_bases",
         "whatsapp_channel",
         "api_access",

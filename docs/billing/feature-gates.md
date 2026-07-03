@@ -84,6 +84,7 @@ FEATURE_KEYS = frozenset([
 | whatsapp_channel         | ❌      | ✅     | ✅    | ✅         |
 | catalog                  | ✅      | ✅     | ✅    | ✅         |
 | pipelines                | ✅      | ✅     | ✅    | ✅         |
+| pipeline_automations     | ❌      | ❌     | ✅    | ✅         |
 | multiple_knowledge_bases | ❌      | ✅     | ✅    | ✅         |
 | api_access               | ❌      | ✅     | ✅    | ✅         |
 | instagram                | ❌      | ❌     | ✅    | ✅         |
@@ -182,21 +183,24 @@ Algumas features estão habilitadas no Free (`starter`) mas com escopo limitado.
 A gate booleana libera o acesso; a distinção de escopo é documental e de UI —
 automações avançadas não são executadas no backend nesta fase.
 
-### `pipelines` — Free inclui uso manual; automações ficam para Growth+
+### `pipelines` — uso manual, disponível a partir do Free
 
-O plano Free pode:
-- criar pipelines e etapas
-- adicionar conversas manualmente
-- mover conversas entre etapas manualmente
-- configurar pipeline padrão no agente
+A gate `pipelines` libera acesso ao board Kanban, criação de pipelines/etapas e movimentação manual de conversas.
 
-O plano Free **não inclui**:
-- execução de webhooks de etapa
+Planos com `pipelines=true`: starter, growth, scale, enterprise.
+
+### `pipeline_automations` — automações avançadas, Scale+
+
+A gate `pipeline_automations` cobrirá funcionalidades ainda não implementadas:
+- execução de webhooks ao mudar de etapa
 - movimentação automática por condição de entrada
 - automação por tempo de permanência (stay_limit)
-- follow-up automático ao entrar/sair de etapa
+- follow-up automático vinculado a pipeline
 
-Essa distinção foi estabelecida em Pipeline.1.
+Planos com `pipeline_automations=true`: scale, enterprise.
+Planos bloqueados: starter, growth (False — roadmap).
+
+Criada em Pipeline.1-hotfix para separar claramente acesso manual de automação avançada.
 Ver: `docs/pipeline/conversation-pipeline-foundation.md`
 
 ---

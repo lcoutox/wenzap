@@ -135,7 +135,8 @@ _FEATURE_MATRIX = [
     ("starter", "instagram",                False),  # roadmap
     ("starter", "telegram",                 False),  # roadmap
     ("starter", "slack",                    False),  # roadmap
-    ("starter", "pipelines",                True),
+    ("starter", "pipelines",                True),   # manual pipeline — Free OK
+    ("starter", "pipeline_automations",     False),  # webhooks/auto-move/stay-limit — roadmap
     ("starter", "multiple_knowledge_bases", False),  # implemented/not yet gated
     ("starter", "whatsapp_channel",         False),  # suspect/compatibility
     ("starter", "api_access",               False),  # suspect/compatibility
@@ -155,7 +156,8 @@ _FEATURE_MATRIX = [
     ("growth",  "inbox",                    True),   # implemented/not yet gated
     ("growth",  "playground",               True),   # implemented/not yet gated
     ("growth",  "whatsapp",                 True),   # implemented/gated
-    ("growth",  "pipelines",                True),   # implemented/not yet gated
+    ("growth",  "pipelines",                True),   # manual pipeline — Growth OK
+    ("growth",  "pipeline_automations",     False),  # webhooks/auto-move/stay-limit — roadmap
     ("growth",  "multiple_knowledge_bases", True),   # implemented/not yet gated
     ("growth",  "whatsapp_channel",         True),   # suspect/compatibility
     ("growth",  "api_access",               True),   # suspect/compatibility
@@ -180,7 +182,8 @@ _FEATURE_MATRIX = [
     ("scale",   "whatsapp",                 True),   # implemented/gated
     ("scale",   "instagram",                True),   # roadmap (Scale+)
     ("scale",   "telegram",                 True),   # roadmap (Scale+)
-    ("scale",   "pipelines",                True),   # implemented/not yet gated
+    ("scale",   "pipelines",                True),   # manual pipeline — Scale OK
+    ("scale",   "pipeline_automations",     True),   # webhooks/auto-move/stay-limit — Scale+
     ("scale",   "multiple_knowledge_bases", True),   # implemented/not yet gated
     ("scale",   "whatsapp_channel",         True),   # suspect/compatibility
     ("scale",   "api_access",               True),   # suspect/compatibility
@@ -205,6 +208,7 @@ _FEATURE_MATRIX = [
     ("enterprise", "telegram",                 True),
     ("enterprise", "slack",                    True),
     ("enterprise", "pipelines",                True),
+    ("enterprise", "pipeline_automations",     True),
     ("enterprise", "multiple_knowledge_bases", True),
     ("enterprise", "whatsapp_channel",         True),
     ("enterprise", "api_access",               True),

@@ -199,12 +199,26 @@ def test_free_plan_can_use_catalog(db: Session, feature_matrix):
 
 
 def test_free_plan_can_use_pipelines(db: Session, feature_matrix):
-    # Pipeline.1: starter plan now includes pipelines (updated from False → True)
+    # Pipeline.1: starter plan includes manual pipeline access
     assert plan_allows_feature(db, "starter", "pipelines") is True
 
 
 def test_growth_plan_can_use_pipelines(db: Session, feature_matrix):
     assert plan_allows_feature(db, "growth", "pipelines") is True
+
+
+def test_free_plan_cannot_use_pipeline_automations(db: Session, feature_matrix):
+    # pipeline_automations covers webhooks/auto-move/stay-limit — blocked on Free
+    assert plan_allows_feature(db, "starter", "pipeline_automations") is False
+
+
+def test_growth_plan_cannot_use_pipeline_automations(db: Session, feature_matrix):
+    # Automations not yet implemented; blocked on Growth too
+    assert plan_allows_feature(db, "growth", "pipeline_automations") is False
+
+
+def test_scale_plan_can_use_pipeline_automations(db: Session, feature_matrix):
+    assert plan_allows_feature(db, "scale", "pipeline_automations") is True
 
 
 def test_unknown_feature_default_deny(db: Session, feature_matrix):
