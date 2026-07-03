@@ -156,7 +156,9 @@ export type GuidedConfig = {
   initiative?: GuidedInitiative | null;
   when_no_info?: GuidedWhenNoInfo | null;
   do_items?: GuidedDoItem[];
+  custom_should_do?: string[];
   dont_items?: GuidedDontItem[];
+  custom_should_not_do?: string[];
   extra_restrictions?: string | null;
   good_response_example?: string | null;
   bad_response_example?: string | null;

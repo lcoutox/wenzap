@@ -10,7 +10,7 @@ from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
-from app.schemas.agent import AgentCreate, AgentOut, AgentUpdate
+from app.schemas.agent import AgentCreate, AgentOut, AgentUpdate, GuidedConfigSchema
 from app.services.agent_avatar_service import get_avatar_url
 from app.services.ai_model_service import (
     _get_workspace_plan_code,
@@ -20,13 +20,14 @@ from app.services.ai_model_service import (
 
 # Fields routed to agent_prompt_settings
 _PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
-                  "knowledge_only", "show_sources"}
+                  "knowledge_only", "show_sources",
+                  "instructions_mode", "guided_config", "advanced_prompt"}
 
 # Fields routed to agent_model_settings (handled explicitly, not via generic loop)
 _MODEL_FIELDS = {"ai_model_id", "temperature"}
 
 # Fields that can be explicitly cleared to None via PATCH
-_CLEARABLE_FIELDS = {"description", "persona", "system_prompt"}
+_CLEARABLE_FIELDS = {"description", "persona", "system_prompt", "guided_config", "advanced_prompt"}
 
 # Valid status transitions
 _VALID_TRANSITIONS: dict[AgentStatus, set[AgentStatus]] = {
@@ -118,6 +119,9 @@ def _build_agent_out(
         language_mode=(prompt.language_mode or "auto") if prompt else "auto",
         knowledge_only=prompt.knowledge_only if prompt else False,
         show_sources=prompt.show_sources if prompt else False,
+        instructions_mode=(prompt.instructions_mode or "guided") if prompt else "guided",
+        guided_config=prompt.guided_config if prompt else None,
+        advanced_prompt=prompt.advanced_prompt if prompt else None,
         avatar_url=get_avatar_url(agent),
         avatar_mime_type=agent.avatar_mime_type,
         avatar_updated_at=agent.avatar_updated_at,
@@ -298,12 +302,16 @@ def update_agent(
 
     # ── Handle prompt fields ──────────────────────────────────────────────────
     for field in ("system_prompt", "persona", "response_style", "language_mode",
-                  "knowledge_only", "show_sources"):
+                  "knowledge_only", "show_sources",
+                  "instructions_mode", "guided_config", "advanced_prompt"):
         if field not in update_data:
             continue
         value = update_data.pop(field)
         if value is None and field not in _CLEARABLE_FIELDS:
             continue
+        # guided_config arrives as GuidedConfigSchema — store as plain dict (JSONB)
+        if field == "guided_config" and isinstance(value, GuidedConfigSchema):
+            value = value.model_dump()
         # Write to satellite (primary source)
         setattr(prompt, field, value)
         # Transition: keep legacy agent columns in sync for fields that exist there
@@ -343,14 +351,29 @@ def update_agent_status(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
     if new_status == AgentStatus.active:
-        # Read system_prompt from satellite settings (primary), fall back to agent field
         prompt = _get_prompt_settings(db, agent.id)
-        system_prompt = prompt.system_prompt if prompt else agent.system_prompt
-        if not system_prompt or not system_prompt.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="system_prompt is required to activate an agent.",
+        mode = (getattr(prompt, "instructions_mode", None) or "guided") if prompt else "guided"
+        if mode == "advanced":
+            adv = (getattr(prompt, "advanced_prompt", None) or "").strip()
+            # Fallback to legacy system_prompt for agents migrated before UX.2
+            if not adv:
+                adv = (prompt.system_prompt or "").strip() if prompt else ""
+            if not adv:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Configure advanced_prompt before activating this agent.",
+                )
+        else:
+            cfg = (getattr(prompt, "guided_config", None) or {}) if prompt else {}
+            has_guided = cfg and any(
+                v for v in cfg.values() if v is not None and v != [] and v != ""
             )
+            legacy = (prompt.system_prompt or "").strip() if prompt else ""
+            if not has_guided and not legacy:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Configure agent behavior before activating.",
+                )
 
     agent.status = new_status.value
     db.commit()

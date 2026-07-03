@@ -1,13 +1,79 @@
 import uuid
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.enums import AgentStatus
 
 ResponseStyle = Literal["concise", "balanced", "detailed"]
 LanguageMode = Literal["auto", "pt", "en", "es"]
+
+# ── Guided instructions types ─────────────────────────────────────────────────
+
+GuidedRole = Literal[
+    "initial_support", "consultive_sales", "presales_qualification",
+    "customer_support", "relationship_postsale", "reception_triage", "custom"
+]
+GuidedPosture = Literal["consultive", "direct", "educational", "welcoming", "technical"]
+GuidedInitiative = Literal["only_respond", "respond_suggest", "drive_conversion"]
+GuidedWhenNoInfo = Literal["ask_context", "direct_to_team", "knowledge_only"]
+InstructionsMode = Literal["guided", "advanced"]
+
+
+class GuidedDoItem(str, Enum):
+    answer_company_questions = "answer_company_questions"
+    explain_products         = "explain_products"
+    qualify_leads            = "qualify_leads"
+    recommend_catalog        = "recommend_catalog"
+    guide_next_step          = "guide_next_step"
+    ask_context              = "ask_context"
+    use_knowledge_base       = "use_knowledge_base"
+
+
+class GuidedDontItem(str, Enum):
+    no_fake_prices             = "no_fake_prices"
+    no_fake_discounts          = "no_fake_discounts"
+    no_guarantee_results       = "no_guarantee_results"
+    no_fake_integrations       = "no_fake_integrations"
+    no_official_partner_claims = "no_official_partner_claims"
+    no_sensitive_data          = "no_sensitive_data"
+    no_out_of_scope            = "no_out_of_scope"
+
+
+class GuidedConfigSchema(BaseModel):
+    role:                  GuidedRole | None = None
+    main_objective:        str | None = Field(default=None, max_length=500)
+    posture:               GuidedPosture | None = None
+    initiative:            GuidedInitiative | None = None
+    when_no_info:          GuidedWhenNoInfo | None = None
+    do_items:              list[GuidedDoItem] = Field(default_factory=list)
+    custom_should_do:      list[str] = Field(default_factory=list)
+    dont_items:            list[GuidedDontItem] = Field(default_factory=list)
+    custom_should_not_do:  list[str] = Field(default_factory=list)
+    extra_restrictions:    str | None = Field(default=None, max_length=1000)
+    good_response_example: str | None = Field(default=None, max_length=2000)
+    bad_response_example:  str | None = Field(default=None, max_length=2000)
+    model_config = ConfigDict(use_enum_values=True)
+
+    @field_validator("custom_should_do", "custom_should_not_do", mode="before")
+    @classmethod
+    def validate_custom_items(cls, v: list | None) -> list:
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            raise ValueError("Must be a list of strings.")
+        result = []
+        for item in v:
+            if not isinstance(item, str):
+                raise ValueError("Each item must be a string.")
+            stripped = item.strip()
+            if stripped:
+                if len(stripped) > 500:
+                    raise ValueError("Each custom item must be at most 500 characters.")
+                result.append(stripped)
+        return result
 
 
 class AgentCreate(BaseModel):
@@ -67,6 +133,9 @@ class AgentUpdate(BaseModel):
     language_mode: LanguageMode | None = None
     knowledge_only: bool | None = None
     show_sources: bool | None = None
+    instructions_mode: InstructionsMode | None = None
+    guided_config: GuidedConfigSchema | None = None
+    advanced_prompt: str | None = Field(default=None, max_length=20000)
 
     @field_validator("name")
     @classmethod
@@ -122,6 +191,9 @@ class AgentOut(BaseModel):
     language_mode: LanguageMode
     knowledge_only: bool
     show_sources: bool
+    instructions_mode: str
+    guided_config: dict | None
+    advanced_prompt: str | None
     avatar_url: str | None
     avatar_mime_type: str | None
     avatar_updated_at: datetime | None

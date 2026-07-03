@@ -256,12 +256,20 @@ def _compile_guided_config(cfg: dict) -> str | None:
 
     do_items = cfg.get("do_items") or []
     do_lines = [f"- {_GUIDED_DO_MAP[i]}" for i in do_items if i in _GUIDED_DO_MAP]
+    for item in (cfg.get("custom_should_do") or []):
+        stripped = item.strip() if isinstance(item, str) else ""
+        if stripped:
+            do_lines.append(f"- {stripped}")
     if do_lines:
         parts.append("What you should do:\n" + "\n".join(do_lines))
 
     dont_items = cfg.get("dont_items") or []
     extra = (cfg.get("extra_restrictions") or "").strip()
     dont_lines = [f"- {_GUIDED_DONT_MAP[i]}" for i in dont_items if i in _GUIDED_DONT_MAP]
+    for item in (cfg.get("custom_should_not_do") or []):
+        stripped = item.strip() if isinstance(item, str) else ""
+        if stripped:
+            dont_lines.append(f"- {stripped}")
     if extra:
         dont_lines.append(f"- {extra}")
     if dont_lines:

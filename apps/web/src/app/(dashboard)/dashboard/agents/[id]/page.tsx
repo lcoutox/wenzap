@@ -21,14 +21,14 @@ import type { WorkspaceTab } from "@/components/agents/workspace/AgentWorkspaceT
 import { ConfigTabs } from "@/components/agents/workspace/ConfigTabs";
 import type { ConfigTab } from "@/components/agents/workspace/ConfigTabs";
 
-import { AgentChat }           from "@/components/agents/workspace/tabs/AgentChat";
-import { ImplantarTab } from "@/components/agents/workspace/tabs/ImplantarTab";
-import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
-import { ConfigInstrucoes }     from "@/components/agents/workspace/tabs/ConfigInstrucoes";
-import { ConfigComportamento }  from "@/components/agents/workspace/tabs/ConfigComportamento";
-import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
-import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
-import { ConfigPipeline }       from "@/components/agents/workspace/tabs/ConfigPipeline";
+import { AgentChat }            from "@/components/agents/workspace/tabs/AgentChat";
+import { ImplantarTab }          from "@/components/agents/workspace/tabs/ImplantarTab";
+import { ConfigGeral }           from "@/components/agents/workspace/tabs/ConfigGeral";
+import { ConfigComportamento }   from "@/components/agents/workspace/tabs/ConfigComportamento";
+import { ConfigConhecimento }    from "@/components/agents/workspace/tabs/ConfigConhecimento";
+import { ConfigModelo }          from "@/components/agents/workspace/tabs/ConfigModelo";
+import { ConfigFerramentas }     from "@/components/agents/workspace/tabs/ConfigFerramentas";
+import { ConfigPipeline }        from "@/components/agents/workspace/tabs/ConfigPipeline";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -264,7 +264,7 @@ export default function AgentWorkspacePage() {
   const readonly    = isArchived || !canWrite;
 
   // Config tabs that have real save functionality (pipeline has its own save button)
-  const isSaveable = ["geral", "instrucoes", "comportamento", "modelo"].includes(configTab);
+  const isSaveable = ["geral", "comportamento", "conhecimento", "modelo"].includes(configTab);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -333,11 +333,13 @@ export default function AgentWorkspacePage() {
                 />
               )}
 
-              {configTab === "instrucoes" && (
-                <ConfigInstrucoes
+              {configTab === "comportamento" && (
+                <ConfigComportamento
                   instructionsMode={instructionsMode}
                   guidedConfig={guidedConfig}
                   advancedPrompt={advancedPrompt}
+                  responseStyle={responseStyle}
+                  languageMode={languageMode}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
@@ -345,21 +347,19 @@ export default function AgentWorkspacePage() {
                   onInstructionsModeChange={setInstructionsMode}
                   onGuidedConfigChange={setGuidedConfig}
                   onAdvancedPromptChange={setAdvancedPrompt}
+                  onResponseStyleChange={setResponseStyle}
+                  onLanguageModeChange={setLanguageMode}
                 />
               )}
 
-              {configTab === "comportamento" && (
-                <ConfigComportamento
-                  responseStyle={responseStyle}
-                  languageMode={languageMode}
+              {configTab === "conhecimento" && (
+                <ConfigConhecimento
                   knowledgeOnly={knowledgeOnly}
                   showSources={showSources}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
-                  onResponseStyleChange={setResponseStyle}
-                  onLanguageModeChange={setLanguageMode}
                   onKnowledgeOnlyChange={setKnowledgeOnly}
                   onShowSourcesChange={setShowSources}
                 />

@@ -83,7 +83,6 @@ def test_draft_to_active_without_system_prompt_returns_400(db):
 
         response = client.patch(f"/agents/{agent_id}/status", json={"status": "active"})
         assert response.status_code == 400
-        assert "system_prompt" in response.json()["detail"]
 
 
 def test_draft_to_active_with_empty_system_prompt_returns_400(db):

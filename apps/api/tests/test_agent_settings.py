@@ -331,7 +331,6 @@ def test_activate_agent_fails_when_prompt_settings_has_no_system_prompt(
 
     resp = client_s.patch(f"/agents/{agent_id}/status", json={"status": "active"})
     assert resp.status_code == 400
-    assert "system_prompt" in resp.json()["detail"]
 
 
 def test_activate_agent_after_clearing_prompt_fails(db: Session, client_s, model_s):

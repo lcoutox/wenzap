@@ -182,3 +182,70 @@ def test_no_instructions_mode_defaults_to_guided_with_fallback():
     # No instructions_mode attr at all
     result = build_agent_instructions_block(s)
     assert result == "Fallback prompt"
+
+
+# ── custom_should_do / custom_should_not_do ───────────────────────────────────
+
+def test_compile_custom_should_do():
+    result = _compile_guided_config({"custom_should_do": ["Always greet by first name", "Ask team size before recommending"]})
+    assert "What you should do:" in result
+    assert "Always greet by first name" in result
+    assert "Ask team size before recommending" in result
+
+
+def test_compile_custom_should_not_do():
+    result = _compile_guided_config({"custom_should_not_do": ["Never mention competitors", "Do not discuss pricing tiers"]})
+    assert "What you must not do:" in result
+    assert "Never mention competitors" in result
+    assert "Do not discuss pricing tiers" in result
+
+
+def test_compile_custom_and_enum_do_items_merged():
+    result = _compile_guided_config({
+        "do_items": ["answer_company_questions"],
+        "custom_should_do": ["Ask the company size before recommending"],
+    })
+    assert "Answer questions about the company." in result
+    assert "Ask the company size before recommending" in result
+
+
+def test_compile_custom_and_enum_dont_items_merged():
+    result = _compile_guided_config({
+        "dont_items": ["no_fake_prices"],
+        "custom_should_not_do": ["Do not mention the legacy plan"],
+    })
+    assert "Do not invent prices" in result
+    assert "Do not mention the legacy plan" in result
+
+
+def test_compile_empty_custom_items_ignored():
+    result = _compile_guided_config({
+        "custom_should_do": ["   ", ""],
+        "main_objective": "Help users",
+    })
+    # Empty strings must not produce lines in the do section
+    assert result is not None
+    assert "What you should do:" not in result
+
+
+def test_advanced_mode_ignores_custom_should_do():
+    s = _FakeSettings(
+        instructions_mode="advanced",
+        advanced_prompt="Be a sales agent.",
+        system_prompt=None,
+        guided_config={"custom_should_do": ["This should be ignored"]},
+    )
+    result = build_agent_instructions_block(s)
+    assert result == "Be a sales agent."
+    assert "This should be ignored" not in (result or "")
+
+
+def test_advanced_mode_ignores_custom_should_not_do():
+    s = _FakeSettings(
+        instructions_mode="advanced",
+        advanced_prompt="Be a support agent.",
+        system_prompt=None,
+        guided_config={"custom_should_not_do": ["This should also be ignored"]},
+    )
+    result = build_agent_instructions_block(s)
+    assert "This should also be ignored" not in (result or "")

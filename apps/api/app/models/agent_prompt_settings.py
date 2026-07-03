@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -22,6 +23,9 @@ class AgentPromptSettings(Base):
     language_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
     knowledge_only: Mapped[bool] = mapped_column(nullable=False, default=False)
     show_sources: Mapped[bool] = mapped_column(nullable=False, default=False)
+    instructions_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="guided")
+    guided_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    advanced_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

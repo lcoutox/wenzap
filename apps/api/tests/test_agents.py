@@ -412,3 +412,91 @@ def _make_admin(db, workspace):
     db.add(m)
     db.commit()
     return u
+
+
+# ── Guided / Advanced Instructions ────────────────────────────────────────────
+
+def test_create_agent_defaults_instructions_mode_to_guided(client_a, subscription_a, ai_model):
+    response = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    assert response.status_code == 201
+    data = response.json()
+    assert data["instructions_mode"] == "guided"
+    assert data["guided_config"] is None
+    assert data["advanced_prompt"] is None
+
+
+def test_patch_agent_to_advanced_mode(client_a, subscription_a, ai_model):
+    create = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = create.json()["id"]
+    response = client_a.patch(f"/agents/{agent_id}", json={
+        "instructions_mode": "advanced",
+        "advanced_prompt": "You are a specialist sales agent.",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instructions_mode"] == "advanced"
+    assert data["advanced_prompt"] == "You are a specialist sales agent."
+
+
+def test_patch_agent_guided_config(client_a, subscription_a, ai_model):
+    create = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = create.json()["id"]
+    response = client_a.patch(f"/agents/{agent_id}", json={
+        "instructions_mode": "guided",
+        "guided_config": {
+            "role": "customer_support",
+            "posture": "welcoming",
+            "do_items": ["answer_company_questions"],
+            "dont_items": ["no_fake_prices"],
+            "custom_should_do": ["Always greet the user by name"],
+            "custom_should_not_do": ["Never discuss competitors"],
+        },
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["instructions_mode"] == "guided"
+    cfg = data["guided_config"]
+    assert cfg["role"] == "customer_support"
+    assert "answer_company_questions" in cfg["do_items"]
+    assert cfg["custom_should_do"] == ["Always greet the user by name"]
+    assert cfg["custom_should_not_do"] == ["Never discuss competitors"]
+
+
+def test_patch_guided_config_invalid_enum_returns_422(client_a, subscription_a, ai_model):
+    create = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = create.json()["id"]
+    response = client_a.patch(f"/agents/{agent_id}", json={
+        "guided_config": {"role": "nonexistent_role"},
+    })
+    assert response.status_code == 422
+
+
+def test_patch_invalid_instructions_mode_returns_422(client_a, subscription_a, ai_model):
+    create = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = create.json()["id"]
+    response = client_a.patch(f"/agents/{agent_id}", json={
+        "instructions_mode": "invalid_mode",
+    })
+    assert response.status_code == 422
+
+
+def test_guided_config_custom_items_too_long_returns_422(client_a, subscription_a, ai_model):
+    create = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = create.json()["id"]
+    response = client_a.patch(f"/agents/{agent_id}", json={
+        "guided_config": {"custom_should_do": ["x" * 501]},
+    })
+    assert response.status_code == 422
+
+
+def test_patch_mode_switch_preserves_other_fields(client_a, subscription_a, ai_model):
+    """Switching mode should not wipe response_style or language_mode."""
+    create = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = create.json()["id"]
+    # Set style first
+    client_a.patch(f"/agents/{agent_id}", json={"response_style": "concise", "language_mode": "pt"})
+    # Switch mode
+    switch = client_a.patch(f"/agents/{agent_id}", json={"instructions_mode": "advanced"})
+    data = switch.json()
+    assert data["response_style"] == "concise"
+    assert data["language_mode"] == "pt"
