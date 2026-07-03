@@ -3,7 +3,17 @@
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import type { Agent, AgentStatus, AiCatalog, AiModel, MemberRole } from "@/lib/api";
+import type {
+  Agent,
+  AgentStatus,
+  AiCatalog,
+  AiModel,
+  GuidedConfig,
+  InstructionsMode,
+  LanguageMode,
+  MemberRole,
+  ResponseStyle,
+} from "@/lib/api";
 
 import { AgentHeader } from "@/components/agents/workspace/AgentHeader";
 import { AgentWorkspaceTabs } from "@/components/agents/workspace/AgentWorkspaceTabs";
@@ -14,12 +24,11 @@ import type { ConfigTab } from "@/components/agents/workspace/ConfigTabs";
 import { AgentChat }           from "@/components/agents/workspace/tabs/AgentChat";
 import { ImplantarTab } from "@/components/agents/workspace/tabs/ImplantarTab";
 import { ConfigGeral }          from "@/components/agents/workspace/tabs/ConfigGeral";
-import { ConfigPrompt }         from "@/components/agents/workspace/tabs/ConfigPrompt";
+import { ConfigInstrucoes }     from "@/components/agents/workspace/tabs/ConfigInstrucoes";
 import { ConfigComportamento }  from "@/components/agents/workspace/tabs/ConfigComportamento";
 import { ConfigModelo }         from "@/components/agents/workspace/tabs/ConfigModelo";
 import { ConfigFerramentas }    from "@/components/agents/workspace/tabs/ConfigFerramentas";
 import { ConfigPipeline }       from "@/components/agents/workspace/tabs/ConfigPipeline";
-import type { LanguageMode, ResponseStyle } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -92,6 +101,9 @@ export default function AgentWorkspacePage() {
   const [languageMode,   setLanguageMode]   = useState<LanguageMode>("auto");
   const [knowledgeOnly,  setKnowledgeOnly]  = useState(false);
   const [showSources,    setShowSources]    = useState(false);
+  const [instructionsMode, setInstructionsMode] = useState<InstructionsMode>("guided");
+  const [guidedConfig, setGuidedConfig] = useState<GuidedConfig>({});
+  const [advancedPrompt, setAdvancedPrompt] = useState("");
 
   // UI state — initialise from ?tab= query param, fallback to "chat"
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
@@ -142,6 +154,9 @@ export default function AgentWorkspacePage() {
         setLanguageMode(agentData.language_mode);
         setKnowledgeOnly(agentData.knowledge_only);
         setShowSources(agentData.show_sources);
+        setInstructionsMode(agentData.instructions_mode ?? "guided");
+        setGuidedConfig(agentData.guided_config ?? {});
+        setAdvancedPrompt(agentData.advanced_prompt ?? "");
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -183,6 +198,10 @@ export default function AgentWorkspacePage() {
         language_mode: languageMode,
         knowledge_only: knowledgeOnly,
         show_sources: showSources,
+        instructions_mode: instructionsMode,
+        guided_config: instructionsMode === "guided" ? guidedConfig : undefined,
+        advanced_prompt:
+          instructionsMode === "advanced" ? advancedPrompt.trim() || null : undefined,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -315,15 +334,17 @@ export default function AgentWorkspacePage() {
               )}
 
               {configTab === "instrucoes" && (
-                <ConfigPrompt
-                  systemPrompt={systemPrompt}
-                  persona={persona}
+                <ConfigInstrucoes
+                  instructionsMode={instructionsMode}
+                  guidedConfig={guidedConfig}
+                  advancedPrompt={advancedPrompt}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
-                  onSystemPromptChange={setSystemPrompt}
-                  onPersonaChange={setPersona}
+                  onInstructionsModeChange={setInstructionsMode}
+                  onGuidedConfigChange={setGuidedConfig}
+                  onAdvancedPromptChange={setAdvancedPrompt}
                 />
               )}
 

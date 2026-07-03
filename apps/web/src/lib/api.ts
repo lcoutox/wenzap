@@ -110,6 +110,57 @@ export type AiCatalog = {
 export type AgentStatus = "draft" | "active" | "inactive" | "archived";
 export type ResponseStyle = "concise" | "balanced" | "detailed";
 export type LanguageMode = "auto" | "pt" | "en" | "es";
+export type InstructionsMode = "guided" | "advanced";
+
+export type GuidedRole =
+  | "initial_support"
+  | "consultive_sales"
+  | "presales_qualification"
+  | "customer_support"
+  | "relationship_postsale"
+  | "reception_triage"
+  | "custom";
+
+export type GuidedPosture =
+  | "consultive"
+  | "direct"
+  | "educational"
+  | "welcoming"
+  | "technical";
+
+export type GuidedInitiative = "only_respond" | "respond_suggest" | "drive_conversion";
+export type GuidedWhenNoInfo = "ask_context" | "direct_to_team" | "knowledge_only";
+
+export type GuidedDoItem =
+  | "answer_company_questions"
+  | "explain_products"
+  | "qualify_leads"
+  | "recommend_catalog"
+  | "guide_next_step"
+  | "ask_context"
+  | "use_knowledge_base";
+
+export type GuidedDontItem =
+  | "no_fake_prices"
+  | "no_fake_discounts"
+  | "no_guarantee_results"
+  | "no_fake_integrations"
+  | "no_official_partner_claims"
+  | "no_sensitive_data"
+  | "no_out_of_scope";
+
+export type GuidedConfig = {
+  role?: GuidedRole | null;
+  main_objective?: string | null;
+  posture?: GuidedPosture | null;
+  initiative?: GuidedInitiative | null;
+  when_no_info?: GuidedWhenNoInfo | null;
+  do_items?: GuidedDoItem[];
+  dont_items?: GuidedDontItem[];
+  extra_restrictions?: string | null;
+  good_response_example?: string | null;
+  bad_response_example?: string | null;
+};
 
 export type Agent = {
   id: string;
@@ -127,6 +178,9 @@ export type Agent = {
   language_mode: LanguageMode;
   knowledge_only: boolean;
   show_sources: boolean;
+  instructions_mode: InstructionsMode;
+  guided_config: GuidedConfig | null;
+  advanced_prompt: string | null;
   avatar_url: string | null;
   avatar_mime_type: string | null;
   avatar_updated_at: string | null;
@@ -160,6 +214,9 @@ export type AgentUpdateInput = {
   language_mode?: LanguageMode;
   knowledge_only?: boolean;
   show_sources?: boolean;
+  instructions_mode?: InstructionsMode;
+  guided_config?: GuidedConfig | null;
+  advanced_prompt?: string | null;
 };
 
 export type AgentStatusUpdateInput = {

@@ -64,7 +64,11 @@ from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent_test import AgentTestModelInfo, AgentTestRequest, AgentTestResponse
 from app.services import playground_service
 from app.services.agent_catalog_scope_service import get_allowed_category_ids
-from app.services.agent_context_builder import build_rag_context_block, build_system_prompt
+from app.services.agent_context_builder import (
+    build_agent_instructions_block,
+    build_rag_context_block,
+    build_system_prompt,
+)
 from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
 from app.services.ai_model_service import PLAN_TIER
 from app.services.catalog_retrieval_service import retrieve_catalog_context
@@ -201,10 +205,12 @@ def run_agent_test(
     ps_knowledge_only = getattr(prompt_settings, "knowledge_only", False)
     ps_show_sources = getattr(prompt_settings, "show_sources", False)
 
+    agent_instructions = build_agent_instructions_block(prompt_settings)
+
     system = build_system_prompt(
         agent_name=agent.name,
         agent_description=agent.description,
-        system_prompt=prompt_settings.system_prompt,
+        system_prompt=prompt_settings.system_prompt or "",
         persona=prompt_settings.persona,
         response_style=ps_response_style,
         language_mode=ps_language_mode,
@@ -212,6 +218,7 @@ def run_agent_test(
         show_sources=ps_show_sources,
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
+        agent_instructions_block=agent_instructions,
     )
 
     if app_settings.ai_prompt_debug:
@@ -420,15 +427,39 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
         system_prompt = ps.system_prompt or ""
         persona = ps.persona
 
+    if ps is not None:
+        # For guided mode with non-empty guided_config, no system_prompt required.
+        mode = getattr(ps, "instructions_mode", None) or "guided"
+        if mode == "advanced":
+            adv = (getattr(ps, "advanced_prompt", None) or "").strip()
+            effective = adv or system_prompt.strip()
+            if not effective:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Configure advanced_prompt before testing this agent.",
+                )
+        elif mode == "guided":
+            cfg = getattr(ps, "guided_config", None) or {}
+            has_guided = bool(
+                cfg and any(
+                    v for v in cfg.values()
+                    if v is not None and v != [] and v != ""
+                )
+            )
+            if not has_guided and not system_prompt.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Configure agent instructions before testing.",
+                )
+        return ps
+
+    # Legacy stub (no prompt settings row)
     effective_prompt = system_prompt.strip()
     if not effective_prompt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A system_prompt is required to test this agent.",
         )
-
-    if ps is not None:
-        return ps
 
     stub = AgentPromptSettings.__new__(AgentPromptSettings)
     stub.system_prompt = system_prompt
@@ -437,6 +468,9 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
     stub.language_mode = None    # defaults to "auto" in builder
     stub.knowledge_only = False
     stub.show_sources = False
+    stub.instructions_mode = "guided"
+    stub.guided_config = None
+    stub.advanced_prompt = None
     return stub
 
 
