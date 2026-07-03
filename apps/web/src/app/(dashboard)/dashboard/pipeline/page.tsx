@@ -12,11 +12,10 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
-  Search,
   Smartphone,
   X,
 } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 import type {
   Agent,
   Pipeline,
@@ -417,148 +416,6 @@ function StageModal({
   );
 }
 
-// ── AddEntryModal ─────────────────────────────────────────────────────────────
-
-function AddEntryModal({
-  open,
-  onClose,
-  onAdded,
-  pipelineId,
-  stages,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onAdded: (e: PipelineEntry) => void;
-  pipelineId: string;
-  stages: PipelineStage[];
-}) {
-  const [search, setSearch] = useState("");
-  const [conversations, setConversations] = useState<{ id: string; contact_name: string | null; status: string }[]>([]);
-  const [selectedConvId, setSelectedConvId] = useState("");
-  const [selectedStageId, setSelectedStageId] = useState(stages[0]?.id ?? "");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setSearch(""); setConversations([]); setSelectedConvId("");
-      setSelectedStageId(stages[0]?.id ?? ""); setError("");
-    }
-  }, [open, stages]);
-
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    if (!search.trim()) { setConversations([]); return; }
-    timer.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const convs = await api.conversations.list({ limit: 20 });
-        const filtered = convs.filter(
-          (c) =>
-            c.contact_name?.toLowerCase().includes(search.toLowerCase()) ||
-            c.id.includes(search),
-        );
-        setConversations(filtered.map((c) => ({ id: c.id, contact_name: c.contact_name, status: c.status })));
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-  }, [search]);
-
-  async function handleAdd() {
-    if (!selectedConvId || !selectedStageId) { setError("Selecione uma conversa e uma etapa."); return; }
-    setSaving(true);
-    setError("");
-    try {
-      const entry = await api.pipelines.entries.create(pipelineId, {
-        conversation_id: selectedConvId,
-        stage_id: selectedStageId,
-      });
-      onAdded(entry);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao adicionar conversa.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="Adicionar conversa ao pipeline">
-      <div className="space-y-4">
-        <Field label="Buscar conversa">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-nb-muted pointer-events-none" />
-            <input
-              autoFocus
-              className="w-full bg-nb-elevated border border-nb-border rounded-xl pl-9 pr-4 py-2.5 text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:border-nb-primary transition-colors"
-              placeholder="Digite o nome do contato…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </Field>
-
-        {loading && (
-          <div className="flex justify-center py-4">
-            <Loader2 className="w-4 h-4 animate-spin text-nb-muted" />
-          </div>
-        )}
-
-        {conversations.length > 0 && (
-          <div className="border border-nb-border rounded-xl overflow-hidden">
-            {conversations.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelectedConvId(c.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors border-b last:border-b-0 border-nb-border/60 ${selectedConvId === c.id ? "bg-nb-primary/10" : "hover:bg-nb-elevated"}`}
-              >
-                <div className={`w-2 h-2 rounded-full shrink-0 ${selectedConvId === c.id ? "bg-nb-primary" : "bg-nb-border"}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-nb-text truncate">{c.contact_name ?? "Contato desconhecido"}</p>
-                  <p className="text-xs text-nb-muted truncate">{c.id}</p>
-                </div>
-                {statusBadge(c.status)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <Field label="Etapa de destino">
-          <select
-            className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text focus:outline-none focus:border-nb-primary transition-colors"
-            value={selectedStageId}
-            onChange={(e) => setSelectedStageId(e.target.value)}
-          >
-            {stages.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </Field>
-
-        {error && <p className="text-xs text-nb-danger">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors">
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={saving || !selectedConvId}
-            className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong disabled:opacity-40 transition-colors"
-          >
-            {saving ? "Adicionando…" : "Adicionar"}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 // ── MoveEntryModal ────────────────────────────────────────────────────────────
 
 function MoveEntryModal({
@@ -761,7 +618,6 @@ function KanbanColumn({
   entries,
   stages,
   pipelineId,
-  onAddEntry,
   onEditStage,
   onMoved,
   onRemoved,
@@ -770,7 +626,6 @@ function KanbanColumn({
   entries: PipelineEntry[];
   stages: PipelineStage[];
   pipelineId: string;
-  onAddEntry: (stageId: string) => void;
   onEditStage: (s: PipelineStage) => void;
   onMoved: (e: PipelineEntry) => void;
   onRemoved: (id: string) => void;
@@ -796,14 +651,6 @@ function KanbanColumn({
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => onAddEntry(stage.id)}
-            className="p-1 rounded-lg hover:bg-nb-border text-nb-muted hover:text-nb-secondary transition-colors"
-            title="Adicionar conversa"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
           <div ref={menuRef} className="relative">
             <button
               type="button"
@@ -923,8 +770,6 @@ export default function PipelinePage() {
   const [createPipelineOpen, setCreatePipelineOpen] = useState(false);
   const [stageModalOpen, setStageModalOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<PipelineStage | undefined>(undefined);
-  const [addEntryOpen, setAddEntryOpen] = useState(false);
-  const [addEntryStageId, setAddEntryStageId] = useState<string>("");
 
   // Load pipelines and agents on mount
   useEffect(() => {
@@ -977,11 +822,6 @@ export default function PipelinePage() {
     setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
-  function handleEntryAdded(entry: PipelineEntry) {
-    setAddEntryOpen(false);
-    setEntries((prev) => [...prev, entry]);
-  }
-
   function handleStageSaved(stage: PipelineStage) {
     setStageModalOpen(false);
     setEditingStage(undefined);
@@ -990,11 +830,6 @@ export default function PipelinePage() {
       if (exists) return prev.map((s) => s.id === stage.id ? stage : s).sort((a, b) => a.position - b.position);
       return [...prev, stage].sort((a, b) => a.position - b.position);
     });
-  }
-
-  function openAddEntry(stageId: string) {
-    setAddEntryStageId(stageId);
-    setAddEntryOpen(true);
   }
 
   function openEditStage(stage: PipelineStage) {
@@ -1113,7 +948,6 @@ export default function PipelinePage() {
                 entries={entries.filter((e) => e.stage_id === stage.id)}
                 stages={sortedStages}
                 pipelineId={selectedPipelineId}
-                onAddEntry={openAddEntry}
                 onEditStage={openEditStage}
                 onMoved={handleEntryMoved}
                 onRemoved={handleEntryRemoved}
@@ -1140,7 +974,6 @@ export default function PipelinePage() {
                 entries={mobileEntries}
                 stages={sortedStages}
                 pipelineId={selectedPipelineId}
-                onAddEntry={openAddEntry}
                 onEditStage={openEditStage}
                 onMoved={handleEntryMoved}
                 onRemoved={handleEntryRemoved}
@@ -1178,13 +1011,6 @@ export default function PipelinePage() {
             initial={editingStage}
             agents={agents}
             nextPosition={stages.length}
-          />
-          <AddEntryModal
-            open={addEntryOpen}
-            onClose={() => setAddEntryOpen(false)}
-            onAdded={handleEntryAdded}
-            pipelineId={selectedPipelineId}
-            stages={sortedStages.filter((s) => !addEntryStageId || s.id === addEntryStageId || true)}
           />
         </>
       )}
