@@ -41,6 +41,7 @@ from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.services.agent_guardrails import detect_prompt_injection
+from app.services.context_tier_service import calculate_credits
 from app.services.conversation_context_builder import build_conversation_context
 
 logger = logging.getLogger(__name__)
@@ -214,7 +215,8 @@ def generate_conversation_agent_reply(
         )
 
     # ── 5. Credit check ───────────────────────────────────────────────────────
-    credits_needed = model.credits_per_message
+    tier = getattr(model_settings, "context_window_tier", None) or "standard"
+    credits_needed = calculate_credits(model.credits_per_message, tier)
     plan_code = _get_workspace_plan_code(db, workspace_id)
     counter = _get_usage_counter(db, workspace_id)
     if counter is None or not _has_credits(db, counter, credits_needed, plan_code):

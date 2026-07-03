@@ -72,6 +72,7 @@ from app.services.agent_context_builder import (
 from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
 from app.services.ai_model_service import PLAN_TIER
 from app.services.catalog_retrieval_service import retrieve_catalog_context
+from app.services.context_tier_service import calculate_credits, get_tier_config
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,8 @@ def run_agent_test(
     plan_code = _get_workspace_plan_code(db, workspace_id)
     _validate_plan(plan_code, model)
     _validate_runtime_support(model, provider)
-    credits_needed = model.credits_per_message
+    tier = getattr(model_settings, "context_window_tier", None) or "standard"
+    credits_needed = calculate_credits(model.credits_per_message, tier)
     counter = _get_usage_counter_or_402(db, workspace_id)
     _validate_credits(counter, credits_needed, plan_code, db)
 
@@ -167,8 +169,10 @@ def run_agent_test(
     # Filter chunks that contain prompt injection patterns before injecting into prompt.
     chunks_safe = _filter_chunks_injection(retrieval_result.chunks)
 
-    # Apply context size limit — drop lowest-ranked chunks that would overflow.
-    chunks_final = _truncate_chunks_to_limit(chunks_safe, app_settings.rag_max_context_chars)
+    # Apply context size limit from agent's context tier (falls back to global config).
+    tier_cfg = get_tier_config(tier)
+    rag_max_chars = tier_cfg.get("rag_max_chars", app_settings.rag_max_context_chars)
+    chunks_final = _truncate_chunks_to_limit(chunks_safe, rag_max_chars)
 
     chunk_contents = [c.content for c in chunks_final]
     rag_context = build_rag_context_block(chunk_contents) if chunks_final else None
@@ -193,6 +197,7 @@ def run_agent_test(
             db,
             workspace_id=workspace_id,
             query=data.message,
+            limit=tier_cfg.get("catalog_limit", 3),
             allowed_category_ids=allowed_category_ids,
         )
     else:

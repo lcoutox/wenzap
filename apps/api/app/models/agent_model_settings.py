@@ -26,7 +26,7 @@ class AgentModelSettings(Base):
     # Preserved for LLM API calls even if the catalog entry changes.
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.70)
-    context_window_tier: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    context_window_tier: Mapped[str] = mapped_column(String(20), nullable=False, default="standard")
     context_window_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

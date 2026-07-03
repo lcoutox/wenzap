@@ -9,6 +9,7 @@ from app.enums import AgentStatus
 
 ResponseStyle = Literal["concise", "balanced", "detailed"]
 LanguageMode = Literal["auto", "pt", "en", "es"]
+ContextTier = Literal["economical", "standard", "broad", "advanced", "maximum"]
 
 # ── Guided instructions types ─────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ class AgentUpdate(BaseModel):
     instructions_mode: InstructionsMode | None = None
     guided_config: GuidedConfigSchema | None = None
     advanced_prompt: str | None = Field(default=None, max_length=20000)
+    context_tier: ContextTier | None = None
 
     @field_validator("name")
     @classmethod
@@ -194,6 +196,7 @@ class AgentOut(BaseModel):
     instructions_mode: str
     guided_config: dict | None
     advanced_prompt: str | None
+    context_tier: str
     avatar_url: str | None
     avatar_mime_type: str | None
     avatar_updated_at: datetime | None

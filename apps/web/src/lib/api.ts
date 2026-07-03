@@ -111,6 +111,28 @@ export type AgentStatus = "draft" | "active" | "inactive" | "archived";
 export type ResponseStyle = "concise" | "balanced" | "detailed";
 export type LanguageMode = "auto" | "pt" | "en" | "es";
 export type InstructionsMode = "guided" | "advanced";
+export type ContextTier = "economical" | "standard" | "broad" | "advanced" | "maximum";
+
+export const CONTEXT_TIERS: {
+  code: ContextTier;
+  label: string;
+  description: string;
+  maxChars: number;
+  creditMultiplier: number;
+}[] = [
+  { code: "economical", label: "Econômico",  description: "Menor custo. Ideal para conversas simples e respostas rápidas.",                            maxChars: 6_000,   creditMultiplier: 1  },
+  { code: "standard",   label: "Padrão",     description: "Recomendado para a maioria dos agentes. Equilibra custo e contexto.",                       maxChars: 15_000,  creditMultiplier: 2  },
+  { code: "broad",      label: "Amplo",      description: "Considera mais histórico e informações conectadas.",                                         maxChars: 25_000,  creditMultiplier: 4  },
+  { code: "advanced",   label: "Avançado",   description: "Indicado para conversas longas, bases maiores e atendimentos mais complexos.",               maxChars: 35_000,  creditMultiplier: 8  },
+  { code: "maximum",    label: "Máximo",     description: "Maior contexto disponível. Alto consumo de créditos.",                                       maxChars: 300_000, creditMultiplier: 16 },
+];
+
+export const CONTEXT_TIER_PLAN_LIMITS: Record<string, ContextTier[]> = {
+  starter:    ["economical", "standard"],
+  growth:     ["economical", "standard", "broad", "advanced"],
+  scale:      ["economical", "standard", "broad", "advanced", "maximum"],
+  enterprise: ["economical", "standard", "broad", "advanced", "maximum"],
+};
 
 export type GuidedRole =
   | "initial_support"
@@ -183,6 +205,7 @@ export type Agent = {
   instructions_mode: InstructionsMode;
   guided_config: GuidedConfig | null;
   advanced_prompt: string | null;
+  context_tier: ContextTier;
   avatar_url: string | null;
   avatar_mime_type: string | null;
   avatar_updated_at: string | null;
@@ -219,6 +242,7 @@ export type AgentUpdateInput = {
   instructions_mode?: InstructionsMode;
   guided_config?: GuidedConfig | null;
   advanced_prompt?: string | null;
+  context_tier?: ContextTier;
 };
 
 export type AgentStatusUpdateInput = {

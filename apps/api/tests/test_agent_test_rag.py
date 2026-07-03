@@ -134,6 +134,7 @@ def _make_agent(db: Session, ws_id: uuid.UUID, model: AiModel) -> Agent:
         ai_model_id=model.id,
         model_name=model.model_name,
         temperature=0.7,
+        context_window_tier="economical",
     ))
     db.flush()
     return agent
@@ -672,14 +673,13 @@ def test_context_limit_only_fitting_chunks_injected(db: Session):
     )
 
     captured: list = []
+    _small_tier = {"rag_max_chars": 60, "history_limit": 20, "catalog_limit": 3, "credit_multiplier": 1}
     # Patch max_context_chars to 60 so c1 (50 chars) fits but c1+c2 (100) doesn't.
     with patch(
         "app.services.agent_test_service.retrieve_context_for_agent",
         return_value=fake_result,
     ):
-        with patch("app.services.agent_test_service.app_settings") as mock_settings:
-            mock_settings.rag_max_context_chars = 60
-            mock_settings.rag_top_k = 5
+        with patch("app.services.agent_test_service.get_tier_config", return_value=_small_tier):
             with patch(_LLM_PATCH, side_effect=lambda r: (captured.append(r), _mock_llm())[1]):
                 with _make_client(db, owner, ws) as client:
                     r = _post(client, agent.id)
@@ -711,13 +711,12 @@ def test_context_limit_over_limit_chunk_recorded_not_injected(db: Session):
         retrieval_duration_ms=5, knowledge_base_ids=[kb.id],
     )
 
+    _small_tier2 = {"rag_max_chars": 60, "history_limit": 20, "catalog_limit": 3, "credit_multiplier": 1}
     with patch(
         "app.services.agent_test_service.retrieve_context_for_agent",
         return_value=fake_result,
     ):
-        with patch("app.services.agent_test_service.app_settings") as mock_settings:
-            mock_settings.rag_max_context_chars = 60
-            mock_settings.rag_top_k = 5
+        with patch("app.services.agent_test_service.get_tier_config", return_value=_small_tier2):
             with patch(_LLM_PATCH, return_value=_mock_llm()):
                 with _make_client(db, owner, ws) as client:
                     _post(client, agent.id)

@@ -180,6 +180,7 @@ def _make_agent(
         ai_model_id=model.id,
         model_name=model.model_name,
         temperature=0.5,
+        context_window_tier="economical",
     ))
     db.flush()
     return agent

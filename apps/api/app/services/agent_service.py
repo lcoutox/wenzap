@@ -17,6 +17,7 @@ from app.services.ai_model_service import (
     get_model_or_404,
     validate_model_for_plan,
 )
+from app.services.context_tier_service import plan_allows_context_tier, validate_context_tier
 
 # Fields routed to agent_prompt_settings
 _PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
@@ -24,7 +25,7 @@ _PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
                   "instructions_mode", "guided_config", "advanced_prompt"}
 
 # Fields routed to agent_model_settings (handled explicitly, not via generic loop)
-_MODEL_FIELDS = {"ai_model_id", "temperature"}
+_MODEL_FIELDS = {"ai_model_id", "temperature", "context_tier"}
 
 # Fields that can be explicitly cleared to None via PATCH
 _CLEARABLE_FIELDS = {"description", "persona", "system_prompt", "guided_config", "advanced_prompt"}
@@ -122,6 +123,7 @@ def _build_agent_out(
         instructions_mode=(prompt.instructions_mode or "guided") if prompt else "guided",
         guided_config=prompt.guided_config if prompt else None,
         advanced_prompt=prompt.advanced_prompt if prompt else None,
+        context_tier=(model_cfg.context_window_tier or "standard") if model_cfg else "standard",
         avatar_url=get_avatar_url(agent),
         avatar_mime_type=agent.avatar_mime_type,
         avatar_updated_at=agent.avatar_updated_at,
@@ -247,6 +249,7 @@ def create_agent(
         ai_model_id=model.id,
         model_name=model.model_name,
         temperature=data.temperature,
+        context_window_tier="standard",
     )
     db.add(model_cfg)
 
@@ -299,6 +302,23 @@ def update_agent(
         if model_cfg is not None:
             model_cfg.temperature = temp_val
         agent.temperature = temp_val  # transition: keep agents in sync
+
+    # ── Handle context_tier ───────────────────────────────────────────────────
+    if "context_tier" in update_data and update_data["context_tier"] is not None:
+        tier_val = update_data.pop("context_tier")
+        if not validate_context_tier(tier_val):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid context_tier '{tier_val}'.",
+            )
+        plan_code = _get_workspace_plan_code(db, workspace_id)
+        if not plan_allows_context_tier(plan_code, tier_val):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Este tamanho de contexto não está disponível no seu plano.",
+            )
+        if model_cfg is not None:
+            model_cfg.context_window_tier = tier_val
 
     # ── Handle prompt fields ──────────────────────────────────────────────────
     for field in ("system_prompt", "persona", "response_style", "language_mode",

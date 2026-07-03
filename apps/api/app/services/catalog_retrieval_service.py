@@ -106,7 +106,7 @@ class CatalogRetrievalResult:
 # ── Retrieval ─────────────────────────────────────────────────────────────────
 
 _DEFAULT_LIMIT = 3
-_MAX_LIMIT = 5
+_MAX_LIMIT = 20
 _MIN_TERM_LENGTH = 2
 _SEMANTIC_WEIGHT = 0.7
 _LEXICAL_WEIGHT = 0.3

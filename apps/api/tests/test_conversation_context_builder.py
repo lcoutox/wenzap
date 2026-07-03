@@ -502,10 +502,8 @@ def test_chunk_char_limit_respected(db: Session, workspace_a: Workspace):
     trigger = _message(db, workspace_a, conv, "AAAA")
     db.commit()
 
-    with patch("app.services.conversation_context_builder.app_settings") as mock_cfg:
-        mock_cfg.conversation_history_limit = 20
-        mock_cfg.rag_max_context_chars = 120  # fits only one 100-char chunk
-        mock_cfg.rag_top_k = 5
+    _small_tier = {"rag_max_chars": 120, "history_limit": 20, "catalog_limit": 3, "credit_multiplier": 1}
+    with patch("app.services.conversation_context_builder.get_tier_config", return_value=_small_tier):
         ctx = _build(db, workspace_a, conv, agent, trigger)
 
     # At most 1 chunk should have been injected

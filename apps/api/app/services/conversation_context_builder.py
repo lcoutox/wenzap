@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
 from app.models.agent import Agent
+from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
@@ -37,6 +38,7 @@ from app.services.catalog_retrieval_service import (
     CatalogRetrievalItem,
     retrieve_catalog_context,
 )
+from app.services.context_tier_service import get_tier_config
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,8 @@ def build_conversation_context(
     agent: Agent,
     trigger_message: ConversationMessage,
     history_limit: int | None = None,
+    rag_max_chars: int | None = None,
+    catalog_limit: int | None = None,
 ) -> ConversationContext:
     """
     Build the full context for an automatic agent reply.
@@ -121,7 +125,22 @@ def build_conversation_context(
     -------
     ConversationContext with all fields populated.
     """
-    limit = history_limit if history_limit is not None else app_settings.conversation_history_limit
+    # Resolve per-agent context tier limits, falling back to global config.
+    model_settings = db.scalar(
+        select(AgentModelSettings).where(AgentModelSettings.agent_id == agent.id)
+    )
+    tier = getattr(model_settings, "context_window_tier", None) or "standard"
+    tier_cfg = get_tier_config(tier)
+
+    limit = history_limit if history_limit is not None else tier_cfg.get(
+        "history_limit", app_settings.conversation_history_limit
+    )
+    effective_rag_max_chars = rag_max_chars if rag_max_chars is not None else tier_cfg.get(
+        "rag_max_chars", app_settings.rag_max_context_chars
+    )
+    effective_catalog_limit = catalog_limit if catalog_limit is not None else tier_cfg.get(
+        "catalog_limit", 3
+    )
 
     # ── Load agent prompt settings ────────────────────────────────────────────
     prompt_settings = _load_prompt_settings(db, agent)
@@ -139,7 +158,7 @@ def build_conversation_context(
     )
 
     chunks_safe = _filter_chunks_injection(retrieval_result.chunks)
-    chunks_final = _truncate_chunks_to_limit(chunks_safe, app_settings.rag_max_context_chars)
+    chunks_final = _truncate_chunks_to_limit(chunks_safe, effective_rag_max_chars)
 
     rag_context: str | None = None
     if chunks_final:
@@ -154,6 +173,7 @@ def build_conversation_context(
             db,
             workspace_id=workspace_id,
             query=trigger_message.content,
+            limit=effective_catalog_limit,
             allowed_category_ids=allowed_category_ids,
         )
     else:

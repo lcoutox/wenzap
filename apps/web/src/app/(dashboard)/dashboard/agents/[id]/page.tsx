@@ -8,6 +8,7 @@ import type {
   AgentStatus,
   AiCatalog,
   AiModel,
+  ContextTier,
   GuidedConfig,
   InstructionsMode,
   LanguageMode,
@@ -83,9 +84,10 @@ export default function AgentWorkspacePage() {
   const searchParams = useSearchParams();
 
   // Remote state
-  const [agent,   setAgent]   = useState<Agent | null>(null);
-  const [catalog, setCatalog] = useState<AiCatalog | null>(null);
-  const [role,    setRole]    = useState<MemberRole | null>(null);
+  const [agent,    setAgent]   = useState<Agent | null>(null);
+  const [catalog,  setCatalog] = useState<AiCatalog | null>(null);
+  const [role,     setRole]    = useState<MemberRole | null>(null);
+  const [planCode, setPlanCode] = useState<string>("starter");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -104,6 +106,7 @@ export default function AgentWorkspacePage() {
   const [instructionsMode, setInstructionsMode] = useState<InstructionsMode>("guided");
   const [guidedConfig, setGuidedConfig] = useState<GuidedConfig>({});
   const [advancedPrompt, setAdvancedPrompt] = useState("");
+  const [contextTier, setContextTier] = useState<ContextTier>("standard");
 
   // UI state — initialise from ?tab= query param, fallback to "chat"
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
@@ -143,6 +146,7 @@ export default function AgentWorkspacePage() {
         setAgent(agentData);
         setRole(me.role);
         setCatalog(catalogData);
+        setPlanCode(catalogData.current_plan);
         setName(agentData.name);
         setDescription(agentData.description ?? "");
         setSystemPrompt(agentData.system_prompt ?? "");
@@ -157,6 +161,7 @@ export default function AgentWorkspacePage() {
         setInstructionsMode(agentData.instructions_mode ?? "guided");
         setGuidedConfig(agentData.guided_config ?? {});
         setAdvancedPrompt(agentData.advanced_prompt ?? "");
+        setContextTier(agentData.context_tier ?? "standard");
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -202,6 +207,7 @@ export default function AgentWorkspacePage() {
         guided_config: instructionsMode === "guided" ? guidedConfig : undefined,
         advanced_prompt:
           instructionsMode === "advanced" ? advancedPrompt.trim() || null : undefined,
+        context_tier: contextTier,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -369,12 +375,15 @@ export default function AgentWorkspacePage() {
                 <ConfigModelo
                   aiModelId={aiModelId}
                   temperature={temperature}
+                  contextTier={contextTier}
+                  planCode={planCode}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
                   onModelChange={(modelId) => setAiModelId(modelId)}
                   onTemperatureChange={setTemperature}
+                  onContextTierChange={setContextTier}
                 />
               )}
             </form>

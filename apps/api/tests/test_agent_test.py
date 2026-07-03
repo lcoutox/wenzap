@@ -213,6 +213,7 @@ def _make_agent(
         ai_model_id=model.id,
         model_name=model.model_name,
         temperature=temperature,
+        context_window_tier="economical",
     )
     db.add(ms)
 
