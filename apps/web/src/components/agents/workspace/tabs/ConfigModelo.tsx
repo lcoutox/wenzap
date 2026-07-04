@@ -6,6 +6,27 @@ import { SaveBar } from "@/components/agents/workspace/SaveBar";
 import { CONTEXT_TIERS, CONTEXT_TIER_PLAN_LIMITS } from "@/lib/api";
 import type { ContextTier } from "@/lib/api";
 
+const TEMPERATURE_PRESETS = [
+  {
+    id: "conservative",
+    label: "Conservador",
+    value: 0.2,
+    description: "Respostas consistentes e previsíveis. Ideal para suporte e FAQ.",
+  },
+  {
+    id: "balanced",
+    label: "Equilibrado",
+    value: 0.7,
+    description: "Combina precisão com naturalidade. Bom para a maioria dos casos.",
+  },
+  {
+    id: "creative",
+    label: "Criativo",
+    value: 1.0,
+    description: "Respostas mais variadas e elaboradas. Útil para vendas e engajamento.",
+  },
+];
+
 function formatChars(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
@@ -133,30 +154,39 @@ export function ConfigModelo({
       {/* Seção 3 — Avançado */}
       <AgentFormSection
         title="Avançado"
-        description="Configurações avançadas de geração de texto."
+        description="Valores baixos deixam o agente mais consistente. Valores altos deixam as respostas mais variadas e criativas, mas menos previsíveis."
       >
-        <div className="space-y-3">
-          <label className="block text-sm text-nb-secondary">
-            Criatividade
-            <span className="text-nb-muted ml-1 text-xs">
-              (valores mais baixos = respostas mais precisas)
-            </span>
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              value={temperature}
-              onChange={(e) => onTemperatureChange(e.target.value)}
-              step="0.1"
-              min="0"
-              max="1"
-              disabled={readonly}
-              className="flex-1 accent-nb-primary disabled:opacity-50"
-            />
-            <span className="w-10 text-sm font-mono text-center text-nb-secondary bg-nb-elevated border border-nb-border rounded-lg px-2 py-1">
-              {parseFloat(temperature).toFixed(1)}
-            </span>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {TEMPERATURE_PRESETS.map((preset) => {
+            const selected = parseFloat(temperature).toFixed(1) === preset.value.toFixed(1);
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                disabled={readonly}
+                onClick={() => onTemperatureChange(String(preset.value))}
+                className={`text-left rounded-xl border p-3.5 transition-all ${
+                  selected
+                    ? "border-nb-primary bg-nb-primary/5 ring-1 ring-nb-primary/30"
+                    : "border-nb-border bg-nb-elevated hover:border-nb-border-strong"
+                } ${readonly ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <div className="flex items-start justify-between gap-1 mb-1">
+                  <p className={`text-sm font-semibold ${selected ? "text-nb-primary-strong" : "text-nb-text"}`}>
+                    {preset.label}
+                  </p>
+                  <span className={`font-mono text-xs px-1.5 py-0.5 rounded-md border flex-shrink-0 ${
+                    selected
+                      ? "bg-nb-primary/10 border-nb-primary/30 text-nb-primary-strong"
+                      : "bg-nb-bg border-nb-border text-nb-muted"
+                  }`}>
+                    {preset.value.toFixed(1)}
+                  </span>
+                </div>
+                <p className="text-xs text-nb-muted leading-relaxed">{preset.description}</p>
+              </button>
+            );
+          })}
         </div>
       </AgentFormSection>
 

@@ -3,20 +3,23 @@ import type { AiCatalog, AiModel } from "@/lib/api";
 import type { CreativityLevel } from "./wizard-types";
 import { CREATIVITY_TEMPERATURE } from "./wizard-types";
 
-const CREATIVITY_OPTIONS: { id: CreativityLevel; label: string; description: string }[] = [
+const CREATIVITY_OPTIONS: { id: CreativityLevel; label: string; value: number; description: string }[] = [
   {
     id: "precise",
-    label: "Mais preciso",
-    description: "Respostas consistentes e baseadas em fatos. Ideal para suporte e dúvidas.",
+    label: "Conservador",
+    value: 0.2,
+    description: "Respostas consistentes e previsíveis. Ideal para suporte e FAQ.",
   },
   {
     id: "balanced",
     label: "Equilibrado",
+    value: 0.7,
     description: "Combina precisão com naturalidade. Bom para a maioria dos casos.",
   },
   {
     id: "creative",
-    label: "Mais criativo",
+    label: "Criativo",
+    value: 1.0,
     description: "Respostas mais variadas e elaboradas. Útil para vendas e engajamento.",
   },
 ];
@@ -113,7 +116,7 @@ export function StepModel({
         <div>
           <p className="text-sm font-medium text-nb-secondary">Criatividade</p>
           <p className="text-xs text-nb-muted mt-0.5">
-            Temperatura: {temperature.toFixed(1)}
+            Valores baixos deixam o agente mais consistente. Valores altos deixam as respostas mais variadas e criativas.
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -130,10 +133,19 @@ export function StepModel({
                     : "border-nb-border bg-nb-elevated hover:bg-nb-panel"
                 }`}
               >
-                <p className={`text-sm font-semibold ${selected ? "text-nb-primary-strong" : "text-nb-text"}`}>
-                  {opt.label}
-                </p>
-                <p className="text-xs text-nb-muted mt-1 leading-relaxed">{opt.description}</p>
+                <div className="flex items-start justify-between gap-1 mb-1">
+                  <p className={`text-sm font-semibold ${selected ? "text-nb-primary-strong" : "text-nb-text"}`}>
+                    {opt.label}
+                  </p>
+                  <span className={`font-mono text-xs px-1.5 py-0.5 rounded-md border flex-shrink-0 ${
+                    selected
+                      ? "bg-nb-primary/10 border-nb-primary/30 text-nb-primary-strong"
+                      : "bg-nb-bg border-nb-border text-nb-muted"
+                  }`}>
+                    {opt.value.toFixed(1)}
+                  </span>
+                </div>
+                <p className="text-xs text-nb-muted leading-relaxed">{opt.description}</p>
               </button>
             );
           })}
