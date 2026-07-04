@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.enums import AgentStatus, SubscriptionStatus
 from app.models.agent import Agent
+from app.models.agent_knowledge_base import AgentKnowledgeBase
 from app.models.agent_model_settings import AgentModelSettings
+from app.models.agent_playground_session import AgentPlaygroundSession
 from app.models.agent_prompt_settings import AgentPromptSettings
+from app.models.agent_test_run import AgentTestRun
+from app.models.channel import Channel
+from app.models.conversation import Conversation
 from app.models.plan import Plan
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.schemas.agent import AgentCreate, AgentOut, AgentUpdate, GuidedConfigSchema
@@ -438,3 +443,48 @@ def archive_agent(
     prompt = _get_prompt_settings(db, agent.id)
     model_cfg = _get_model_settings(db, agent.id)
     return _build_agent_out(agent, prompt, model_cfg)
+
+
+def delete_agent_permanently(
+    db: Session,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+) -> None:
+    agent = _get_agent_or_404(db, workspace_id, agent_id)
+
+    has_conversations = db.scalar(
+        select(func.count()).where(
+            Conversation.agent_id == agent.id,
+            Conversation.workspace_id == workspace_id,
+        )
+    ) or 0
+    if has_conversations > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Este agente possui {has_conversations} conversa(s) e não pode ser excluído permanentemente. Arquive-o em vez disso.",
+        )
+
+    has_channels = db.scalar(
+        select(func.count()).where(
+            Channel.agent_id == agent.id,
+            Channel.workspace_id == workspace_id,
+        )
+    ) or 0
+    if has_channels > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Este agente possui {has_channels} canal(is) publicado(s). Remova os canais antes de excluir.",
+        )
+
+    db.execute(
+        AgentKnowledgeBase.__table__.delete().where(AgentKnowledgeBase.agent_id == agent.id)
+    )
+    db.execute(
+        AgentPlaygroundSession.__table__.delete().where(AgentPlaygroundSession.agent_id == agent.id)
+    )
+    db.execute(
+        AgentTestRun.__table__.delete().where(AgentTestRun.agent_id == agent.id)
+    )
+
+    db.delete(agent)
+    db.commit()

@@ -245,6 +245,17 @@ export default function AgentWorkspacePage() {
     }
   }
 
+  async function handleDeletePermanently() {
+    if (!agent) return;
+    setActionError(null);
+    try {
+      await api.agents.deletePermanently(id);
+      router.push("/dashboard/agents");
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Erro ao excluir agente.");
+    }
+  }
+
   // ── Loading / error states ────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -339,6 +350,9 @@ export default function AgentWorkspacePage() {
                   onNameChange={setName}
                   onDescriptionChange={setDescription}
                   onAvatarChange={setAgent}
+                  onChangeStatus={changeStatus}
+                  onArchive={handleArchive}
+                  onDeletePermanently={handleDeletePermanently}
                 />
               )}
 

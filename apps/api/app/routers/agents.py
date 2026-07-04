@@ -124,6 +124,17 @@ def archive_agent(
     return agent_service.archive_agent(db, current_workspace.id, agent_id)
 
 
+@router.delete("/{agent_id}/permanent", status_code=204)
+def delete_agent_permanently(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_ARCHIVE_ROLES, db, current_workspace, current_user)
+    agent_service.delete_agent_permanently(db, current_workspace.id, agent_id)
+
+
 # ── Playground Sessions ────────────────────────────────────────────────────────
 
 @router.get(

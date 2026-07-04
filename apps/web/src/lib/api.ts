@@ -1374,6 +1374,8 @@ export const api = {
         body: JSON.stringify({ status }),
       }),
     archive: (id: string) => cookieFetch<Agent>(`/agents/${id}`, { method: "DELETE" }),
+    deletePermanently: (id: string) =>
+      cookieFetch<void>(`/agents/${id}/permanent`, { method: "DELETE" }),
     uploadAvatar: async (id: string, file: File): Promise<Agent> => {
       const form = new FormData();
       form.append("file", file);
