@@ -1,29 +1,19 @@
-const STEPS = [
-  "Tipo",
-  "Identidade",
-  "Comportamento",
-  "Conhecimento",
-  "Modelo",
-  "Revisão",
-];
+const STEPS = ["Template", "Identidade", "Conhecimento", "Modelo", "Revisão"];
 
-export function WizardProgress({ current }: { current: number }) {
+export function WizardProgress({ current, total = 5 }: { current: number; total?: number }) {
+  const steps = STEPS.slice(0, total);
+
   return (
     <div className="flex items-center gap-0">
-      {STEPS.map((label, i) => {
-        const step = i + 1;
-        const done    = step < current;
-        const active  = step === current;
-        const future  = step > current;
+      {steps.map((label, i) => {
+        const step   = i + 1;
+        const done   = step < current;
+        const active = step === current;
+        const future = step > current;
         return (
           <div key={step} className="flex items-center">
-            {/* Connector left */}
             {i > 0 && (
-              <div
-                className={`h-px w-6 sm:w-10 transition-colors ${
-                  done ? "bg-nb-primary" : "bg-nb-border"
-                }`}
-              />
+              <div className={`h-px w-6 sm:w-10 transition-colors ${done ? "bg-nb-primary" : "bg-nb-border"}`} />
             )}
             <div className="flex flex-col items-center gap-1">
               <div
@@ -43,11 +33,7 @@ export function WizardProgress({ current }: { current: number }) {
                   step
                 )}
               </div>
-              <span
-                className={`text-[10px] font-medium hidden sm:block ${
-                  active ? "text-nb-primary-strong" : future ? "text-nb-muted" : "text-nb-muted"
-                }`}
-              >
+              <span className={`text-[10px] font-medium hidden sm:block ${active ? "text-nb-primary-strong" : future ? "text-nb-muted" : "text-nb-muted"}`}>
                 {label}
               </span>
             </div>

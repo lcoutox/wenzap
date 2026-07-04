@@ -10,25 +10,19 @@ import type { AiCatalog, KnowledgeBase } from "@/lib/api";
 import {
   INITIAL_WIZARD_STATE,
   CREATIVITY_TEMPERATURE,
-  AGENT_TYPE_DEFAULTS,
 } from "@/components/agents/create/wizard-types";
-import type {
-  WizardState,
-  AgentTypeId,
-  ToneOption,
-  CreativityLevel,
-} from "@/components/agents/create/wizard-types";
-import { buildSystemPrompt, buildPersona } from "@/components/agents/create/buildSystemPrompt";
-import { WizardProgress } from "@/components/agents/create/WizardProgress";
-import { StepAgentType }  from "@/components/agents/create/StepAgentType";
-import { StepIdentity }   from "@/components/agents/create/StepIdentity";
-import { StepBehavior }   from "@/components/agents/create/StepBehavior";
-import { StepKnowledge }  from "@/components/agents/create/StepKnowledge";
-import { StepModel }      from "@/components/agents/create/StepModel";
-import { StepReview }     from "@/components/agents/create/StepReview";
-import { StepSuccess }    from "@/components/agents/create/StepSuccess";
+import type { WizardState, CreativityLevel } from "@/components/agents/create/wizard-types";
+import { AGENT_TEMPLATES } from "@/components/agents/create/templates";
+import type { TemplateId } from "@/components/agents/create/templates";
+import { WizardProgress }  from "@/components/agents/create/WizardProgress";
+import { StepTemplate }    from "@/components/agents/create/StepTemplate";
+import { StepIdentity }    from "@/components/agents/create/StepIdentity";
+import { StepKnowledge }   from "@/components/agents/create/StepKnowledge";
+import { StepModel }       from "@/components/agents/create/StepModel";
+import { StepReview }      from "@/components/agents/create/StepReview";
+import { StepSuccess }     from "@/components/agents/create/StepSuccess";
 
-const TOTAL_STEPS = 6; // wizard steps (success is outside the numbered flow)
+const TOTAL_STEPS = 5;
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -39,12 +33,10 @@ export default function NewAgentPage() {
   const [saving,      setSaving]      = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  // Post-creation success state
-  const [createdAgentId,      setCreatedAgentId]      = useState<string | null>(null);
-  const [connectedKbNames,    setConnectedKbNames]    = useState<string[]>([]);
-  const [kbWarning,           setKbWarning]           = useState(false);
+  const [createdAgentId,   setCreatedAgentId]   = useState<string | null>(null);
+  const [connectedKbNames, setConnectedKbNames] = useState<string[]>([]);
+  const [kbWarning,        setKbWarning]        = useState(false);
 
-  // Shared data fetched once — passed to steps that need them
   const [catalog,     setCatalog]     = useState<AiCatalog | null>(null);
   const [kbs,         setKbs]         = useState<KnowledgeBase[]>([]);
   const [catalogLoad, setCatalogLoad] = useState(false);
@@ -52,18 +44,16 @@ export default function NewAgentPage() {
   const catalogFetched = useRef(false);
   const kbsFetched     = useRef(false);
 
-  // Fetch catalog when reaching step 5 — ref prevents re-fetch on re-render
   useEffect(() => {
-    if (step === 5 && !catalogFetched.current) {
+    if (step === 4 && !catalogFetched.current) {
       catalogFetched.current = true;
       setCatalogLoad(true);
       api.aiModels.list().then(setCatalog).catch(() => {}).finally(() => setCatalogLoad(false));
     }
   }, [step]);
 
-  // Fetch KBs when reaching step 4 — ref prevents re-fetch on re-render
   useEffect(() => {
-    if (step === 4 && !kbsFetched.current) {
+    if (step === 3 && !kbsFetched.current) {
       kbsFetched.current = true;
       setKbsLoad(true);
       api.knowledgeBases.list().then(setKbs).catch(() => {}).finally(() => setKbsLoad(false));
@@ -74,14 +64,14 @@ export default function NewAgentPage() {
     setState((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleAgentTypeChange(type: AgentTypeId) {
-    const defaults = AGENT_TYPE_DEFAULTS[type];
+  function handleTemplateChange(id: TemplateId) {
+    const template = AGENT_TEMPLATES.find((t) => t.id === id)!;
     setState((prev) => ({
       ...prev,
-      agentType:   type,
-      description: prev.description || defaults.descriptionHint,
-      tones:       prev.tones.length > 0 ? prev.tones : (defaults.tones as ToneOption[]),
-      rules:       prev.rules.length > 0 ? prev.rules : defaults.rules,
+      templateId: id,
+      guidedConfig: template.guidedConfig,
+      // Pre-fill name hint from template if user hasn't typed yet
+      name: prev.name,
     }));
   }
 
@@ -89,11 +79,9 @@ export default function NewAgentPage() {
 
   function validate(): boolean {
     const e: Record<string, string> = {};
-    if (step === 1 && !state.agentType)           e.agentType   = "Selecione um tipo de agente.";
-    if (step === 2 && !state.name.trim())          e.name        = "Informe o nome do agente.";
-    if (step === 2 && !state.description.trim())   e.description = "Informe o objetivo do agente.";
-    if (step === 3 && state.tones.length === 0)    e.tones       = "Selecione ao menos um tom de voz.";
-    if (step === 5 && !state.aiModelId)            e.aiModelId   = "Selecione um modelo de IA.";
+    if (step === 1 && !state.templateId)         e.templateId  = "Selecione um template para continuar.";
+    if (step === 2 && !state.name.trim())         e.name        = "Informe o nome do agente.";
+    if (step === 4 && !state.aiModelId)           e.aiModelId   = "Selecione um modelo de IA.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -114,21 +102,19 @@ export default function NewAgentPage() {
     setGlobalError(null);
     setSaving(true);
 
-    const systemPrompt = buildSystemPrompt(state);
-    const persona      = buildPersona(state.tones);
-    const temperature  = CREATIVITY_TEMPERATURE[state.creativity];
+    const temperature = CREATIVITY_TEMPERATURE[state.creativity];
+    const isBlank     = state.templateId === "blank";
 
     try {
       const agent = await api.agents.create({
-        name:          state.name.trim(),
-        description:   state.description.trim() || undefined,
-        system_prompt: systemPrompt || undefined,
-        persona:       persona || undefined,
-        ai_model_id:   state.aiModelId!,
+        name:             state.name.trim(),
+        description:      state.description.trim() || undefined,
+        ai_model_id:      state.aiModelId!,
         temperature,
+        instructions_mode: isBlank ? "advanced" : "guided",
+        guided_config:    isBlank ? undefined : state.guidedConfig,
       });
 
-      // Connect KBs and track which succeeded
       let hasKbFailure = false;
       const successfulKbNames: string[] = [];
       if (state.selectedKbIds.length > 0) {
@@ -159,9 +145,8 @@ export default function NewAgentPage() {
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  // Resolve model display name for success screen
   function findModelDisplayName(): string | null {
     if (!catalog || !state.aiModelId) return null;
     for (const p of catalog.providers) {
@@ -171,7 +156,10 @@ export default function NewAgentPage() {
     return null;
   }
 
-  // Success screen — replaces wizard after creation
+  const selectedTemplate = AGENT_TEMPLATES.find((t) => t.id === state.templateId) ?? null;
+
+  // ── Success screen ───────────────────────────────────────────────────────────
+
   if (createdAgentId) {
     return (
       <div className="max-w-2xl space-y-6 pb-24">
@@ -182,7 +170,6 @@ export default function NewAgentPage() {
           <ChevronRight className="w-3.5 h-3.5 text-nb-border-strong" />
           <span className="text-nb-secondary font-medium">Novo agente</span>
         </nav>
-
         <div className="bg-nb-panel border border-nb-border rounded-2xl p-6">
           <StepSuccess
             agentId={createdAgentId}
@@ -191,16 +178,17 @@ export default function NewAgentPage() {
             modelDisplayName={findModelDisplayName()}
             connectedKbNames={connectedKbNames}
             kbWarning={kbWarning}
-            agentType={state.agentType}
+            agentType={null}
           />
         </div>
       </div>
     );
   }
 
+  // ── Wizard ───────────────────────────────────────────────────────────────────
+
   return (
     <div className="max-w-2xl space-y-6 pb-24">
-
       <nav className="flex items-center gap-1 text-sm text-nb-muted">
         <Link href="/dashboard/agents" className="hover:text-nb-secondary transition-colors">
           Agentes
@@ -209,13 +197,13 @@ export default function NewAgentPage() {
         <span className="text-nb-secondary font-medium">Novo agente</span>
       </nav>
 
-      <WizardProgress current={step} />
+      <WizardProgress current={step} total={TOTAL_STEPS} />
 
       <div className="bg-nb-panel border border-nb-border rounded-2xl p-6">
         {step === 1 && (
-          <StepAgentType
-            value={state.agentType}
-            onChange={handleAgentTypeChange}
+          <StepTemplate
+            value={state.templateId}
+            onChange={handleTemplateChange}
           />
         )}
         {step === 2 && (
@@ -228,19 +216,6 @@ export default function NewAgentPage() {
           />
         )}
         {step === 3 && (
-          <StepBehavior
-            tones={state.tones}
-            rules={state.rules}
-            avoidText={state.avoidText}
-            additionalInstructions={state.additionalInstructions}
-            onTonesChange={(v) => update({ tones: v })}
-            onRulesChange={(v) => update({ rules: v })}
-            onAvoidTextChange={(v) => update({ avoidText: v })}
-            onAdditionalInstructionsChange={(v) => update({ additionalInstructions: v })}
-            errors={errors}
-          />
-        )}
-        {step === 4 && (
           <StepKnowledge
             kbs={kbs}
             loading={kbsLoad}
@@ -248,7 +223,7 @@ export default function NewAgentPage() {
             onSelectionChange={(v) => update({ selectedKbIds: v })}
           />
         )}
-        {step === 5 && (
+        {step === 4 && (
           <StepModel
             catalog={catalog}
             loading={catalogLoad}
@@ -259,11 +234,12 @@ export default function NewAgentPage() {
             errors={errors}
           />
         )}
-        {step === 6 && (
+        {step === 5 && (
           <StepReview
             state={state}
             catalog={catalog}
             kbs={kbs}
+            selectedTemplate={selectedTemplate}
           />
         )}
       </div>
@@ -294,10 +270,10 @@ export default function NewAgentPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {step === 4 && (
+          {step === 3 && (
             <button
               type="button"
-              onClick={() => { setErrors({}); setStep(5); }}
+              onClick={() => { setErrors({}); setStep(4); }}
               className="px-4 py-2 text-sm font-medium text-nb-muted hover:text-nb-secondary transition-colors"
             >
               Pular

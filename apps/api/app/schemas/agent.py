@@ -89,6 +89,8 @@ class AgentCreate(BaseModel):
     language_mode: LanguageMode = "auto"
     knowledge_only: bool = False
     show_sources: bool = False
+    instructions_mode: InstructionsMode = "guided"
+    guided_config: GuidedConfigSchema | None = None
 
     @field_validator("name")
     @classmethod

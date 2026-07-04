@@ -241,6 +241,10 @@ def create_agent(
     db.add(agent)
     db.flush()  # get agent.id without committing
 
+    guided_config_dict = (
+        data.guided_config.model_dump() if data.guided_config is not None else None
+    )
+
     # Create satellite settings in the same transaction
     prompt = AgentPromptSettings(
         agent_id=agent.id,
@@ -250,7 +254,9 @@ def create_agent(
         language_mode=data.language_mode,
         knowledge_only=data.knowledge_only,
         show_sources=data.show_sources,
-        reply_delay_seconds=5,  # new agents default to 5s debounce for better UX
+        reply_delay_seconds=5,
+        instructions_mode=data.instructions_mode,
+        guided_config=guided_config_dict,
     )
     db.add(prompt)
 

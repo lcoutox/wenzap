@@ -226,6 +226,8 @@ export type AgentCreateInput = {
   language_mode?: LanguageMode;
   knowledge_only?: boolean;
   show_sources?: boolean;
+  instructions_mode?: InstructionsMode;
+  guided_config?: GuidedConfig;
 };
 
 export type AgentUpdateInput = {

@@ -4,40 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Send, Loader2, AlertCircle, Bot } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AgentTypeId } from "./wizard-types";
-
-const TYPE_SUGGESTIONS: Record<AgentTypeId, string[]> = {
-  support: [
-    "Quais serviços vocês oferecem?",
-    "Como posso falar com um atendente?",
-    "Qual é o horário de atendimento?",
-  ],
-  sales: [
-    "Tenho interesse no serviço. Como funciona?",
-    "Quais informações você precisa para me ajudar?",
-    "Vocês atendem minha região?",
-  ],
-  tech: [
-    "Estou com um problema. Pode me ajudar?",
-    "Como faço para resolver uma dúvida comum?",
-    "Quais informações preciso enviar para o suporte?",
-  ],
-  scheduling: [
-    "Gostaria de agendar um horário.",
-    "Quais horários estão disponíveis?",
-    "O que preciso informar para agendar?",
-  ],
-  collections: [
-    "Recebi uma mensagem de acompanhamento. Pode me explicar?",
-    "Como posso regularizar minha situação?",
-    "Com quem posso falar sobre pagamento?",
-  ],
-  blank: [
-    "Olá, como você pode me ajudar?",
-    "O que você sabe responder?",
-    "Quais informações você usa?",
-  ],
-};
+const DEFAULT_SUGGESTIONS = [
+  "Olá, como você pode me ajudar?",
+  "O que você sabe responder?",
+  "Quais informações você usa?",
+];
 
 function SummaryRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -57,7 +28,6 @@ export function StepSuccess({
   modelDisplayName,
   connectedKbNames,
   kbWarning,
-  agentType,
 }: {
   agentId: string;
   agentName: string;
@@ -65,7 +35,7 @@ export function StepSuccess({
   modelDisplayName: string | null;
   connectedKbNames: string[];
   kbWarning: boolean;
-  agentType: AgentTypeId | null;
+  agentType?: unknown;
 }) {
   const router = useRouter();
 
@@ -75,7 +45,7 @@ export function StepSuccess({
   const [testError,    setTestError]    = useState<string | null>(null);
   const [sessionId,    setSessionId]    = useState<string | undefined>(undefined);
 
-  const suggestions = TYPE_SUGGESTIONS[agentType ?? "blank"];
+  const suggestions = DEFAULT_SUGGESTIONS;
 
   async function sendTest(message: string) {
     if (!message.trim() || testLoading) return;
