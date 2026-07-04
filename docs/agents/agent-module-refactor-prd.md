@@ -318,7 +318,7 @@ Itens previstos:
 ---
 
 ### ✅ AI Reply UX.1 — Debounced Auto Reply
-**Status:** Implementado — **aguardando aprovação para commit/tag/push**
+**Commit:** `151101a` | **Tag:** `AI-Reply-UX.1`
 
 - Campo `reply_delay_seconds` em `agent_prompt_settings` (valores: 0, 3, 5, 8, 15)
 - Novos agentes: default 5s. Existentes: 0 (preserva comportamento)
@@ -354,6 +354,35 @@ Itens previstos:
 
 ---
 
+### ✅ Model UX.2 — Temperatura com preset + valor numérico
+**Commit:** `6f8d7f4`
+
+- Substituiu campo de texto por 3 cards visuais: Conservador (0.2) / Equilibrado (0.7) / Criativo (1.0)
+- Valor numérico visível em badge `font-mono` em cada card
+- Texto explicativo: "Valores baixos deixam o agente mais consistente. Valores altos deixam as respostas mais criativas, mas menos previsíveis."
+
+---
+
+### ✅ AI Reply UX.2 — Typing Indicator no Widget
+**Commit:** `953e5a1`
+
+- Indicador de "digitando" com três pontos animados (bounce) durante debounce e geração
+- Keyframes `nb-typing-bounce` injetados via `<style>` no widget (inline styles, sem Tailwind)
+- Substituiu spinner anterior
+
+---
+
+### ✅ Knowledge UX.1 — Fontes disponíveis e fallback de conhecimento
+**Commit:** `bb4e327`
+
+- Campo `knowledge_fallback` (ask_context | direct_to_team | knowledge_general) em `agent_prompt_settings`
+- Migration `060_agent_knowledge_fallback.py`
+- Aba Conhecimento agora lista bases conectadas com link para Ferramentas
+- Seção "Quando não encontrar resposta" com 3 cards de seleção
+- Blocos de instrução injetados no system prompt para `direct_to_team` e `knowledge_general`
+
+---
+
 ### ⬜ Agent Behavior UX.2 — Refinamentos do Comportamento
 
 **O que ainda falta vs o que está implementado:**
@@ -363,24 +392,6 @@ Itens previstos:
 - ✅ Tempo de resposta (reply_delay_seconds)
 - ✅ Campo "Quando não souber" com UI própria (seção 4 do modo guiado)
 - ⬜ Revisar copy de cada campo para explicar melhor o que faz
-
----
-
-### ⬜ Model UX.2 — Temperatura com preset + valor numérico
-
-**Objetivo:** Substituir o campo de texto da temperatura por presets visuais.
-
-- Conservador (0.2) / Equilibrado (0.7) / Criativo (1.0)
-- Mostrar valor numérico para usuário avançado
-- Texto explicativo: "Valores baixos deixam o agente mais consistente. Valores altos deixam as respostas mais criativas, mas menos previsíveis."
-
----
-
-### ⬜ AI Reply UX.2 — Typing Indicator no Widget
-
-**Objetivo:** Mostrar indicador visual de "agente está digitando" durante debounce e geração.
-
-**Dependência:** AI Reply UX.1 (✅ implementado)
 
 ---
 
@@ -398,9 +409,10 @@ Itens previstos:
 | 2 | Agent Config UX.3 — Geral bem acabada | ✅ `Agent-Config-UX.3` |
 | 3 | Agent Behavior UX.3 — Templates | ✅ `Agent-Behavior-UX.3` |
 | 4 | Agent Behavior UX.2 — Refinamentos copy | ⬜ Baixa prioridade |
-| 5 | Model UX.2 — Temperatura com preset | ⬜ Próximo |
-| 6 | AI Reply UX.2 — Typing Indicator | ⬜ |
-| 7 | Segurança — primeira feature | ⬜ Futuro |
+| 5 | Model UX.2 — Temperatura com preset | ✅ `6f8d7f4` |
+| 6 | AI Reply UX.2 — Typing Indicator | ✅ `953e5a1` |
+| 7 | Knowledge UX.1 — Fontes + fallback | ✅ `bb4e327` |
+| 8 | Segurança — primeira feature | ⬜ Futuro |
 
 ---
 
