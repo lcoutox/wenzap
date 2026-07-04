@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageCircle, Send, X, Loader2, AlertTriangle } from "lucide-react";
+import { MessageCircle, Send, X, AlertTriangle } from "lucide-react";
 import { publicWidgetApi } from "@/lib/publicWidgetApi";
 import type { ContactCaptureData, PublicWidgetConfig, WidgetMessage, WidgetPageContext } from "@/lib/publicWidgetApi";
 
@@ -401,6 +401,12 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
       style={{ "--widget-primary": primaryColor } as React.CSSProperties}
       className="fixed inset-0 pointer-events-none"
     >
+      <style>{`
+        @keyframes nb-typing-bounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-5px); opacity: 1; }
+        }
+      `}</style>
       {/* ── Chat Window ───────────────────────────────────────────────────── */}
       {open && (
         <div
@@ -696,30 +702,32 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
               );
             })}
 
-            {/* Loading indicator */}
+            {/* Typing indicator */}
             {(sending || polling) && (
               <div style={{ display: "flex", justifyContent: "flex-start" }}>
                 <div
                   style={{
                     background: t.agentBg,
                     borderRadius: "16px 16px 16px 4px",
-                    padding: "9px 13px",
+                    padding: "12px 16px",
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
+                    gap: 5,
                   }}
                 >
-                  <Loader2
-                    style={{
-                      width: 13,
-                      height: 13,
-                      color: t.loadingText,
-                      animation: "spin 1s linear infinite",
-                    }}
-                  />
-                  <span style={{ fontSize: 12, color: t.loadingText }}>
-                    Respondendo...
-                  </span>
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      style={{
+                        display: "block",
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: t.loadingText,
+                        animation: `nb-typing-bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             )}
