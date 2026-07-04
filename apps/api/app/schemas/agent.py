@@ -10,6 +10,7 @@ from app.enums import AgentStatus
 ResponseStyle = Literal["concise", "balanced", "detailed"]
 LanguageMode = Literal["auto", "pt", "en", "es"]
 ContextTier = Literal["economical", "standard", "broad", "advanced", "maximum"]
+KnowledgeFallback = Literal["ask_context", "direct_to_team", "knowledge_general"]
 
 # ── Guided instructions types ─────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ class AgentCreate(BaseModel):
     language_mode: LanguageMode = "auto"
     knowledge_only: bool = False
     show_sources: bool = False
+    knowledge_fallback: KnowledgeFallback | None = None
     instructions_mode: InstructionsMode = "guided"
     guided_config: GuidedConfigSchema | None = None
 
@@ -136,6 +138,7 @@ class AgentUpdate(BaseModel):
     language_mode: LanguageMode | None = None
     knowledge_only: bool | None = None
     show_sources: bool | None = None
+    knowledge_fallback: KnowledgeFallback | None = None
     instructions_mode: InstructionsMode | None = None
     guided_config: GuidedConfigSchema | None = None
     advanced_prompt: str | None = Field(default=None, max_length=20000)
@@ -203,6 +206,7 @@ class AgentOut(BaseModel):
     language_mode: LanguageMode
     knowledge_only: bool
     show_sources: bool
+    knowledge_fallback: str | None
     instructions_mode: str
     guided_config: dict | None
     advanced_prompt: str | None

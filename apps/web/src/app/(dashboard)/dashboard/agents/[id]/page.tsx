@@ -108,6 +108,7 @@ export default function AgentWorkspacePage() {
   const [advancedPrompt, setAdvancedPrompt] = useState("");
   const [contextTier, setContextTier] = useState<ContextTier>("standard");
   const [replyDelaySeconds, setReplyDelaySeconds] = useState<number>(5);
+  const [knowledgeFallback, setKnowledgeFallback] = useState<"ask_context" | "direct_to_team" | "knowledge_general" | null>(null);
 
   // UI state — initialise from ?tab= query param, fallback to "chat"
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
@@ -164,6 +165,7 @@ export default function AgentWorkspacePage() {
         setAdvancedPrompt(agentData.advanced_prompt ?? "");
         setContextTier(agentData.context_tier ?? "standard");
         setReplyDelaySeconds(agentData.reply_delay_seconds ?? 5);
+        setKnowledgeFallback((agentData.knowledge_fallback as "ask_context" | "direct_to_team" | "knowledge_general" | null) ?? null);
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -211,6 +213,7 @@ export default function AgentWorkspacePage() {
           instructionsMode === "advanced" ? advancedPrompt.trim() || null : undefined,
         context_tier: contextTier,
         reply_delay_seconds: replyDelaySeconds,
+        knowledge_fallback: knowledgeFallback,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -379,14 +382,18 @@ export default function AgentWorkspacePage() {
 
               {configTab === "conhecimento" && (
                 <ConfigConhecimento
+                  agentId={id}
                   knowledgeOnly={knowledgeOnly}
                   showSources={showSources}
+                  knowledgeFallback={knowledgeFallback}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
                   onKnowledgeOnlyChange={setKnowledgeOnly}
                   onShowSourcesChange={setShowSources}
+                  onKnowledgeFallbackChange={setKnowledgeFallback}
+                  onSwitchToTools={() => handleTabChange("tools")}
                 />
               )}
 

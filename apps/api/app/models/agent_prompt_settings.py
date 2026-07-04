@@ -23,6 +23,7 @@ class AgentPromptSettings(Base):
     language_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
     knowledge_only: Mapped[bool] = mapped_column(nullable=False, default=False)
     show_sources: Mapped[bool] = mapped_column(nullable=False, default=False)
+    knowledge_fallback: Mapped[str | None] = mapped_column(String(30), nullable=True)
     instructions_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="guided")
     guided_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     advanced_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)

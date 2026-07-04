@@ -221,6 +221,7 @@ def run_agent_test(
         language_mode=ps_language_mode,
         knowledge_only=ps_knowledge_only,
         show_sources=ps_show_sources,
+        knowledge_fallback=getattr(prompt_settings, "knowledge_fallback", None),
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
         agent_instructions_block=agent_instructions,

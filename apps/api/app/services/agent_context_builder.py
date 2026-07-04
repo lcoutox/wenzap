@@ -333,6 +333,7 @@ def build_system_prompt(
     language_mode: str | None = None,
     knowledge_only: bool = False,
     show_sources: bool = False,
+    knowledge_fallback: str | None = None,
     rag_context: str | None = None,
     catalog_context: str | None = None,
     channel_hint: str | None = None,
@@ -404,6 +405,19 @@ def build_system_prompt(
 
     if knowledge_only:
         parts.append(_KNOWLEDGE_ONLY_BLOCK)
+
+    if knowledge_fallback == "direct_to_team":
+        parts.append(
+            "KNOWLEDGE FALLBACK: When the knowledge base does not contain enough information "
+            "to answer, do not improvise. Instead, tell the user you could not find the answer "
+            "and offer to connect them with a human team member."
+        )
+    elif knowledge_fallback == "knowledge_general":
+        parts.append(
+            "KNOWLEDGE FALLBACK: When the knowledge base does not have a specific answer, "
+            "you may use your general knowledge to help — but clearly distinguish what comes "
+            "from the knowledge base versus your general understanding."
+        )
 
     if rag_context:
         parts.append(rag_context)

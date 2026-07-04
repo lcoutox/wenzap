@@ -26,7 +26,7 @@ from app.services.context_tier_service import plan_allows_context_tier, validate
 
 # Fields routed to agent_prompt_settings
 _PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
-                  "knowledge_only", "show_sources",
+                  "knowledge_only", "show_sources", "knowledge_fallback",
                   "instructions_mode", "guided_config", "advanced_prompt",
                   "reply_delay_seconds"}
 
@@ -128,6 +128,7 @@ def _build_agent_out(
         language_mode=(prompt.language_mode or "auto") if prompt else "auto",
         knowledge_only=prompt.knowledge_only if prompt else False,
         show_sources=prompt.show_sources if prompt else False,
+        knowledge_fallback=(prompt.knowledge_fallback or None) if prompt else None,
         instructions_mode=(prompt.instructions_mode or "guided") if prompt else "guided",
         guided_config=prompt.guided_config if prompt else None,
         advanced_prompt=prompt.advanced_prompt if prompt else None,
@@ -254,6 +255,7 @@ def create_agent(
         language_mode=data.language_mode,
         knowledge_only=data.knowledge_only,
         show_sources=data.show_sources,
+        knowledge_fallback=data.knowledge_fallback,
         reply_delay_seconds=5,
         instructions_mode=data.instructions_mode,
         guided_config=guided_config_dict,

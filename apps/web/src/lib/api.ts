@@ -202,6 +202,7 @@ export type Agent = {
   language_mode: LanguageMode;
   knowledge_only: boolean;
   show_sources: boolean;
+  knowledge_fallback: string | null;
   instructions_mode: InstructionsMode;
   guided_config: GuidedConfig | null;
   advanced_prompt: string | null;
@@ -247,6 +248,7 @@ export type AgentUpdateInput = {
   advanced_prompt?: string | null;
   context_tier?: ContextTier;
   reply_delay_seconds?: number;
+  knowledge_fallback?: string | null;
 };
 
 export type AgentStatusUpdateInput = {
