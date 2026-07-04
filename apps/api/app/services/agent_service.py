@@ -22,7 +22,10 @@ from app.services.context_tier_service import plan_allows_context_tier, validate
 # Fields routed to agent_prompt_settings
 _PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
                   "knowledge_only", "show_sources",
-                  "instructions_mode", "guided_config", "advanced_prompt"}
+                  "instructions_mode", "guided_config", "advanced_prompt",
+                  "reply_delay_seconds"}
+
+_VALID_REPLY_DELAYS: frozenset[int] = frozenset([0, 3, 5, 8, 15])
 
 # Fields routed to agent_model_settings (handled explicitly, not via generic loop)
 _MODEL_FIELDS = {"ai_model_id", "temperature", "context_tier"}
@@ -124,6 +127,7 @@ def _build_agent_out(
         guided_config=prompt.guided_config if prompt else None,
         advanced_prompt=prompt.advanced_prompt if prompt else None,
         context_tier=(model_cfg.context_window_tier or "standard") if model_cfg else "standard",
+        reply_delay_seconds=int(prompt.reply_delay_seconds) if prompt else 0,
         avatar_url=get_avatar_url(agent),
         avatar_mime_type=agent.avatar_mime_type,
         avatar_updated_at=agent.avatar_updated_at,
@@ -241,6 +245,7 @@ def create_agent(
         language_mode=data.language_mode,
         knowledge_only=data.knowledge_only,
         show_sources=data.show_sources,
+        reply_delay_seconds=5,  # new agents default to 5s debounce for better UX
     )
     db.add(prompt)
 
@@ -319,6 +324,16 @@ def update_agent(
             )
         if model_cfg is not None:
             model_cfg.context_window_tier = tier_val
+
+    # ── Handle reply_delay_seconds ────────────────────────────────────────────
+    if "reply_delay_seconds" in update_data and update_data["reply_delay_seconds"] is not None:
+        delay_val = update_data.pop("reply_delay_seconds")
+        if delay_val not in _VALID_REPLY_DELAYS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"reply_delay_seconds must be one of: {sorted(_VALID_REPLY_DELAYS)}.",
+            )
+        prompt.reply_delay_seconds = delay_val
 
     # ── Handle prompt fields ──────────────────────────────────────────────────
     for field in ("system_prompt", "persona", "response_style", "language_mode",

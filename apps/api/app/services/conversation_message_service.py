@@ -190,14 +190,29 @@ def create_message(
     eligible, _reason = should_auto_reply_to_message(conv, msg)
     if eligible:
         try:
-            from app.services.conversation_agent_reply_service import (  # noqa: PLC0415
-                generate_conversation_agent_reply,
+            from sqlalchemy import select as _select  # noqa: PLC0415
+
+            from app.models.agent_prompt_settings import AgentPromptSettings  # noqa: PLC0415
+            from app.services.auto_reply_scheduler import (  # noqa: PLC0415
+                schedule_agent_auto_reply,
             )
-            generate_conversation_agent_reply(db, workspace_id, conv, msg)
+            prompt_cfg = db.scalar(
+                _select(AgentPromptSettings)
+                .where(AgentPromptSettings.agent_id == conv.agent_id)
+            )
+            delay = int(getattr(prompt_cfg, "reply_delay_seconds", 0) or 0)
+            schedule_agent_auto_reply(
+                workspace_id=workspace_id,
+                conversation_id=conv.id,
+                agent_id=conv.agent_id,
+                trigger_message_id=msg.id,
+                delay_seconds=delay,
+                db=db,
+            )
         except Exception:
-            # Reply service must never crash the message creation endpoint.
+            # Scheduler must never crash the message creation endpoint.
             logger.exception(
-                "Auto-reply failed for conversation %s message %s",
+                "Auto-reply scheduling failed for conversation %s message %s",
                 conv.id,
                 msg.id,
             )

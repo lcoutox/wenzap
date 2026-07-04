@@ -206,6 +206,7 @@ export type Agent = {
   guided_config: GuidedConfig | null;
   advanced_prompt: string | null;
   context_tier: ContextTier;
+  reply_delay_seconds: number;
   avatar_url: string | null;
   avatar_mime_type: string | null;
   avatar_updated_at: string | null;
@@ -243,6 +244,7 @@ export type AgentUpdateInput = {
   guided_config?: GuidedConfig | null;
   advanced_prompt?: string | null;
   context_tier?: ContextTier;
+  reply_delay_seconds?: number;
 };
 
 export type AgentStatusUpdateInput = {

@@ -138,6 +138,14 @@ class AgentUpdate(BaseModel):
     guided_config: GuidedConfigSchema | None = None
     advanced_prompt: str | None = Field(default=None, max_length=20000)
     context_tier: ContextTier | None = None
+    reply_delay_seconds: int | None = None
+
+    @field_validator("reply_delay_seconds")
+    @classmethod
+    def validate_reply_delay(cls, v: int | None) -> int | None:
+        if v is not None and v not in {0, 3, 5, 8, 15}:
+            raise ValueError("reply_delay_seconds must be one of: 0, 3, 5, 8, 15.")
+        return v
 
     @field_validator("name")
     @classmethod
@@ -197,6 +205,7 @@ class AgentOut(BaseModel):
     guided_config: dict | None
     advanced_prompt: str | None
     context_tier: str
+    reply_delay_seconds: int
     avatar_url: str | None
     avatar_mime_type: str | None
     avatar_updated_at: datetime | None

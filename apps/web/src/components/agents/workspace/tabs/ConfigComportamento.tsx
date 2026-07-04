@@ -448,12 +448,25 @@ function AdvancedForm({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+// ── Reply delay options ───────────────────────────────────────────────────────
+
+const REPLY_DELAY_OPTIONS: { value: number; label: string; recommended?: boolean }[] = [
+  { value: 0,  label: "Imediato" },
+  { value: 3,  label: "3 segundos" },
+  { value: 5,  label: "5 segundos", recommended: true },
+  { value: 8,  label: "8 segundos" },
+  { value: 15, label: "15 segundos" },
+];
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function ConfigComportamento({
   instructionsMode,
   guidedConfig,
   advancedPrompt,
   responseStyle,
   languageMode,
+  replyDelaySeconds,
   readonly,
   saving,
   saveError,
@@ -463,12 +476,14 @@ export function ConfigComportamento({
   onAdvancedPromptChange,
   onResponseStyleChange,
   onLanguageModeChange,
+  onReplyDelaySecondsChange,
 }: {
   instructionsMode: InstructionsMode;
   guidedConfig: GuidedConfig;
   advancedPrompt: string;
   responseStyle: ResponseStyle;
   languageMode: LanguageMode;
+  replyDelaySeconds: number;
   readonly: boolean;
   saving: boolean;
   saveError: string | null;
@@ -478,6 +493,7 @@ export function ConfigComportamento({
   onAdvancedPromptChange: (v: string) => void;
   onResponseStyleChange: (v: ResponseStyle) => void;
   onLanguageModeChange: (v: LanguageMode) => void;
+  onReplyDelaySecondsChange: (v: number) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -524,6 +540,45 @@ export function ConfigComportamento({
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
+      </AgentFormSection>
+
+      {/* Tempo de resposta */}
+      <AgentFormSection
+        title="Tempo de resposta"
+        description="O agente espera alguns segundos após a última mensagem do cliente antes de responder. Isso evita respostas quebradas quando o cliente envia várias mensagens seguidas."
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          {REPLY_DELAY_OPTIONS.map(({ value, label, recommended }) => {
+            const active = replyDelaySeconds === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                disabled={readonly}
+                onClick={() => !readonly && onReplyDelaySecondsChange(value)}
+                className={`
+                  relative text-left rounded-xl border p-3 transition-all text-sm
+                  ${readonly ? "cursor-not-allowed opacity-60" : "cursor-pointer"}
+                  ${active
+                    ? "border-nb-primary bg-nb-primary-bg/50 ring-1 ring-nb-primary/40"
+                    : "border-nb-border bg-nb-elevated hover:border-nb-border-strong"}
+                `}
+              >
+                <span className={`font-medium ${active ? "text-nb-primary-strong" : "text-nb-text"}`}>
+                  {label}
+                </span>
+                {recommended && (
+                  <span className="block text-[10px] text-nb-primary mt-0.5">Recomendado</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {replyDelaySeconds === 0 && (
+          <p className="text-xs text-nb-muted mt-2">
+            Pode responder mais rápido, mas pode gerar respostas antes do cliente terminar de digitar.
+          </p>
+        )}
       </AgentFormSection>
 
       {/* Modo de instruções */}

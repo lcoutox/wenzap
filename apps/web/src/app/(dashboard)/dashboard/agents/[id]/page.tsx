@@ -107,6 +107,7 @@ export default function AgentWorkspacePage() {
   const [guidedConfig, setGuidedConfig] = useState<GuidedConfig>({});
   const [advancedPrompt, setAdvancedPrompt] = useState("");
   const [contextTier, setContextTier] = useState<ContextTier>("standard");
+  const [replyDelaySeconds, setReplyDelaySeconds] = useState<number>(5);
 
   // UI state — initialise from ?tab= query param, fallback to "chat"
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
@@ -162,6 +163,7 @@ export default function AgentWorkspacePage() {
         setGuidedConfig(agentData.guided_config ?? {});
         setAdvancedPrompt(agentData.advanced_prompt ?? "");
         setContextTier(agentData.context_tier ?? "standard");
+        setReplyDelaySeconds(agentData.reply_delay_seconds ?? 5);
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -208,6 +210,7 @@ export default function AgentWorkspacePage() {
         advanced_prompt:
           instructionsMode === "advanced" ? advancedPrompt.trim() || null : undefined,
         context_tier: contextTier,
+        reply_delay_seconds: replyDelaySeconds,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -346,6 +349,7 @@ export default function AgentWorkspacePage() {
                   advancedPrompt={advancedPrompt}
                   responseStyle={responseStyle}
                   languageMode={languageMode}
+                  replyDelaySeconds={replyDelaySeconds}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
@@ -355,6 +359,7 @@ export default function AgentWorkspacePage() {
                   onAdvancedPromptChange={setAdvancedPrompt}
                   onResponseStyleChange={setResponseStyle}
                   onLanguageModeChange={setLanguageMode}
+                  onReplyDelaySecondsChange={setReplyDelaySeconds}
                 />
               )}
 

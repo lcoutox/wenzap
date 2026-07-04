@@ -35,6 +35,7 @@ Não contém: prompt, tom, estilo, conhecimento, modelo, pipeline.
 **Pergunta:** Como este agente conversa?
 
 Contém:
+- **Tempo de resposta** (`reply_delay_seconds`): 0 / 3 / 5 / 8 / 15 segundos — debounce antes de gerar resposta automática. Ver `docs/agents/reply-delay-and-message-debounce.md`.
 - **Estilo de resposta** (`response_style`): objetivo / equilibrado / detalhado
 - **Idioma** (`language_mode`): automático / pt / en / es
 - **Modo de configuração**: Guiado ou Avançado

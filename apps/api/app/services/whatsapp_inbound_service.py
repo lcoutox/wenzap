@@ -291,15 +291,29 @@ def _trigger_agent_reply(
     conversation: Conversation,
     trigger_message: ConversationMessage,
 ) -> None:
-    """Dispatch auto-reply; errors are logged and never propagate."""
+    """Schedule auto-reply via debounce scheduler; errors are logged and never propagate."""
     try:
-        from app.services.conversation_agent_reply_service import (  # noqa: PLC0415
-            generate_conversation_agent_reply,
+        from sqlalchemy import select as _select  # noqa: PLC0415
+
+        from app.models.agent_prompt_settings import AgentPromptSettings  # noqa: PLC0415
+        from app.services.auto_reply_scheduler import schedule_agent_auto_reply  # noqa: PLC0415
+
+        prompt_cfg = db.scalar(
+            _select(AgentPromptSettings)
+            .where(AgentPromptSettings.agent_id == conversation.agent_id)
         )
-        generate_conversation_agent_reply(db, workspace_id, conversation, trigger_message)
+        delay = int(getattr(prompt_cfg, "reply_delay_seconds", 0) or 0)
+        schedule_agent_auto_reply(
+            workspace_id=workspace_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            trigger_message_id=trigger_message.id,
+            delay_seconds=delay,
+            db=db,
+        )
     except Exception:
         logger.exception(
-            "whatsapp_inbound auto-reply failed conversation=%s message=%s",
+            "whatsapp_inbound auto-reply scheduling failed conversation=%s message=%s",
             conversation.id,
             trigger_message.id,
         )
