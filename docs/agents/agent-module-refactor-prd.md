@@ -332,21 +332,25 @@ Itens previstos:
 
 ---
 
-### ⬜ Agent Config UX.3 — Aba Geral bem acabada
+### ✅ Agent Config UX.3 — Aba Geral bem acabada
+**Commit:** `b5cce47` | **Tag:** `Agent-Config-UX.3`
 
-**Objetivo:** Fechar a aba Geral conforme especificado acima.
+- ID do agente com botão "Copiar ID" (feedback visual por 2s)
+- `updated_at` ao lado de `created_at` (somente leitura)
+- Status editável dentro da aba Geral (toggle Ativar/Desativar)
+- Área de perigo: Arquivar (preserva histórico) + Excluir permanentemente (confirmação digitando o nome)
+- Backend: `DELETE /agents/{id}/permanent` com verificação de dependências
 
-**O que falta vs o que já existe:**
-- ✅ Nome, descrição, avatar (já existem)
-- ✅ Status (já existe no header)
-- ⬜ ID do agente visível com botão "Copiar ID"
-- ⬜ Criado em / Atualizado em (somente leitura)
-- ⬜ Status movido para dentro da aba Geral (hoje só está no header)
-- ⬜ Área de perigo: Arquivar com texto explicativo + confirmação forte para Excluir
+---
 
-**Arquivos:**
-- `apps/web/src/components/agents/workspace/tabs/ConfigGeral.tsx`
-- `apps/api/app/services/agent_service.py`
+### ✅ Agent Behavior UX.3 — Templates de Agente
+**Commit:** `43acd1a` | **Tag:** `Agent-Behavior-UX.3`
+
+- Galeria de 7 templates no wizard de criação: Suporte ao Cliente / Vendas e Qualificação / FAQ / Onboarding / Cobrança e Follow-up / Assistente Interno / Criar do zero
+- Cada template pré-preenche `guided_config` completo
+- Wizard simplificado de 6 para 5 steps (template → identidade → conhecimento → modelo → revisão)
+- Backend `AgentCreate` agora aceita `instructions_mode` e `guided_config`
+- Templates aplicados uma vez na criação — sem vínculo permanente
 
 ---
 
@@ -357,19 +361,8 @@ Itens previstos:
 - ✅ `custom_should_do` e `custom_should_not_do`
 - ✅ Estilo de resposta, idioma em Comportamento
 - ✅ Tempo de resposta (reply_delay_seconds)
+- ✅ Campo "Quando não souber" com UI própria (seção 4 do modo guiado)
 - ⬜ Revisar copy de cada campo para explicar melhor o que faz
-- ⬜ Campo "Quando não souber" como select próprio (hoje está dentro do guided_config mas sem UI clara)
-- ⬜ Verificar se aviso do modo avançado está claro sobre o que ele não substitui
-
----
-
-### ⬜ Agent Behavior UX.3 — Templates de Agente
-
-**Objetivo:** Galeria de templates no fluxo de criação para pré-preencher `guided_config`.
-
-Templates previstos: Suporte ao Cliente / Vendas Consultivas / Qualificação de Leads / Onboarding / FAQ / Assistente Interno
-
-Templates são aplicados uma vez na criação — não criam vínculo permanente.
 
 ---
 
@@ -401,11 +394,11 @@ Templates são aplicados uma vez na criação — não criam vínculo permanente
 
 | # | Fase | Status |
 |---|---|---|
-| 1 | AI Reply UX.1 | ✅ Implementado — aguarda commit |
-| 2 | Agent Config UX.3 — Geral bem acabada | ⬜ Próximo |
-| 3 | Agent Behavior UX.2 — Refinamentos copy + quando não souber | ⬜ |
-| 4 | Agent Behavior UX.3 — Templates | ⬜ |
-| 5 | Model UX.2 — Temperatura com preset | ⬜ |
+| 1 | AI Reply UX.1 | ✅ `AI-Reply-UX.1` |
+| 2 | Agent Config UX.3 — Geral bem acabada | ✅ `Agent-Config-UX.3` |
+| 3 | Agent Behavior UX.3 — Templates | ✅ `Agent-Behavior-UX.3` |
+| 4 | Agent Behavior UX.2 — Refinamentos copy | ⬜ Baixa prioridade |
+| 5 | Model UX.2 — Temperatura com preset | ⬜ Próximo |
 | 6 | AI Reply UX.2 — Typing Indicator | ⬜ |
 | 7 | Segurança — primeira feature | ⬜ Futuro |
 
