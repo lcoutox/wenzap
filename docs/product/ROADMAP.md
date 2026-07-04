@@ -50,7 +50,8 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Aba Comportamento — estilo, idioma, tempo de resposta | ✅ Feito | `483bdee` + `151101a` |
 | Aba Conhecimento — knowledge_only, show_sources, fallback | ✅ Feito | `bb4e327` |
 | Aba Conhecimento — lista de fontes conectadas | ✅ Feito | `bb4e327` |
-| Aba Modelo — seleção de modelo + context tiers | ✅ Feito | `622dcd2` |
+| Aba Modelo — seleção de modelo + context tiers (Anthropic + OpenAI) | ✅ Feito | `622dcd2` |
+| Aba Modelo — suporte a Google (Gemini) e modelos Nexbrain | ⬜ Planejado | — |
 | Aba Modelo — temperatura com presets visuais | ✅ Feito | `6f8d7f4` |
 | Aba Pipeline — pipeline e etapa padrão | ✅ Feito | Pipeline.1 |
 | Aba Segurança — domínios permitidos do widget | ⬜ Planejado | — |
@@ -244,6 +245,7 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 | Aba Segurança — implementação completa | ⏸ Adiado | Baixa urgência no MVP; adicionar quando houver casos reais de abuso |
 | Agent Behavior UX.2 — revisão de copy | ⏸ Adiado | Baixa prioridade; UX funciona bem |
 | Aba Conhecimento — opção "Encaminhar para equipe" no fallback | ⏸ Adiado | Feature de Human Handoff ainda não desenhada; opção removida da UI até estar implementada |
+| Aba Modelo — provedores Google e Nexbrain | ⏸ Adiado | Integração LLM não implementada; providers ocultos da UI até estarem prontos |
 
 ---
 

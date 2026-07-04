@@ -44,9 +44,14 @@ def _is_available(plan_code: str, model_min_plan: str) -> bool:
 def get_catalog(db: Session, workspace_id: uuid.UUID) -> AiCatalogOut:
     plan_code = _get_workspace_plan_code(db, workspace_id)
 
+    ENABLED_PROVIDERS = {"anthropic", "openai"}
+
     providers = db.scalars(
         select(AiModelProvider)
-        .where(AiModelProvider.is_active.is_(True))
+        .where(
+            AiModelProvider.is_active.is_(True),
+            AiModelProvider.code.in_(ENABLED_PROVIDERS),
+        )
         .order_by(AiModelProvider.name)
     ).all()
 
