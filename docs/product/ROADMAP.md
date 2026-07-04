@@ -55,6 +55,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Aba Pipeline — pipeline e etapa padrão | ✅ Feito | Pipeline.1 |
 | Aba Segurança — domínios permitidos do widget | ⬜ Planejado | — |
 | Aba Segurança — limite de mensagens por visitante | ⬜ Planejado | — |
+| Aba Conhecimento — fallback "Encaminhar para equipe" | ⬜ Planejado | depende de Human Handoff |
 
 #### 2.2 Playground
 
@@ -242,6 +243,7 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 |---|---|---|
 | Aba Segurança — implementação completa | ⏸ Adiado | Baixa urgência no MVP; adicionar quando houver casos reais de abuso |
 | Agent Behavior UX.2 — revisão de copy | ⏸ Adiado | Baixa prioridade; UX funciona bem |
+| Aba Conhecimento — opção "Encaminhar para equipe" no fallback | ⏸ Adiado | Feature de Human Handoff ainda não desenhada; opção removida da UI até estar implementada |
 
 ---
 

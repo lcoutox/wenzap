@@ -48,11 +48,6 @@ const FALLBACK_OPTIONS: { value: KnowledgeFallback; label: string; description: 
     description: "O agente pede mais detalhes ao usuário antes de responder.",
   },
   {
-    value: "direct_to_team",
-    label: "Encaminhar para equipe",
-    description: "O agente avisa que não encontrou a informação e oferece transferência para um humano.",
-  },
-  {
     value: "knowledge_general",
     label: "Usar conhecimento geral",
     description: "O agente responde com conhecimento geral, deixando claro que a resposta não veio da base.",
