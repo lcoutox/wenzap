@@ -29,11 +29,16 @@ def _require_meta_review_access(
     db: Session = Depends(get_db),
 ) -> User:
     role = workspace_service.get_current_member_role(db, workspace.id, current_user.id)
+    logger.info("META_REVIEW_AUTH email=%s role=%r role_str=%r", current_user.email, role, str(role))
+
     if str(role) != "owner":
+        logger.warning("META_REVIEW_AUTH denied: role check failed (role=%r)", role)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado.")
 
     allowed = settings.meta_review_admin_emails_list
+    logger.info("META_REVIEW_AUTH allowed_emails=%r", allowed)
     if allowed and current_user.email.lower() not in allowed:
+        logger.warning("META_REVIEW_AUTH denied: email %r not in allowed list", current_user.email)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado.")
 
     return current_user
