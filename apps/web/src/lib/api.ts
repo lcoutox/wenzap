@@ -1012,6 +1012,72 @@ export type AgentPipelineSettingsInput = {
   default_pipeline_stage_id: string | null;
 };
 
+// ── Meta Review ──────────────────────────────────────────────────────────────
+
+export type MetaReviewStatus = {
+  has_access_token: boolean;
+  has_waba_id: boolean;
+  has_phone_number_id: boolean;
+  has_webhook_verify_token: boolean;
+  has_admin_emails: boolean;
+  phone_number_id_masked: string;
+  waba_id_masked: string;
+  webhook_signature_required: boolean;
+};
+
+export type MetaReviewSendResult = {
+  success: boolean;
+  message_id?: string;
+  to?: string;
+  status?: string;
+  error?: { code: string; message: string };
+};
+
+export type MetaReviewTemplateInput = {
+  name: string;
+  language: string;
+  category: string;
+  body: string;
+};
+
+export type MetaReviewTemplateResult = {
+  success: boolean;
+  template_id?: string;
+  meta_template_id?: string;
+  status?: string;
+  error?: { code: string; message: string };
+};
+
+export type MetaReviewTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  category: string;
+  body: string;
+  status: string;
+  meta_template_id: string | null;
+  created_at: string;
+};
+
+export type MetaReviewMessage = {
+  id: string;
+  direction: string;
+  body: string | null;
+  status: string | null;
+  meta_message_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type MetaReviewLog = {
+  id: string;
+  event_type: string;
+  status: string;
+  summary: string | null;
+  created_at: string;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -1563,5 +1629,22 @@ export const api = {
         return res.json() as Promise<KnowledgeSource>;
       },
     },
+  },
+
+  metaReview: {
+    status: () => cookieFetch<MetaReviewStatus>("/admin/meta-review/whatsapp/status"),
+    sendTest: (to: string, message: string) =>
+      cookieFetch<MetaReviewSendResult>("/admin/meta-review/whatsapp/send-test", {
+        method: "POST",
+        body: JSON.stringify({ to, message }),
+      }),
+    createTemplate: (data: MetaReviewTemplateInput) =>
+      cookieFetch<MetaReviewTemplateResult>("/admin/meta-review/whatsapp/templates", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    listTemplates: () => cookieFetch<MetaReviewTemplate[]>("/admin/meta-review/whatsapp/templates"),
+    listMessages: () => cookieFetch<MetaReviewMessage[]>("/admin/meta-review/whatsapp/messages"),
+    listLogs: () => cookieFetch<MetaReviewLog[]>("/admin/meta-review/whatsapp/logs"),
   },
 };

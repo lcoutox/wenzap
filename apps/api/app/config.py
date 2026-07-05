@@ -80,6 +80,25 @@ class Settings(BaseSettings):
     meta_app_secret: str = ""
     meta_graph_api_version: str = "v25.0"
 
+    # ── Meta Review (App Review — single-tenant, provisório) ──────────────────
+    # Credenciais da WABA oficial da Nexalt para gravação dos vídeos de App Review.
+    # META_ACCESS_TOKEN nunca deve ser exposto no frontend nem logado.
+    meta_review_waba_id: str = ""
+    meta_review_phone_number_id: str = ""
+    meta_review_access_token: str = ""
+    meta_review_webhook_verify_token: str = ""
+    # Validação de assinatura X-Hub-Signature-256 no webhook POST.
+    # Em produção deve ser True. Pode ser False apenas em testes locais.
+    meta_review_webhook_signature_required: bool = True
+    # E-mails autorizados a acessar /admin/meta-review (CSV).
+    # Restrição extra além de role=owner, pois owners de outros workspaces
+    # não devem acessar configurações internas da Nexalt.
+    meta_review_admin_emails: str = ""
+
+    @property
+    def meta_review_admin_emails_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.meta_review_admin_emails.split(",") if e.strip()]
+
     # ── Credential encryption ─────────────────────────────────────────────────
     # Required for encrypted channel credentials (db: token refs).
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # noqa: E501

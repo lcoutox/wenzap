@@ -38,6 +38,12 @@ from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_onboarding_profile import WorkspaceOnboardingProfile
 from app.models.workspace_subscription import WorkspaceSubscription
+from app.models.whatsapp_review_config import WhatsappReviewConfig
+from app.models.whatsapp_review_contact import WhatsappReviewContact
+from app.models.whatsapp_review_conversation import WhatsappReviewConversation
+from app.models.whatsapp_review_message import WhatsappReviewMessage
+from app.models.whatsapp_review_template import WhatsappReviewTemplate
+from app.models.whatsapp_review_log import WhatsappReviewLog
 
 __all__ = [
     "User",
@@ -80,4 +86,10 @@ __all__ = [
     "Pipeline",
     "PipelineStage",
     "PipelineEntry",
+    "WhatsappReviewConfig",
+    "WhatsappReviewContact",
+    "WhatsappReviewConversation",
+    "WhatsappReviewMessage",
+    "WhatsappReviewTemplate",
+    "WhatsappReviewLog",
 ]
