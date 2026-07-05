@@ -28,6 +28,7 @@ import { ConfigGeral }           from "@/components/agents/workspace/tabs/Config
 import { ConfigComportamento }   from "@/components/agents/workspace/tabs/ConfigComportamento";
 import { ConfigConhecimento }    from "@/components/agents/workspace/tabs/ConfigConhecimento";
 import { ConfigModelo }          from "@/components/agents/workspace/tabs/ConfigModelo";
+import { ConfigAvancado }        from "@/components/agents/workspace/tabs/ConfigAvancado";
 import { ConfigFerramentas }     from "@/components/agents/workspace/tabs/ConfigFerramentas";
 import { ConfigPipeline }        from "@/components/agents/workspace/tabs/ConfigPipeline";
 
@@ -287,7 +288,7 @@ export default function AgentWorkspacePage() {
   const readonly    = isArchived || !canWrite;
 
   // Config tabs that have real save functionality (pipeline has its own save button)
-  const isSaveable = ["geral", "comportamento", "conhecimento", "modelo"].includes(configTab);
+  const isSaveable = ["geral", "comportamento", "conhecimento", "modelo", "avancado"].includes(configTab);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -400,6 +401,16 @@ export default function AgentWorkspacePage() {
               {configTab === "modelo" && (
                 <ConfigModelo
                   aiModelId={aiModelId}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onModelChange={(modelId) => setAiModelId(modelId)}
+                />
+              )}
+
+              {configTab === "avancado" && (
+                <ConfigAvancado
                   temperature={temperature}
                   contextTier={contextTier}
                   planCode={planCode}
@@ -407,7 +418,6 @@ export default function AgentWorkspacePage() {
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
-                  onModelChange={(modelId) => setAiModelId(modelId)}
                   onTemperatureChange={setTemperature}
                   onContextTierChange={setContextTier}
                 />

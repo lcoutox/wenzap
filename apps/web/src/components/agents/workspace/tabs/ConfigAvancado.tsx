@@ -1,108 +1,171 @@
 import { AgentFormSection } from "@/components/agents/AgentFormSection";
 import { SaveBar } from "@/components/agents/workspace/SaveBar";
+import { CONTEXT_TIERS, CONTEXT_TIER_PLAN_LIMITS } from "@/lib/api";
+import type { ContextTier } from "@/lib/api";
 
-function PlaceholderToggle({ label, description }: { label: string; description: string }) {
+const TEMPERATURE_PRESETS = [
+  {
+    id: "conservative",
+    label: "Conservador",
+    value: 0.2,
+    description: "Respostas consistentes e previsíveis. Ideal para suporte e FAQ.",
+  },
+  {
+    id: "balanced",
+    label: "Equilibrado",
+    value: 0.7,
+    description: "Combina precisão com naturalidade. Bom para a maioria dos casos.",
+  },
+  {
+    id: "creative",
+    label: "Criativo",
+    value: 1.0,
+    description: "Respostas mais variadas e elaboradas. Útil para vendas e engajamento.",
+  },
+];
+
+function formatChars(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
+function ContextTierCard({
+  tier,
+  selected,
+  disabled,
+  planCode,
+  onClick,
+}: {
+  tier: typeof CONTEXT_TIERS[number];
+  selected: boolean;
+  disabled: boolean;
+  planCode: string;
+  onClick: () => void;
+}) {
+  const allowed = (CONTEXT_TIER_PLAN_LIMITS[planCode] ?? CONTEXT_TIER_PLAN_LIMITS["starter"]).includes(tier.code);
+  const locked = !allowed;
+
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-nb-border last:border-0">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-nb-muted">{label}</p>
-        <p className="text-xs text-nb-muted/60 mt-0.5">{description}</p>
-      </div>
-      <div className="flex-shrink-0 flex items-center gap-2">
-        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-nb-elevated text-nb-muted border border-nb-border leading-none tracking-wide">
-          EM BREVE
+    <button
+      type="button"
+      disabled={disabled || locked}
+      onClick={onClick}
+      className={`
+        relative flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-all
+        ${selected
+          ? "border-nb-primary bg-nb-primary/5 shadow-sm"
+          : "border-nb-border bg-nb-panel hover:border-nb-border-strong"}
+        ${(disabled || locked) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+      `}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className={`text-sm font-semibold ${selected ? "text-nb-primary-strong" : "text-nb-primary-text"}`}>
+          {tier.label}
         </span>
-        <div className="w-9 h-5 rounded-full bg-nb-border cursor-not-allowed opacity-40" />
+        <div className="flex items-center gap-1.5 shrink-0">
+          {locked && (
+            <span className="text-[10px] font-medium bg-nb-elevated border border-nb-border text-nb-muted px-1.5 py-0.5 rounded-md">
+              Plano superior
+            </span>
+          )}
+          {selected && !locked && (
+            <span className="text-[10px] font-medium bg-nb-primary text-white px-1.5 py-0.5 rounded-md">
+              Selecionado
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+
+      <div className="flex items-center gap-3 text-xs text-nb-muted">
+        <span>{formatChars(tier.maxChars)} caracteres</span>
+        <span>·</span>
+        <span>{tier.creditMultiplier}× créditos</span>
+      </div>
+
+      <p className="text-xs text-nb-muted leading-relaxed">
+        {tier.description}
+      </p>
+    </button>
   );
 }
 
 export function ConfigAvancado({
   temperature,
+  contextTier,
+  planCode,
   readonly,
   saving,
   saveError,
   saveSuccess,
   onTemperatureChange,
+  onContextTierChange,
 }: {
   temperature: string;
+  contextTier: ContextTier;
+  planCode: string;
   readonly: boolean;
   saving: boolean;
   saveError: string | null;
   saveSuccess: boolean;
   onTemperatureChange: (v: string) => void;
+  onContextTierChange: (tier: ContextTier) => void;
 }) {
   return (
     <div className="space-y-5">
       <AgentFormSection
-        title="Geração de texto"
-        description="Configurações que afetam como o modelo gera respostas."
+        title="Contexto do agente"
+        description="Define quanto conteúdo o agente consegue considerar antes de responder, incluindo instruções, histórico da conversa, base de conhecimento, catálogo e dados de ferramentas. Quanto maior o contexto, maior o consumo de créditos."
       >
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-nb-secondary">
-            Temperatura
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              value={temperature}
-              onChange={(e) => onTemperatureChange(e.target.value)}
-              step="0.1"
-              min="0"
-              max="1"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {CONTEXT_TIERS.map((tier) => (
+            <ContextTierCard
+              key={tier.code}
+              tier={tier}
+              selected={contextTier === tier.code}
               disabled={readonly}
-              className="flex-1 accent-nb-primary disabled:opacity-50"
+              planCode={planCode}
+              onClick={() => onContextTierChange(tier.code)}
             />
-            <span className="w-10 text-sm font-mono text-center text-nb-secondary bg-nb-elevated border border-nb-border rounded-lg px-2 py-1">
-              {parseFloat(temperature).toFixed(1)}
-            </span>
-          </div>
-          <p className="text-xs text-nb-muted">
-            Controla a criatividade das respostas. 0 = mais preciso, 1 = mais criativo.
-          </p>
+          ))}
         </div>
       </AgentFormSection>
 
       <AgentFormSection
-        title="Comportamento"
-        description="Configurações de runtime. Disponíveis nas próximas fases."
+        title="Temperatura"
+        description="Valores baixos deixam o agente mais consistente. Valores altos deixam as respostas mais variadas e criativas, mas menos previsíveis."
       >
-        <PlaceholderToggle label="Saída em Markdown" description="Formatar respostas com markdown." />
-        <PlaceholderToggle label="Modo JSON" description="Forçar o modelo a retornar apenas JSON estruturado." />
-        <PlaceholderToggle label="Detecção automática de idioma" description="Responder no idioma da mensagem recebida." />
-        <PlaceholderToggle label="Ignorar imagens" description="Não processar imagens enviadas pelo usuário." />
-      </AgentFormSection>
-
-      <AgentFormSection
-        title="Inatividade"
-        description="Configurações de timeout e mensagens automáticas. Disponíveis na Phase 5."
-      >
-        <div className="space-y-3">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-nb-muted flex-1">
-              Timeout de inatividade
-            </label>
-            <input
-              type="number"
-              disabled
-              placeholder="ex: 30"
-              className="w-24 bg-nb-bg border border-nb-border rounded-xl px-3 py-1.5 text-sm text-nb-muted cursor-not-allowed"
-            />
-            <span className="text-sm text-nb-muted">minutos</span>
-            <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-nb-elevated text-nb-muted border border-nb-border leading-none tracking-wide">
-              EM BREVE
-            </span>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-nb-muted">Mensagem de inatividade</label>
-            <input
-              type="text"
-              disabled
-              placeholder="ex: Ainda está por aí? Posso ajudar com mais alguma coisa?"
-              className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-muted cursor-not-allowed"
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {TEMPERATURE_PRESETS.map((preset) => {
+            const selected = parseFloat(temperature).toFixed(1) === preset.value.toFixed(1);
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                disabled={readonly}
+                onClick={() => onTemperatureChange(String(preset.value))}
+                className={`text-left rounded-xl border p-3.5 transition-all ${
+                  selected
+                    ? "border-nb-primary bg-nb-primary/5 ring-1 ring-nb-primary/30"
+                    : "border-nb-border bg-nb-elevated hover:border-nb-border-strong"
+                } ${readonly ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <div className="flex items-start justify-between gap-1 mb-1">
+                  <p className={`text-sm font-semibold ${selected ? "text-nb-primary-strong" : "text-nb-text"}`}>
+                    {preset.label}
+                  </p>
+                  <span className={`font-mono text-xs px-1.5 py-0.5 rounded-md border flex-shrink-0 ${
+                    selected
+                      ? "bg-nb-primary/10 border-nb-primary/30 text-nb-primary-strong"
+                      : "bg-nb-bg border-nb-border text-nb-muted"
+                  }`}>
+                    {preset.value.toFixed(1)}
+                  </span>
+                </div>
+                <p className="text-xs text-nb-muted leading-relaxed">{preset.description}</p>
+              </button>
+            );
+          })}
         </div>
       </AgentFormSection>
 
