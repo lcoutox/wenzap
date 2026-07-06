@@ -38,7 +38,7 @@ function WenzapIcon({ size = 28 }: { size?: number }) {
 
 const nav = [
   { href: "/dashboard",               label: "Visão geral",  icon: LayoutDashboard },
-  { href: "/dashboard/inbox",         label: "Inbox",        icon: MessageSquare },
+  { href: "/dashboard/admin/meta-review", label: "Inbox",    icon: MessageSquare },
   { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
   { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
   { href: "/dashboard/catalog",        label: "Catálogo",     icon: Package  },
