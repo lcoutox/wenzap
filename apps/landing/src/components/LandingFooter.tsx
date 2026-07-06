@@ -6,7 +6,10 @@ export function LandingFooter() {
           <p>© {new Date().getFullYear()} Wenzap. Todos os direitos reservados.</p>
           <p>Wenzap é uma plataforma operada por <span className="text-nb-secondary">ORBIT HUB SOFTWARE LTDA</span> — CNPJ 54.414.617/0001-82</p>
         </div>
-        <p>Tecnologia para operar com IA de verdade.</p>
+        <div className="flex items-center gap-4">
+          <a href="/privacidade" className="hover:text-nb-secondary transition-colors">Política de Privacidade</a>
+          <p>Tecnologia para operar com IA de verdade.</p>
+        </div>
       </div>
     </footer>
   );
