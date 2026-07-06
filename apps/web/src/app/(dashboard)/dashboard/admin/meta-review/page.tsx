@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import type { MetaReviewConversation, MetaReviewMessage } from "@/lib/api";
+import type { MetaReviewConversation, MetaReviewMessage, MetaReviewTemplate } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,6 +140,8 @@ function ThreadPanel({
   const [messages, setMessages] = useState<MetaReviewMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [templates, setTemplates] = useState<MetaReviewTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -149,6 +151,13 @@ function ThreadPanel({
       setMessages(msgs);
     } catch {}
   }, [conv.id]);
+
+  async function loadTemplates() {
+    try {
+      const tpls = await api.metaReview.listTemplates();
+      setTemplates(tpls);
+    } catch {}
+  }
 
   useEffect(() => {
     loadMessages();
@@ -215,8 +224,51 @@ function ThreadPanel({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-nb-border bg-nb-bg px-4 py-3 flex-shrink-0">
+      <div className="border-t border-nb-border bg-nb-bg px-4 py-3 flex-shrink-0 relative">
+        {/* Template picker popover */}
+        {showTemplates && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 bg-nb-bg border border-nb-border rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto z-10">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-nb-border">
+              <span className="text-xs font-medium text-nb-secondary">Templates de mensagem</span>
+              <button onClick={() => setShowTemplates(false)} className="text-nb-muted hover:text-nb-primary">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {templates.length === 0 ? (
+              <p className="text-xs text-nb-muted px-3 py-4 text-center">Nenhum template encontrado.</p>
+            ) : (
+              templates.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  onClick={() => { setText(tpl.body); setShowTemplates(false); }}
+                  className="w-full text-left px-3 py-2.5 hover:bg-nb-elevated border-b border-nb-border last:border-0 group"
+                >
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-xs font-medium text-nb-primary">{tpl.name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      tpl.status === "APPROVED" ? "bg-green-50 text-green-700 border border-green-200" :
+                      tpl.status === "REJECTED" ? "bg-red-50 text-red-600 border border-red-200" :
+                      "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                    }`}>{tpl.status}</span>
+                  </div>
+                  <p className="text-xs text-nb-muted line-clamp-2">{tpl.body}</p>
+                </button>
+              ))
+            )}
+          </div>
+        )}
         <div className="flex items-end gap-2">
+          <button
+            onClick={() => { loadTemplates(); setShowTemplates((v) => !v); }}
+            title="Usar template"
+            className="w-9 h-9 rounded-full border border-nb-border bg-nb-elevated hover:bg-nb-surface flex items-center justify-center flex-shrink-0 transition-colors"
+          >
+            <svg className="w-4 h-4 text-nb-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </button>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -258,13 +310,13 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
     try {
       const res = await api.metaReview.createTemplate({ name, language, category, body });
       if (res.success) {
-        setResult({ success: true, message: `Template criado! ID: ${res.meta_template_id ?? "—"} · Status: ${res.status}` });
+        onClose();
       } else {
         setResult({ success: false, message: `Erro [${res.error?.code}]: ${res.error?.message}` });
+        setLoading(false);
       }
     } catch {
       setResult({ success: false, message: "Erro inesperado." });
-    } finally {
       setLoading(false);
     }
   }
