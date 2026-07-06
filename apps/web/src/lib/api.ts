@@ -1078,6 +1078,22 @@ export type MetaReviewLog = {
   created_at: string;
 };
 
+export type MetaReviewContact = {
+  id: string;
+  wa_id: string;
+  phone_e164: string;
+  profile_name: string | null;
+};
+
+export type MetaReviewConversation = {
+  id: string;
+  status: string;
+  contact: MetaReviewContact | null;
+  last_message: { body: string | null; direction: string; created_at: string } | null;
+  updated_at: string;
+  created_at: string;
+};
+
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -1646,5 +1662,12 @@ export const api = {
     listTemplates: () => cookieFetch<MetaReviewTemplate[]>("/admin/meta-review/whatsapp/templates"),
     listMessages: () => cookieFetch<MetaReviewMessage[]>("/admin/meta-review/whatsapp/messages"),
     listLogs: () => cookieFetch<MetaReviewLog[]>("/admin/meta-review/whatsapp/logs"),
+    listConversations: () => cookieFetch<MetaReviewConversation[]>("/admin/meta-review/whatsapp/conversations"),
+    getConversationMessages: (id: string) => cookieFetch<MetaReviewMessage[]>(`/admin/meta-review/whatsapp/conversations/${id}/messages`),
+    sendToConversation: (id: string, message: string) =>
+      cookieFetch<MetaReviewSendResult>(`/admin/meta-review/whatsapp/conversations/${id}/send`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      }),
   },
 };

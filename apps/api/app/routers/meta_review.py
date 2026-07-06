@@ -109,3 +109,37 @@ def get_logs(
     db: Session = Depends(get_db),
 ):
     return meta_service.list_logs(db)
+
+
+@router.get("/conversations")
+def get_conversations(
+    _: User = Depends(_require_meta_review_access),
+    db: Session = Depends(get_db),
+):
+    return meta_service.list_conversations(db)
+
+
+@router.get("/conversations/{conversation_id}/messages")
+def get_conversation_messages(
+    conversation_id: str,
+    _: User = Depends(_require_meta_review_access),
+    db: Session = Depends(get_db),
+):
+    return meta_service.get_conversation_messages(db, conversation_id)
+
+
+class SendToConversationRequest(BaseModel):
+    message: str
+
+
+@router.post("/conversations/{conversation_id}/send")
+def send_to_conversation(
+    conversation_id: str,
+    body: SendToConversationRequest,
+    _: User = Depends(_require_meta_review_access),
+    db: Session = Depends(get_db),
+):
+    try:
+        return meta_service.send_to_conversation(db=db, conversation_id=conversation_id, message=body.message)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

@@ -255,6 +255,107 @@ def list_messages(db: Session, limit: int = 50) -> list[dict]:
     ]
 
 
+def list_conversations(db: Session) -> list[dict]:
+    from app.models.whatsapp_review_contact import WhatsappReviewContact
+    from app.models.whatsapp_review_conversation import WhatsappReviewConversation
+
+    convs = db.scalars(
+        select(WhatsappReviewConversation).order_by(WhatsappReviewConversation.updated_at.desc())
+    ).all()
+
+    result = []
+    for conv in convs:
+        contact = db.get(WhatsappReviewContact, conv.contact_id) if conv.contact_id else None
+        last_msg = db.scalar(
+            select(WhatsappReviewMessage)
+            .where(WhatsappReviewMessage.conversation_id == conv.id)
+            .order_by(WhatsappReviewMessage.created_at.desc())
+            .limit(1)
+        )
+        result.append({
+            "id": str(conv.id),
+            "status": conv.status,
+            "contact": {
+                "id": str(contact.id),
+                "wa_id": contact.wa_id,
+                "phone_e164": contact.phone_e164,
+                "profile_name": contact.profile_name,
+            } if contact else None,
+            "last_message": {
+                "body": last_msg.body,
+                "direction": last_msg.direction,
+                "created_at": last_msg.created_at.isoformat(),
+            } if last_msg else None,
+            "updated_at": conv.updated_at.isoformat(),
+            "created_at": conv.created_at.isoformat(),
+        })
+    return result
+
+
+def get_conversation_messages(db: Session, conversation_id: str) -> list[dict]:
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        return []
+
+    msgs = db.scalars(
+        select(WhatsappReviewMessage)
+        .where(WhatsappReviewMessage.conversation_id == conv_uuid)
+        .order_by(WhatsappReviewMessage.created_at.asc())
+    ).all()
+
+    return [
+        {
+            "id": str(m.id),
+            "direction": m.direction,
+            "body": m.body,
+            "status": m.status,
+            "meta_message_id": m.meta_message_id,
+            "error_code": m.error_code,
+            "error_message": m.error_message,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in msgs
+    ]
+
+
+def send_to_conversation(db: Session, conversation_id: str, message: str) -> dict:
+    from app.models.whatsapp_review_contact import WhatsappReviewContact
+    from app.models.whatsapp_review_conversation import WhatsappReviewConversation
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        return {"success": False, "error": {"code": "invalid_id", "message": "ID inválido"}}
+
+    conv = db.get(WhatsappReviewConversation, conv_uuid)
+    if not conv or not conv.contact_id:
+        return {"success": False, "error": {"code": "not_found", "message": "Conversa não encontrada"}}
+
+    contact = db.get(WhatsappReviewContact, conv.contact_id)
+    if not contact:
+        return {"success": False, "error": {"code": "not_found", "message": "Contato não encontrado"}}
+
+    result = send_test_message(db=db, to=contact.wa_id, message=message)
+
+    if result.get("success"):
+        msg = db.scalar(
+            select(WhatsappReviewMessage).where(
+                WhatsappReviewMessage.meta_message_id == result.get("message_id")
+            )
+        )
+        if msg and msg.conversation_id is None:
+            msg.conversation_id = conv_uuid
+            msg.contact_id = conv.contact_id
+            db.commit()
+
+        from datetime import datetime, timezone
+        conv.last_message_at = datetime.now(timezone.utc)
+        db.commit()
+
+    return result
+
+
 def list_templates(db: Session) -> list[dict]:
     rows = db.scalars(
         select(WhatsappReviewTemplate).order_by(WhatsappReviewTemplate.created_at.desc())

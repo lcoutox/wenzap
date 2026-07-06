@@ -1,456 +1,321 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, ApiError } from "@/lib/api";
-import type {
-  MetaReviewLog,
-  MetaReviewMessage,
-  MetaReviewStatus,
-  MetaReviewTemplate,
-} from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import type { MetaReviewConversation, MetaReviewMessage } from "@/lib/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatusDot({ ok }: { ok: boolean }) {
-  return (
-    <span
-      className={`inline-block w-2 h-2 rounded-full ${ok ? "bg-green-500" : "bg-red-500"}`}
-    />
-  );
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-nb-panel border border-nb-border rounded-2xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-nb-secondary">{title}</h2>
-      {children}
-    </div>
-  );
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return "Hoje";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-nb-muted">{label}</span>
-      <span className="font-mono text-nb-secondary">{value}</span>
-    </div>
-  );
+function contactName(conv: MetaReviewConversation) {
+  return conv.contact?.profile_name || conv.contact?.phone_e164 || "Desconhecido";
 }
 
-function Badge({ ok }: { ok: boolean }) {
+// ── Conversation item (left panel) ────────────────────────────────────────────
+
+function ConversationItem({
+  conv,
+  selected,
+  onClick,
+}: {
+  conv: MetaReviewConversation;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const preview = conv.last_message?.body ?? "";
+  const time = conv.last_message ? formatDate(conv.last_message.created_at) : "";
+  const isOutbound = conv.last_message?.direction === "outbound";
+
   return (
-    <span
-      className={`text-xs font-medium px-2 py-0.5 rounded-md ${
-        ok ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3 flex items-start gap-3 border-b border-nb-border transition-colors ${
+        selected ? "bg-nb-elevated" : "hover:bg-nb-elevated/50"
       }`}
     >
-      {ok ? "OK" : "Ausente"}
-    </span>
+      <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <span className="text-green-700 text-sm font-semibold">
+          {contactName(conv).charAt(0).toUpperCase()}
+        </span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-nb-primary truncate">{contactName(conv)}</span>
+          <span className="text-xs text-nb-muted flex-shrink-0">{time}</span>
+        </div>
+        <p className="text-xs text-nb-muted truncate mt-0.5">
+          {isOutbound && <span className="text-nb-muted">Você: </span>}
+          {preview || <span className="italic">Sem mensagens</span>}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+// ── Message bubble ────────────────────────────────────────────────────────────
+
+function Bubble({ msg }: { msg: MetaReviewMessage }) {
+  const isOut = msg.direction === "outbound";
+  return (
+    <div className={`flex ${isOut ? "justify-end" : "justify-start"} mb-1`}>
+      <div
+        className={`max-w-[72%] rounded-2xl px-3.5 py-2 text-sm ${
+          isOut
+            ? "bg-green-500 text-white rounded-br-sm"
+            : "bg-nb-panel border border-nb-border text-nb-primary rounded-bl-sm"
+        }`}
+      >
+        <p className="leading-relaxed whitespace-pre-wrap break-words">{msg.body || ""}</p>
+        <div className={`flex items-center justify-end gap-1 mt-1 ${isOut ? "text-green-100" : "text-nb-muted"}`}>
+          <span className="text-[10px]">{formatTime(msg.created_at)}</span>
+          {isOut && (
+            <span className="text-[10px]">
+              {msg.status === "read" ? "✓✓" : msg.status === "delivered" ? "✓✓" : "✓"}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+
+function EmptyPanel() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+      <div className="w-12 h-12 rounded-full bg-nb-elevated border border-nb-border flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-nb-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          />
+        </svg>
+      </div>
+      <h2 className="text-sm font-medium text-nb-secondary">Selecione uma conversa</h2>
+      <p className="text-xs text-nb-muted mt-1 max-w-xs">
+        As mensagens recebidas via WhatsApp aparecem aqui.
+      </p>
+    </div>
+  );
+}
+
+// ── No conversations ──────────────────────────────────────────────────────────
+
+function EmptyList() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12">
+      <div className="w-10 h-10 rounded-full bg-nb-elevated border border-nb-border flex items-center justify-center mb-3">
+        <svg className="w-5 h-5 text-nb-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          />
+        </svg>
+      </div>
+      <p className="text-xs text-nb-muted">Nenhuma conversa ainda.</p>
+      <p className="text-xs text-nb-muted mt-1">Envie uma mensagem para o número oficial para iniciar.</p>
+    </div>
+  );
+}
+
+// ── Thread panel ──────────────────────────────────────────────────────────────
+
+function ThreadPanel({
+  conv,
+  onMessageSent,
+}: {
+  conv: MetaReviewConversation;
+  onMessageSent: () => void;
+}) {
+  const [messages, setMessages] = useState<MetaReviewMessage[]>([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const msgs = await api.metaReview.getConversationMessages(conv.id);
+      setMessages(msgs);
+    } catch {}
+  }, [conv.id]);
+
+  useEffect(() => {
+    loadMessages();
+    pollRef.current = setInterval(loadMessages, 4000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [loadMessages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function handleSend() {
+    const msg = text.trim();
+    if (!msg || sending) return;
+    setSending(true);
+    setText("");
+    try {
+      await api.metaReview.sendToConversation(conv.id, msg);
+      await loadMessages();
+      onMessageSent();
+    } catch {
+      setText(msg);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-nb-border bg-nb-bg flex-shrink-0">
+        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+          <span className="text-green-700 text-sm font-semibold">
+            {contactName(conv).charAt(0).toUpperCase()}
+          </span>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-nb-primary">{contactName(conv)}</p>
+          <p className="text-xs text-nb-muted">{conv.contact?.phone_e164 ?? ""}</p>
+        </div>
+        <div className="ml-auto">
+          <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+            WhatsApp Oficial
+          </span>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-0.5">
+        {messages.length === 0 ? (
+          <p className="text-center text-xs text-nb-muted mt-8">Nenhuma mensagem ainda.</p>
+        ) : (
+          messages.map((m) => <Bubble key={m.id} msg={m} />)
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Composer */}
+      <div className="border-t border-nb-border bg-nb-bg px-4 py-3 flex-shrink-0">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Digite uma mensagem…"
+            rows={1}
+            className="flex-1 resize-none rounded-xl border border-nb-border bg-nb-elevated px-3 py-2 text-sm text-nb-primary placeholder:text-nb-muted focus:outline-none focus:ring-1 focus:ring-nb-accent max-h-32 overflow-y-auto"
+            style={{ minHeight: "38px" }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!text.trim() || sending}
+            className="w-9 h-9 rounded-full bg-green-500 hover:bg-green-600 disabled:opacity-40 flex items-center justify-center transition-colors flex-shrink-0"
+          >
+            <svg className="w-4 h-4 text-white rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MetaReviewPage() {
-  const [envStatus, setEnvStatus] = useState<MetaReviewStatus | null>(null);
-  const [accessError, setAccessError] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<MetaReviewConversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Send test
-  const [sendTo, setSendTo] = useState("");
-  const [sendMessage, setSendMessage] = useState(
-    "Olá! Esta é uma mensagem de teste enviada pelo Wenzap via API oficial do WhatsApp."
-  );
-  const [sendResult, setSendResult] = useState<string | null>(null);
-  const [sendLoading, setSendLoading] = useState(false);
-
-  // Template
-  const [tmplName, setTmplName] = useState("confirmacao_atendimento");
-  const [tmplLanguage, setTmplLanguage] = useState("pt_BR");
-  const [tmplCategory, setTmplCategory] = useState("UTILITY");
-  const [tmplBody, setTmplBody] = useState(
-    "Olá, seu atendimento foi iniciado pelo Wenzap. Em breve nossa equipe continuará a conversa por aqui."
-  );
-  const [tmplResult, setTmplResult] = useState<string | null>(null);
-  const [tmplLoading, setTmplLoading] = useState(false);
-
-  // Lists
-  const [templates, setTemplates] = useState<MetaReviewTemplate[]>([]);
-  const [messages, setMessages] = useState<MetaReviewMessage[]>([]);
-  const [logs, setLogs] = useState<MetaReviewLog[]>([]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [status, tmpl, msgs, lg] = await Promise.all([
-          api.metaReview.status(),
-          api.metaReview.listTemplates(),
-          api.metaReview.listMessages(),
-          api.metaReview.listLogs(),
-        ]);
-        setEnvStatus(status);
-        setTemplates(tmpl);
-        setMessages(msgs);
-        setLogs(lg);
-      } catch (e) {
-        if (e instanceof ApiError && (e.status === 403 || e.status === 401)) {
-          setAccessError("Acesso negado. Verifique se seu e-mail está em META_REVIEW_ADMIN_EMAILS e se você é owner do workspace.");
-        } else {
-          setAccessError(e instanceof Error ? e.message : "Erro ao carregar.");
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const loadConversations = useCallback(async () => {
+    try {
+      const convs = await api.metaReview.listConversations();
+      setConversations(convs);
+      setError(null);
+    } catch (e: unknown) {
+      if (e instanceof Error) setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  async function refreshLists() {
-    try {
-      const [tmpl, msgs, lg] = await Promise.all([
-        api.metaReview.listTemplates(),
-        api.metaReview.listMessages(),
-        api.metaReview.listLogs(),
-      ]);
-      setTemplates(tmpl);
-      setMessages(msgs);
-      setLogs(lg);
-    } catch {}
-  }
+  useEffect(() => {
+    loadConversations();
+    const interval = setInterval(loadConversations, 8000);
+    return () => clearInterval(interval);
+  }, [loadConversations]);
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    setSendLoading(true);
-    setSendResult(null);
-    try {
-      const res = await api.metaReview.sendTest(sendTo, sendMessage);
-      if (res.success) {
-        setSendResult(`✓ Enviado! Message ID: ${res.message_id}`);
-      } else {
-        setSendResult(`✗ Erro [${res.error?.code}]: ${res.error?.message}`);
-      }
-      await refreshLists();
-    } catch (e) {
-      setSendResult(`✗ ${e instanceof Error ? e.message : "Erro desconhecido"}`);
-    } finally {
-      setSendLoading(false);
-    }
-  }
+  const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
-  async function handleCreateTemplate(e: React.FormEvent) {
-    e.preventDefault();
-    setTmplLoading(true);
-    setTmplResult(null);
-    try {
-      const res = await api.metaReview.createTemplate({
-        name: tmplName,
-        language: tmplLanguage,
-        category: tmplCategory,
-        body: tmplBody,
-      });
-      if (res.success) {
-        setTmplResult(`✓ Template criado! Meta ID: ${res.meta_template_id} · Status: ${res.status}`);
-      } else {
-        setTmplResult(`✗ Erro [${res.error?.code}]: ${res.error?.message}`);
-      }
-      await refreshLists();
-    } catch (e) {
-      setTmplResult(`✗ ${e instanceof Error ? e.message : "Erro desconhecido"}`);
-    } finally {
-      setTmplLoading(false);
-    }
-  }
-
-  if (loading) {
+  if (error) {
     return (
-      <div className="space-y-4 animate-pulse max-w-3xl">
-        <div className="h-8 w-80 bg-nb-panel rounded-xl" />
-        <div className="h-40 bg-nb-panel rounded-2xl border border-nb-border" />
-        <div className="h-60 bg-nb-panel rounded-2xl border border-nb-border" />
+      <div className="-m-6 flex items-center justify-center" style={{ height: "calc(100vh - 3.5rem)" }}>
+        <div className="text-center px-6">
+          <p className="text-sm text-red-500 font-medium">Acesso negado</p>
+          <p className="text-xs text-nb-muted mt-1">{error}</p>
+        </div>
       </div>
     );
   }
-
-  if (accessError) {
-    return (
-      <div className="max-w-xl p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-600">
-        {accessError}
-      </div>
-    );
-  }
-
-  const webhookUrl = `${typeof window !== "undefined" ? window.location.origin.replace("3000", "8000") : ""}/webhooks/meta/whatsapp`;
 
   return (
-    <div className="max-w-3xl space-y-5">
-      <div>
-        <h1 className="text-lg font-semibold text-nb-primary-text">
-          WhatsApp Oficial — Revisão Meta
-        </h1>
-        <p className="text-xs text-nb-muted mt-0.5">
-          Tela interna para gravação dos vídeos de App Review da Meta. Não é visível para clientes.
-        </p>
-      </div>
-
-      {/* Seção 1 — Status ENV */}
-      {envStatus && (
-        <Section title="Configuração detectada">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-nb-muted">Access Token</span>
-              <Badge ok={envStatus.has_access_token} />
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-nb-muted">WABA ID</span>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-nb-secondary text-xs">{envStatus.waba_id_masked}</span>
-                <Badge ok={envStatus.has_waba_id} />
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-nb-muted">Phone Number ID</span>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-nb-secondary text-xs">{envStatus.phone_number_id_masked}</span>
-                <Badge ok={envStatus.has_phone_number_id} />
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-nb-muted">Webhook Verify Token</span>
-              <Badge ok={envStatus.has_webhook_verify_token} />
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-nb-muted">Validação de assinatura</span>
-              <Badge ok={envStatus.webhook_signature_required} />
-            </div>
-            <div className="flex items-center justify-between text-sm pt-1 border-t border-nb-border">
-              <span className="text-nb-muted">Webhook URL</span>
-              <span className="font-mono text-nb-secondary text-xs">{webhookUrl}</span>
-            </div>
-          </div>
-
-          <div className="mt-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-700 space-y-1">
-            <p className="font-medium">⚠ Janela de atendimento</p>
-            <p>
-              Antes de enviar uma mensagem livre, envie uma mensagem do WhatsApp destinatário para o número oficial da
-              Nexalt. Isso abre a janela de 24h da Meta. Sem ela, mensagens livres são bloqueadas.
-            </p>
-            <p className="mt-1 font-medium">⚠ Pagamento na Meta</p>
-            <p>
-              Se a Meta exibir "Adicione informações de pagamento para enviar mensagens iniciadas pela empresa",
-              você precisa configurar pagamento no Meta Business antes de enviar templates ou mensagens outbound.
-            </p>
-          </div>
-        </Section>
-      )}
-
-      {/* Seção 2 — Enviar mensagem de teste */}
-      <Section title="Enviar mensagem de teste">
-        <form onSubmit={handleSend} className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-nb-muted mb-1">
-              Destinatário (com código do país, ex: 5537999999999)
-            </label>
-            <input
-              type="text"
-              value={sendTo}
-              onChange={(e) => setSendTo(e.target.value)}
-              placeholder="5537999999999"
-              required
-              className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-secondary focus:outline-none focus:border-nb-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-nb-muted mb-1">Mensagem</label>
-            <textarea
-              value={sendMessage}
-              onChange={(e) => setSendMessage(e.target.value)}
-              rows={3}
-              required
-              className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-secondary focus:outline-none focus:border-nb-primary resize-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={sendLoading}
-            className="px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary/90 disabled:opacity-50"
-          >
-            {sendLoading ? "Enviando..." : "Enviar mensagem de teste"}
-          </button>
-          {sendResult && (
-            <p className={`text-xs font-mono mt-2 ${sendResult.startsWith("✓") ? "text-green-600" : "text-red-600"}`}>
-              {sendResult}
-            </p>
-          )}
-        </form>
-      </Section>
-
-      {/* Seção 3 — Criar template */}
-      <Section title="Criar modelo de mensagem (whatsapp_business_management)">
-        <form onSubmit={handleCreateTemplate} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-nb-muted mb-1">Nome (snake_case)</label>
-              <input
-                type="text"
-                value={tmplName}
-                onChange={(e) => setTmplName(e.target.value)}
-                required
-                className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-secondary focus:outline-none focus:border-nb-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-nb-muted mb-1">Idioma</label>
-              <input
-                type="text"
-                value={tmplLanguage}
-                onChange={(e) => setTmplLanguage(e.target.value)}
-                required
-                className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-secondary focus:outline-none focus:border-nb-primary"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-nb-muted mb-1">Categoria</label>
-            <select
-              value={tmplCategory}
-              onChange={(e) => setTmplCategory(e.target.value)}
-              className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-secondary focus:outline-none focus:border-nb-primary"
-            >
-              <option value="UTILITY">UTILITY</option>
-              <option value="MARKETING">MARKETING</option>
-              <option value="AUTHENTICATION">AUTHENTICATION</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-nb-muted mb-1">
-              Corpo (sem {"{{variáveis}}"} para evitar rejeição)
-            </label>
-            <textarea
-              value={tmplBody}
-              onChange={(e) => setTmplBody(e.target.value)}
-              rows={3}
-              required
-              className="w-full bg-nb-bg border border-nb-border rounded-xl px-3 py-2 text-sm text-nb-secondary focus:outline-none focus:border-nb-primary resize-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={tmplLoading}
-            className="px-4 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary/90 disabled:opacity-50"
-          >
-            {tmplLoading ? "Criando..." : "Criar modelo na Meta"}
-          </button>
-          {tmplResult && (
-            <p className={`text-xs font-mono mt-2 ${tmplResult.startsWith("✓") ? "text-green-600" : "text-red-600"}`}>
-              {tmplResult}
-            </p>
-          )}
-        </form>
-      </Section>
-
-      {/* Seção 4 — Templates */}
-      {templates.length > 0 && (
-        <Section title="Templates criados">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-nb-muted border-b border-nb-border">
-                  <th className="pb-2 font-medium">Nome</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Meta ID</th>
-                  <th className="pb-2 font-medium">Criado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-nb-border">
-                {templates.map((t) => (
-                  <tr key={t.id}>
-                    <td className="py-2 font-mono text-nb-secondary">{t.name}</td>
-                    <td className="py-2 text-nb-muted">{t.status}</td>
-                    <td className="py-2 font-mono text-nb-muted">{t.meta_template_id ?? "—"}</td>
-                    <td className="py-2 text-nb-muted">{new Date(t.created_at).toLocaleString("pt-BR")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Section>
-      )}
-
-      {/* Seção 5 — Mensagens */}
-      {messages.length > 0 && (
-        <Section title="Mensagens">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-nb-muted border-b border-nb-border">
-                  <th className="pb-2 font-medium">Data</th>
-                  <th className="pb-2 font-medium">Dir</th>
-                  <th className="pb-2 font-medium">Mensagem</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Message ID</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-nb-border">
-                {messages.map((m) => (
-                  <tr key={m.id}>
-                    <td className="py-2 text-nb-muted whitespace-nowrap">{new Date(m.created_at).toLocaleString("pt-BR")}</td>
-                    <td className="py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${m.direction === "outbound" ? "bg-blue-500/10 text-blue-600" : "bg-green-500/10 text-green-600"}`}>
-                        {m.direction}
-                      </span>
-                    </td>
-                    <td className="py-2 text-nb-secondary max-w-xs truncate">{m.body ?? "—"}</td>
-                    <td className="py-2 text-nb-muted">{m.status ?? "—"}</td>
-                    <td className="py-2 font-mono text-nb-muted text-[10px]">{m.meta_message_id ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Section>
-      )}
-
-      {/* Seção 6 — Logs */}
-      <Section title="Logs">
-        <div className="flex justify-end mb-1">
-          <button
-            type="button"
-            onClick={refreshLists}
-            className="text-xs text-nb-primary underline hover:no-underline"
-          >
-            Atualizar
-          </button>
+    <div className="-m-6 flex overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
+      {/* Left panel — conversation list */}
+      <aside className="w-72 flex-shrink-0 bg-nb-bg border-r border-nb-border flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-nb-border flex-shrink-0">
+          <h1 className="text-sm font-semibold text-nb-primary">Inbox WhatsApp</h1>
+          <p className="text-xs text-nb-muted mt-0.5">Canal oficial · App Review</p>
         </div>
-        {logs.length === 0 ? (
-          <p className="text-xs text-nb-muted">Nenhum log ainda.</p>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-4 h-4 border-2 border-nb-accent border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : conversations.length === 0 ? (
+            <EmptyList />
+          ) : (
+            conversations.map((conv) => (
+              <ConversationItem
+                key={conv.id}
+                conv={conv}
+                selected={conv.id === selectedId}
+                onClick={() => setSelectedId(conv.id)}
+              />
+            ))
+          )}
+        </div>
+      </aside>
+
+      {/* Right panel — thread */}
+      <main className="flex-1 bg-nb-bg min-w-0 overflow-hidden">
+        {selected ? (
+          <ThreadPanel conv={selected} onMessageSent={loadConversations} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-nb-muted border-b border-nb-border">
-                  <th className="pb-2 font-medium">Data</th>
-                  <th className="pb-2 font-medium">Tipo</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Resumo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-nb-border">
-                {logs.map((l) => (
-                  <tr key={l.id}>
-                    <td className="py-2 text-nb-muted whitespace-nowrap">{new Date(l.created_at).toLocaleString("pt-BR")}</td>
-                    <td className="py-2 font-mono text-nb-secondary">{l.event_type}</td>
-                    <td className="py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${l.status === "success" || l.status === "received" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
-                        {l.status}
-                      </span>
-                    </td>
-                    <td className="py-2 text-nb-muted max-w-sm truncate">{l.summary ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <EmptyPanel />
         )}
-      </Section>
+      </main>
     </div>
   );
 }
