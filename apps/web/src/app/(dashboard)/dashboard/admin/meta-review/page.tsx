@@ -241,6 +241,90 @@ function ThreadPanel({
   );
 }
 
+// ── Create Template Modal ─────────────────────────────────────────────────────
+
+function CreateTemplateModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState("confirmacao_atendimento");
+  const [language, setLanguage] = useState("pt_BR");
+  const [category, setCategory] = useState("UTILITY");
+  const [body, setBody] = useState("Olá, seu atendimento foi iniciado pelo Wenzap. Em breve nossa equipe continuará a conversa por aqui.");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await api.metaReview.createTemplate({ name, language, category, body });
+      if (res.success) {
+        setResult({ success: true, message: `Template criado! ID: ${res.meta_template_id ?? "—"} · Status: ${res.status}` });
+      } else {
+        setResult({ success: false, message: `Erro [${res.error?.code}]: ${res.error?.message}` });
+      }
+    } catch {
+      setResult({ success: false, message: "Erro inesperado." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-nb-bg border border-nb-border rounded-2xl w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-nb-border">
+          <h2 className="text-sm font-semibold text-nb-primary">Criar template de mensagem</h2>
+          <button onClick={onClose} className="text-nb-muted hover:text-nb-primary">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-nb-secondary block mb-1">Nome (snake_case)</label>
+            <input value={name} onChange={e => setName(e.target.value)} required
+              className="w-full rounded-lg border border-nb-border bg-nb-elevated px-3 py-2 text-sm text-nb-primary focus:outline-none focus:ring-1 focus:ring-nb-accent" />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-nb-secondary block mb-1">Idioma</label>
+              <input value={language} onChange={e => setLanguage(e.target.value)} required
+                className="w-full rounded-lg border border-nb-border bg-nb-elevated px-3 py-2 text-sm text-nb-primary focus:outline-none focus:ring-1 focus:ring-nb-accent" />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-medium text-nb-secondary block mb-1">Categoria</label>
+              <select value={category} onChange={e => setCategory(e.target.value)}
+                className="w-full rounded-lg border border-nb-border bg-nb-elevated px-3 py-2 text-sm text-nb-primary focus:outline-none focus:ring-1 focus:ring-nb-accent">
+                <option value="UTILITY">UTILITY</option>
+                <option value="MARKETING">MARKETING</option>
+                <option value="AUTHENTICATION">AUTHENTICATION</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-nb-secondary block mb-1">Corpo</label>
+            <textarea value={body} onChange={e => setBody(e.target.value)} required rows={3}
+              className="w-full rounded-lg border border-nb-border bg-nb-elevated px-3 py-2 text-sm text-nb-primary focus:outline-none focus:ring-1 focus:ring-nb-accent resize-none" />
+          </div>
+          {result && (
+            <p className={`text-xs rounded-lg px-3 py-2 ${result.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+              {result.message}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-nb-secondary hover:text-nb-primary">Cancelar</button>
+            <button type="submit" disabled={loading}
+              className="px-4 py-2 text-sm font-medium bg-nb-accent text-white rounded-lg hover:opacity-90 disabled:opacity-50">
+              {loading ? "Criando…" : "Criar template"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MetaReviewPage() {
@@ -248,6 +332,7 @@ export default function MetaReviewPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -285,7 +370,19 @@ export default function MetaReviewPage() {
       {/* Left panel — conversation list */}
       <aside className="w-72 flex-shrink-0 bg-nb-bg border-r border-nb-border flex flex-col overflow-hidden">
         <div className="px-4 py-3 border-b border-nb-border flex-shrink-0">
-          <h1 className="text-sm font-semibold text-nb-primary">Inbox WhatsApp</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-sm font-semibold text-nb-primary">Inbox WhatsApp</h1>
+            <button
+              onClick={() => setShowTemplateModal(true)}
+              title="Criar template"
+              className="flex items-center gap-1 text-xs text-nb-accent hover:opacity-80 transition-opacity"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Template
+            </button>
+          </div>
           <p className="text-xs text-nb-muted mt-0.5">Canal oficial · App Review</p>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -316,6 +413,8 @@ export default function MetaReviewPage() {
           <EmptyPanel />
         )}
       </main>
+
+      {showTemplateModal && <CreateTemplateModal onClose={() => setShowTemplateModal(false)} />}
     </div>
   );
 }
