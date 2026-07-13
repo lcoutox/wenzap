@@ -27,6 +27,7 @@ import type {
   WebWidgetConfig,
 } from "@/lib/api";
 import { EmbeddedSignupButton } from "@/components/agents/workspace/whatsapp/EmbeddedSignupButton";
+import { EvolutionQRConnect } from "@/components/agents/workspace/whatsapp/EvolutionQRConnect";
 import { planAllowsChannelType } from "@/lib/plan";
 import { PlanGateBadge } from "@/components/plan/PlanGateBadge";
 
@@ -647,19 +648,24 @@ function AutoReplyToggle({
 function WhatsAppCard({
   channel,
   canEdit,
-  onArchive,
+  onDisconnect,
   onToggleAutoReply,
   busy,
 }: {
   channel: WhatsAppChannel;
   canEdit: boolean;
-  onArchive: (ch: WhatsAppChannel) => void;
+  onDisconnect: (ch: WhatsAppChannel) => void;
   onToggleAutoReply: (ch: WhatsAppChannel) => void;
   busy: boolean;
 }) {
   const cfg = channel.config;
+  const isEvolution = cfg.provider === "evolution_api";
   const autoReplyEnabled = cfg.auto_reply_enabled ?? false;
-  const isEmbedded = cfg.onboarding_type === "embedded_signup";
+  const isPending = (cfg.status ?? "active") === "testing" && isEvolution;
+  const connectionLabel =
+    cfg.onboarding_type === "embedded_signup" ? "Embedded Signup"
+    : cfg.onboarding_type === "qr_code" ? "QR Code"
+    : "Manual";
   const [techOpen, setTechOpen] = useState(false);
 
   return (
@@ -672,11 +678,13 @@ function WhatsAppCard({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-nb-text truncate">WhatsApp conectado</p>
-              <CheckCircle className="w-3.5 h-3.5 text-nb-success flex-shrink-0" />
+              <p className="text-sm font-semibold text-nb-text truncate">
+                {isPending ? "Aguardando conexão" : "WhatsApp conectado"}
+              </p>
+              {!isPending && <CheckCircle className="w-3.5 h-3.5 text-nb-success flex-shrink-0" />}
             </div>
             <p className="text-xs text-nb-muted mt-0.5">
-              {cfg.display_phone_number || cfg.phone_number_id}
+              {cfg.display_phone_number || (isEvolution ? cfg.instance_name : cfg.phone_number_id)}
             </p>
           </div>
         </div>
@@ -718,17 +726,26 @@ function WhatsAppCard({
         </button>
         {techOpen && (
           <div className="bg-nb-bg border-t border-nb-border px-3 py-3 grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Phone Number ID</p>
-              <p className="text-nb-secondary font-mono truncate">{cfg.phone_number_id}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">WABA ID</p>
-              <p className="text-nb-secondary font-mono truncate">{cfg.waba_id}</p>
-            </div>
+            {isEvolution ? (
+              <div className="col-span-2">
+                <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Instância</p>
+                <p className="text-nb-secondary font-mono truncate">{cfg.instance_name}</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Phone Number ID</p>
+                  <p className="text-nb-secondary font-mono truncate">{cfg.phone_number_id}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">WABA ID</p>
+                  <p className="text-nb-secondary font-mono truncate">{cfg.waba_id}</p>
+                </div>
+              </>
+            )}
             <div>
               <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Conexão</p>
-              <p className="text-nb-secondary">{isEmbedded ? "Embedded Signup" : "Manual"}</p>
+              <p className="text-nb-secondary">{connectionLabel}</p>
             </div>
             {cfg.last_webhook_at && (
               <div>
@@ -742,7 +759,7 @@ function WhatsAppCard({
 
       {canEdit && (
         <div className="flex justify-end border-t border-nb-border pt-2">
-          <button type="button" onClick={() => onArchive(channel)} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
+          <button type="button" onClick={() => onDisconnect(channel)} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-nb-danger/70 hover:text-nb-danger hover:bg-nb-danger/10 border border-transparent hover:border-nb-danger/20 disabled:opacity-50 transition-colors">
             {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
             Desconectar
           </button>
@@ -796,6 +813,7 @@ function WhatsAppConnectCard({
   saveError,
   saving,
   onEmbeddedSuccess,
+  onEvolutionSuccess,
   onManualOpen,
 }: {
   agentId: string;
@@ -803,6 +821,7 @@ function WhatsAppConnectCard({
   saveError: string | null;
   saving: boolean;
   onEmbeddedSuccess: (ch: WhatsAppChannel) => void;
+  onEvolutionSuccess: (ch: WhatsAppChannel) => void;
   onManualOpen: () => void;
 }) {
   const [manualOpen, setManualOpen] = useState(false);
@@ -815,7 +834,7 @@ function WhatsAppConnectCard({
           <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-nb-text">Conecte seu WhatsApp oficial</p>
+          <p className="text-sm font-semibold text-nb-text">Conecte seu WhatsApp</p>
           <p className="text-xs text-nb-muted mt-0.5">
             Permita que este agente responda mensagens recebidas pelo WhatsApp da sua empresa.
           </p>
@@ -824,11 +843,26 @@ function WhatsAppConnectCard({
 
       {writable ? (
         <>
-          {/* Primary CTA — Embedded Signup */}
+          {/* Quick CTA — QR Code (Evolution bridge, available today) */}
+          <div className="space-y-2">
+            <EvolutionQRConnect agentId={agentId} onSuccess={onEvolutionSuccess} />
+            <p className="text-[11px] text-nb-muted text-center leading-relaxed">
+              Rápido: escaneie o QR Code com o WhatsApp da empresa, como no WhatsApp Web.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-nb-border" />
+            <span className="text-[10px] font-medium text-nb-muted uppercase tracking-widest">ou</span>
+            <div className="h-px flex-1 bg-nb-border" />
+          </div>
+
+          {/* Official Meta CTA — Embedded Signup */}
           <div className="space-y-2">
             <EmbeddedSignupButton agentId={agentId} onSuccess={onEmbeddedSuccess} />
             <p className="text-[11px] text-nb-muted text-center leading-relaxed">
-              Você será direcionado para a Meta para escolher ou conectar seu número do WhatsApp Business.
+              Conexão oficial via Meta. Você será direcionado para escolher ou conectar seu número do
+              WhatsApp Business.
             </p>
           </div>
 
@@ -1004,11 +1038,16 @@ export function ImplantarTab({
     } finally { setSaving(false); }
   }
 
-  async function handleWaArchive(ch: WhatsAppChannel) {
+  async function handleWaDisconnect(ch: WhatsAppChannel) {
     if (!confirm(`Desconectar "${ch.name}"? O canal deixará de receber mensagens.`)) return;
     setBusyId(ch.id);
     try {
-      await api.channels.archive(ch.id);
+      if (ch.config.provider === "evolution_api") {
+        // Also removes the Evolution instance server-side (best-effort).
+        await api.channels.whatsappEvolution.disconnect(ch.id);
+      } else {
+        await api.channels.archive(ch.id);
+      }
       setWaChannels((prev) => prev.filter((c) => c.id !== ch.id));
       showSuccess("Canal WhatsApp desconectado.");
     } catch (e) {
@@ -1134,12 +1173,16 @@ export function ImplantarTab({
                     setWaChannels((prev) => [ch, ...prev]);
                     showSuccess("Canal WhatsApp conectado com sucesso.");
                   }}
+                  onEvolutionSuccess={(ch) => {
+                    setWaChannels((prev) => [ch, ...prev]);
+                    showSuccess("Canal WhatsApp conectado com sucesso.");
+                  }}
                   onManualOpen={() => { setSaveError(null); setWaModal(true); }}
                 />
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {waChannels.map((ch) => (
-                    <WhatsAppCard key={ch.id} channel={ch} canEdit={writable} onArchive={handleWaArchive} onToggleAutoReply={handleWaToggleAutoReply} busy={busyId === ch.id} />
+                    <WhatsAppCard key={ch.id} channel={ch} canEdit={writable} onDisconnect={handleWaDisconnect} onToggleAutoReply={handleWaToggleAutoReply} busy={busyId === ch.id} />
                   ))}
                 </div>
               )}

@@ -811,7 +811,7 @@ export type WebWidgetConfig = {
   require_phone: boolean;
 };
 
-export type WhatsAppChannelConfig = {
+export type MetaCloudApiChannelConfig = {
   provider: "meta_cloud_api";
   onboarding_type: "manual" | "embedded_signup";
   waba_id: string;
@@ -824,6 +824,23 @@ export type WhatsAppChannelConfig = {
   last_webhook_at?: string | null;
   auto_reply_enabled?: boolean;
 };
+
+// Bridge provider (unofficial WhatsApp) — used until Meta approves the app
+// for multi-tenant self-serve WhatsApp Embedded Signup.
+export type EvolutionApiChannelConfig = {
+  provider: "evolution_api";
+  onboarding_type: "manual" | "qr_code";
+  base_url: string;
+  instance_name: string;
+  display_phone_number?: string | null;
+  api_key_ref?: string | null;
+  status?: "testing" | "active" | "disconnected";
+  connected_at?: string | null;
+  last_webhook_at?: string | null;
+  auto_reply_enabled?: boolean;
+};
+
+export type WhatsAppChannelConfig = MetaCloudApiChannelConfig | EvolutionApiChannelConfig;
 
 type ChannelBase = {
   id: string;
@@ -1321,6 +1338,21 @@ export const api = {
             headers: debugId ? { "X-Wenzap-Debug-Id": debugId } : {},
           },
         ),
+    },
+    whatsappEvolution: {
+      connect: (agentId: string) =>
+        cookieFetch<{ channel: Channel; qrcode_base64: string | null; pairing_code: string | null }>(
+          "/channels/whatsapp/evolution/connect",
+          { method: "POST", body: JSON.stringify({ agent_id: agentId }) },
+        ),
+      status: (channelId: string) =>
+        cookieFetch<{ channel_id: string; state: string }>(
+          `/channels/whatsapp/evolution/${channelId}/status`,
+        ),
+      disconnect: (channelId: string) =>
+        cookieFetch<void>(`/channels/whatsapp/evolution/${channelId}/disconnect`, {
+          method: "POST",
+        }),
     },
   },
   onboarding: {
