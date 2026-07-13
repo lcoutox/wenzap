@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     meta_app_secret: str = ""
     meta_graph_api_version: str = "v25.0"
 
+    # ── Evolution API (bridge WhatsApp provider — unofficial) ─────────────────
+    # Base URL of the self-hosted Evolution server (shared across all workspaces).
+    evolution_api_base_url: str = ""
+    # Master/admin key (AUTHENTICATION_API_KEY on the Evolution server) — used
+    # ONLY by this backend to provision/manage instances (create/delete).
+    # NEVER exposed to the frontend. Distinct from each instance's own token,
+    # which is generated per-instance at creation and stored per-channel via
+    # ChannelCredential (resolved through config.api_key_ref).
+    evolution_master_api_key: str = ""
+    # Public base URL of THIS API, used to build the webhook URL registered on
+    # each newly created Evolution instance, e.g. "https://api.wenzap.com.br".
+    api_public_base_url: str = ""
+
     # ── Meta Review (App Review — single-tenant, provisório) ──────────────────
     # Credenciais da WABA oficial da Nexalt para gravação dos vídeos de App Review.
     # META_ACCESS_TOKEN nunca deve ser exposto no frontend nem logado.
