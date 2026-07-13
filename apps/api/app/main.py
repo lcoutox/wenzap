@@ -17,6 +17,7 @@ from app.routers import (
     channels,
     contacts,
     conversations,
+    evolution_webhooks,
     health,
     knowledge_bases,
     me,
@@ -104,6 +105,7 @@ app.include_router(onboarding.router)
 app.include_router(pipelines.router)
 app.include_router(whatsapp_embedded_signup.router)
 app.include_router(whatsapp_webhooks.router)
+app.include_router(evolution_webhooks.router)
 # Meta Review — provisório para App Review da Meta (single-tenant, isolado)
 app.include_router(meta_review.router)
 app.include_router(meta_webhooks.router)

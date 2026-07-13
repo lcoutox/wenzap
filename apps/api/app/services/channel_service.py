@@ -239,3 +239,27 @@ def get_whatsapp_channel_by_phone_number_id(
             Channel.config_json["phone_number_id"].astext == phone_number_id,
         )
     )
+
+
+def get_whatsapp_channel_by_instance_name(
+    db: Session,
+    instance_name: str,
+) -> Channel | None:
+    """
+    Look up an active WhatsApp channel by its Evolution API instance name.
+
+    Mirrors get_whatsapp_channel_by_phone_number_id for the evolution_api
+    provider — used by the Evolution webhook receiver to route inbound
+    messages to the correct workspace.
+
+    TODO: add a partial index for performance at scale:
+      CREATE INDEX ON channels ((config_json->>'instance_name')) WHERE channel_type = 'whatsapp';
+    """
+    return db.scalar(
+        select(Channel).where(
+            Channel.channel_type == "whatsapp",
+            Channel.status != "archived",
+            Channel.config_json["provider"].astext == "evolution_api",
+            Channel.config_json["instance_name"].astext == instance_name,
+        )
+    )

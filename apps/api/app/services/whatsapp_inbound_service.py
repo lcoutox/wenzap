@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.channel import Channel
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
@@ -40,15 +41,21 @@ logger = logging.getLogger(__name__)
 def process_inbound_message(
     db: Session,
     msg: WhatsAppInboundMessage,
+    channel: Channel | None = None,
 ) -> ConversationMessage | None:
     """
     Process one inbound WhatsApp text message and persist it to the Inbox.
+
+    `channel` may be pre-resolved by the caller (e.g. the Evolution webhook,
+    which routes by instance name rather than Meta's phone_number_id). When
+    omitted, the channel is looked up by msg.phone_number_id — the original
+    Meta Cloud API behavior, unchanged.
 
     Returns the ConversationMessage (new or existing) on success.
     Returns None if the channel was not found or an unexpected error occurred.
     """
     try:
-        return _process(db, msg)
+        return _process(db, msg, channel)
     except Exception:
         logger.exception(
             "whatsapp_inbound unexpected error processing wamid=%s phone_number_id=%s",
@@ -61,8 +68,11 @@ def process_inbound_message(
 # ── Private orchestration ──────────────────────────────────────────────────────
 
 
-def _process(db: Session, msg: WhatsAppInboundMessage) -> ConversationMessage | None:
-    channel = get_whatsapp_channel_by_phone_number_id(db, msg.phone_number_id)
+def _process(
+    db: Session, msg: WhatsAppInboundMessage, channel: Channel | None = None
+) -> ConversationMessage | None:
+    if channel is None:
+        channel = get_whatsapp_channel_by_phone_number_id(db, msg.phone_number_id)
     if channel is None:
         logger.info(
             "whatsapp_inbound channel not found for phone_number_id=%s wamid=%s",
