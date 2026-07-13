@@ -381,10 +381,8 @@ def generate_conversation_agent_reply(
     # Deliver agent reply to WhatsApp when the conversation came from that channel.
     if conversation.channel_type == "whatsapp":
         try:
-            from app.services.whatsapp_outbound_service import (  # noqa: PLC0415
-                deliver_human_message,
-            )
-            deliver_human_message(db, response_msg, conversation)
+            from app.services.messaging import deliver_outbound_message  # noqa: PLC0415
+            deliver_outbound_message(db, response_msg, conversation)
         except Exception:
             logger.exception(
                 "whatsapp_outbound agent delivery failed conversation=%s message=%s",

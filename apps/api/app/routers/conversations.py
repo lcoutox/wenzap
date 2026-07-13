@@ -199,7 +199,7 @@ def retry_message_delivery(
             detail="Message delivery is not in failed state.",
         )
 
-    from app.services.whatsapp_outbound_service import deliver_human_message  # noqa: PLC0415
-    deliver_human_message(db, msg, conv)
+    from app.services.messaging import deliver_outbound_message  # noqa: PLC0415
+    deliver_outbound_message(db, msg, conv)
     db.refresh(msg)
     return msg

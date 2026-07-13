@@ -224,10 +224,8 @@ def create_message(
         and conv.channel_type == "whatsapp"
     ):
         try:
-            from app.services.whatsapp_outbound_service import (  # noqa: PLC0415
-                deliver_human_message,
-            )
-            deliver_human_message(db, msg, conv)
+            from app.services.messaging import deliver_outbound_message  # noqa: PLC0415
+            deliver_outbound_message(db, msg, conv)
         except Exception:
             logger.exception(
                 "WhatsApp delivery failed for conversation %s message %s",
