@@ -59,7 +59,7 @@ class WebWidgetConfig(BaseModel):
 
 
 class WhatsAppChannelConfig(BaseModel):
-    """Validated config for channel_type='whatsapp' (Meta Cloud API)."""
+    """Validated config for channel_type='whatsapp', provider='meta_cloud_api' (default)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -81,6 +81,32 @@ class WhatsAppChannelConfig(BaseModel):
     # CREATE INDEX ON channels ((config_json->>'phone_number_id')) WHERE channel_type = 'whatsapp';
 
 
+class EvolutionApiChannelConfig(BaseModel):
+    """Validated config for channel_type='whatsapp', provider='evolution_api'.
+
+    Bridge provider (unofficial WhatsApp) used until Meta approves the app for
+    multi-tenant self-serve WhatsApp Embedded Signup.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["evolution_api"] = "evolution_api"
+    onboarding_type: Literal["manual", "qr_code"] = "qr_code"
+    # Evolution server base URL, e.g. "https://api.wenzap.com.br" (own Railway deployment).
+    base_url: str = Field(min_length=1, max_length=300)
+    # Evolution "instance" name — one instance per connected WhatsApp number.
+    instance_name: str = Field(min_length=1, max_length=150)
+    display_phone_number: str | None = Field(default=None, max_length=50)
+    # Reference to the Evolution instance API key, never the key itself.
+    # Format: "env:<VAR_NAME>" or "db:<uuid>" (resolved via resolve_channel_secret).
+    api_key_ref: str | None = Field(default=None, max_length=200)
+    status: Literal["testing", "active", "disconnected"] = "testing"
+    connected_at: datetime | None = None
+    last_webhook_at: datetime | None = None
+    # When true, new inbound messages will trigger an automatic AI reply.
+    auto_reply_enabled: bool = False
+
+
 def _parse_web_widget_config(raw: dict | None) -> dict:
     """Validate and return a WebWidgetConfig dict, applying defaults."""
     cfg = WebWidgetConfig(**(raw or {}))
@@ -88,8 +114,17 @@ def _parse_web_widget_config(raw: dict | None) -> dict:
 
 
 def _parse_whatsapp_config(raw: dict | None) -> dict:
-    """Validate and return a WhatsAppChannelConfig dict."""
-    cfg = WhatsAppChannelConfig(**(raw or {}))
+    """Validate and return the WhatsApp config dict for the requested provider.
+
+    Dispatches on `provider` (default "meta_cloud_api") since both providers
+    share channel_type="whatsapp" but have different required fields.
+    """
+    raw = raw or {}
+    provider = raw.get("provider", "meta_cloud_api")
+    if provider == "evolution_api":
+        cfg: BaseModel = EvolutionApiChannelConfig(**raw)
+    else:
+        cfg = WhatsAppChannelConfig(**raw)
     return cfg.model_dump()
 
 

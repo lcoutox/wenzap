@@ -13,16 +13,18 @@ from app.models.channel import Channel
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.services.messaging.base import OutboundProvider
+from app.services.messaging.evolution_provider import EvolutionOutboundProvider
 from app.services.messaging.meta_provider import MetaOutboundProvider
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROVIDER_KEY = "meta_cloud_api"
 
-# Registry of outbound providers by key. New providers (e.g. evolution_api) are
-# registered here — no changes needed at the call sites.
+# Registry of outbound providers by key. Adding a new provider is a registry
+# entry here — no changes needed at the call sites.
 _PROVIDERS: dict[str, OutboundProvider] = {
     "meta_cloud_api": MetaOutboundProvider(),
+    "evolution_api": EvolutionOutboundProvider(),
 }
 
 
