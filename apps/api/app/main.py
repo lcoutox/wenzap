@@ -10,6 +10,7 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from app.config import settings
 from app.routers import (
+    agent_alerts,
     agents,
     ai_models,
     auth,
@@ -91,6 +92,7 @@ async def public_widget_cors(request: Request, call_next) -> Response:
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
+app.include_router(agent_alerts.router)
 app.include_router(workspaces.router)
 app.include_router(members.router)
 app.include_router(plans.router)

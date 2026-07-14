@@ -18,6 +18,7 @@ import {
 import { api } from "@/lib/api";
 import type { Agent, Channel, Conversation, KnowledgeBase } from "@/lib/api";
 import { useAppAuth } from "@/contexts/AuthContext";
+import { AgentAlertsWarning } from "@/components/layout/agent-alerts-warning";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -417,6 +418,9 @@ function DashboardContent() {
           accent={data.activeCatalogItemCount > 0}
         />
       </div>
+
+      {/* Agent Alerts (critical failures) */}
+      <AgentAlertsWarning />
 
       {/* Alerts */}
       {visibleAlerts.length > 0 && (

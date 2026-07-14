@@ -255,6 +255,17 @@ export type AgentStatusUpdateInput = {
   status: AgentStatus;
 };
 
+export type AgentAlert = {
+  id: string;
+  agent_id: string;
+  conversation_id: string;
+  error_code: string;
+  error_message_user: string;
+  error_message_admin: string;
+  is_read: boolean;
+  created_at: string;
+};
+
 export type AgentTestModelInfo = {
   display_name: string;
   provider: string;
@@ -1677,6 +1688,19 @@ export const api = {
         return res.json() as Promise<KnowledgeSource>;
       },
     },
+  },
+
+  agentAlerts: {
+    listUnread: () =>
+      cookieFetch<AgentAlert[]>("/agent-alerts?is_read=false&limit=50"),
+    markAsRead: (alertId: string) =>
+      cookieFetch<{ is_read: boolean }>(`/agent-alerts/${alertId}/read`, {
+        method: "PATCH",
+      }),
+    delete: (alertId: string) =>
+      cookieFetch<{ deleted: boolean }>(`/agent-alerts/${alertId}`, {
+        method: "DELETE",
+      }),
   },
 
   metaReview: {
