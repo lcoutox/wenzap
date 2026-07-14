@@ -263,6 +263,59 @@ def test_patch_updates_whatsapp_config(
     assert resp.json()["config"]["display_phone_number"] == "+55 21 91111-0000"
 
 
+def test_patch_whatsapp_channel_with_connected_at_set_does_not_500(
+    db: Session, workspace_a: Workspace, client_a: TestClient
+):
+    """Regression: updating a channel whose config already has connected_at set
+    (any WhatsApp channel post-connection) used to 500 with "Object of type
+    datetime is not JSON serializable" — Pydantic parses the stored ISO string
+    into a real datetime on validation, and model_dump() (default mode="python")
+    left it as a live datetime object that JSONB can't encode. Fixed via
+    model_dump(mode="json") in schemas/channel.py::_parse_whatsapp_config.
+    """
+    agent = _make_agent(db, workspace_a.id)
+    ch = _make_whatsapp_channel(db, workspace_a.id, agent.id, phone_number_id="333444555")
+    ch.config_json = {**ch.config_json, "connected_at": "2026-07-14T00:16:31.174502+00:00"}
+    db.commit()
+
+    resp = client_a.patch(f"/channels/{ch.id}", json={
+        "config": {**ch.config_json, "auto_reply_enabled": True},
+    })
+    assert resp.status_code == 200
+    assert resp.json()["config"]["auto_reply_enabled"] is True
+    assert resp.json()["config"]["connected_at"] == "2026-07-14T00:16:31.174502Z"
+
+
+def test_patch_evolution_whatsapp_channel_with_connected_at_set_does_not_500(
+    db: Session, workspace_a: Workspace, client_a: TestClient
+):
+    """Same regression as above, for the evolution_api provider config."""
+    agent = _make_agent(db, workspace_a.id)
+    ch = Channel(
+        workspace_id=workspace_a.id, agent_id=agent.id, channel_type="whatsapp",
+        name="Evolution Test", public_key=f"wap_{uuid.uuid4().hex[:24]}", status="active",
+        config_json={
+            "provider": "evolution_api", "onboarding_type": "qr_code",
+            "base_url": "https://nexevolution.up.railway.app",
+            "instance_name": "wenzap-regression-test", "display_phone_number": None,
+            "api_key_ref": "db:00000000-0000-0000-0000-000000000000",
+            "status": "active", "connected_at": "2026-07-14T00:16:31.174502+00:00",
+            "last_webhook_at": None, "auto_reply_enabled": False,
+        },
+        allowed_origins=[],
+    )
+    db.add(ch)
+    db.commit()
+    db.refresh(ch)
+
+    resp = client_a.patch(f"/channels/{ch.id}", json={
+        "config": {**ch.config_json, "auto_reply_enabled": True},
+    })
+    assert resp.status_code == 200
+    assert resp.json()["config"]["auto_reply_enabled"] is True
+    assert resp.json()["config"]["provider"] == "evolution_api"
+
+
 def test_patch_whatsapp_channel_with_web_widget_config_rejected(
     db: Session, workspace_a: Workspace, client_a: TestClient
 ):

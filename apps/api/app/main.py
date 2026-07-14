@@ -57,7 +57,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("anthropic").setLevel(logging.WARNING)
 
-app = FastAPI(title="Nexbrain API", version="0.1.0")
+app = FastAPI(title="Nexbrain API", version="0.2.0")
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Authenticated routes: restrict to configured origins (e.g. the dashboard).

@@ -110,7 +110,9 @@ class EvolutionApiChannelConfig(BaseModel):
 def _parse_web_widget_config(raw: dict | None) -> dict:
     """Validate and return a WebWidgetConfig dict, applying defaults."""
     cfg = WebWidgetConfig(**(raw or {}))
-    return cfg.model_dump()
+    # mode="json" serializes datetime/UUID/etc. back to JSON-safe types (e.g. ISO
+    # strings) instead of leaving live Python objects that JSONB can't encode.
+    return cfg.model_dump(mode="json")
 
 
 def _parse_whatsapp_config(raw: dict | None) -> dict:
@@ -125,7 +127,14 @@ def _parse_whatsapp_config(raw: dict | None) -> dict:
         cfg: BaseModel = EvolutionApiChannelConfig(**raw)
     else:
         cfg = WhatsAppChannelConfig(**raw)
-    return cfg.model_dump()
+    # mode="json": both configs have datetime fields (connected_at,
+    # last_webhook_at). Pydantic parses ISO strings from the stored config back
+    # into real datetime objects on validation; mode="json" re-serializes them
+    # to JSON-safe strings on dump so SQLAlchemy can encode the dict into JSONB.
+    # Without this, updating a channel that already has connected_at set
+    # (e.g. toggling auto_reply_enabled after connecting) 500s with
+    # "Object of type datetime is not JSON serializable".
+    return cfg.model_dump(mode="json")
 
 
 def _parse_config_by_type(channel_type: str, raw: dict | None) -> dict:
