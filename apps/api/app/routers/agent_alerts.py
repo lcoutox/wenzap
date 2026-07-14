@@ -1,15 +1,20 @@
 """Agent Alerts routes — list and manage agent failure notifications."""
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_current_workspace, get_verified_user
 from app.database import get_db
 from app.models.agent_alert import AgentAlert
-from app.routers.auth import require_workspace_context
+from app.models.workspace import Workspace
 
-router = APIRouter(prefix="/agent-alerts", tags=["Agent Alerts"])
+router = APIRouter(
+    prefix="/agent-alerts",
+    tags=["Agent Alerts"],
+    dependencies=[Depends(get_verified_user)],
+)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -34,7 +39,7 @@ class AgentAlertOut:
 @router.get("", response_model=list[dict])
 async def list_agent_alerts(
     db: Session = Depends(get_db),
-    workspace_id: uuid.UUID = Depends(require_workspace_context),
+    workspace: Workspace = Depends(get_current_workspace),
     is_read: bool | None = Query(None, description="Filter by read status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -45,7 +50,7 @@ async def list_agent_alerts(
     Unread alerts are returned first, sorted by creation date (newest first).
     """
     query = select(AgentAlert).where(
-        AgentAlert.workspace_id == workspace_id
+        AgentAlert.workspace_id == workspace.id
     )
 
     if is_read is not None:
@@ -76,13 +81,13 @@ async def list_agent_alerts(
 @router.get("/unread-count")
 async def get_unread_count(
     db: Session = Depends(get_db),
-    workspace_id: uuid.UUID = Depends(require_workspace_context),
+    workspace: Workspace = Depends(get_current_workspace),
 ):
     """Get count of unread agent alerts."""
     count = db.scalar(
         select(func.count(AgentAlert.id)).where(
             and_(
-                AgentAlert.workspace_id == workspace_id,
+                AgentAlert.workspace_id == workspace.id,
                 AgentAlert.is_read == False,  # noqa: E712
             )
         )
@@ -94,7 +99,7 @@ async def get_unread_count(
 async def mark_alert_as_read(
     alert_id: uuid.UUID,
     db: Session = Depends(get_db),
-    workspace_id: uuid.UUID = Depends(require_workspace_context),
+    workspace: Workspace = Depends(get_current_workspace),
 ):
     """Mark an alert as read."""
     from datetime import datetime, timezone
@@ -103,7 +108,7 @@ async def mark_alert_as_read(
         select(AgentAlert).where(
             and_(
                 AgentAlert.id == alert_id,
-                AgentAlert.workspace_id == workspace_id,
+                AgentAlert.workspace_id == workspace.id,
             )
         )
     )
@@ -127,14 +132,14 @@ async def mark_alert_as_read(
 async def delete_alert(
     alert_id: uuid.UUID,
     db: Session = Depends(get_db),
-    workspace_id: uuid.UUID = Depends(require_workspace_context),
+    workspace: Workspace = Depends(get_current_workspace),
 ):
     """Delete an alert."""
     alert = db.scalar(
         select(AgentAlert).where(
             and_(
                 AgentAlert.id == alert_id,
-                AgentAlert.workspace_id == workspace_id,
+                AgentAlert.workspace_id == workspace.id,
             )
         )
     )
