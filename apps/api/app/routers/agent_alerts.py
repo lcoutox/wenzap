@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.agent_alert import AgentAlert
-from app.routes.auth import require_workspace_context
+from app.routers.auth import require_workspace_context
 
 router = APIRouter(prefix="/agent-alerts", tags=["Agent Alerts"])
 
