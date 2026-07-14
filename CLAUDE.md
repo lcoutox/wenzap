@@ -2,17 +2,17 @@
 
 ## Project
 
-Project name: Nexbrain
+Project name: Wenzap
 
-Nexbrain is a B2B SaaS platform for creating, orchestrating and operating AI agents for companies.
+Wenzap is a B2B SaaS platform for creating, orchestrating and operating AI agents for companies.
 
 The platform allows companies to create AI agents, connect them to knowledge bases, publish them across channels, manage conversations through an inbox, organize leads/conversations in pipelines, and later connect agents to business tools through integrations and actions.
 
 ## Product positioning
 
-Nexbrain is not just a chatbot builder.
+Wenzap is not just a chatbot builder.
 
-Nexbrain is an AI agent orchestration platform for business operations.
+Wenzap is an AI agent orchestration platform for business operations.
 
 Core positioning:
 
@@ -30,11 +30,9 @@ The product should help companies apply AI to:
 
 ## Current stage
 
-The product is in early design and MVP planning stage.
+The product is in **advanced MVP stage**. Core foundations are implemented: multi-tenant, auth, billing (feature-gates), agents, playground, knowledge base/RAG, catalog, web widget, inbox, pipeline, contacts, WhatsApp inbound + auto-reply. Current focus: polishing agent configuration and preparing for the first real customers.
 
-Do not assume the MVP scope unless a specific feature spec or PRD is provided.
-
-When asked to implement something, always verify the relevant documentation first.
+Source of truth for feature scope: `docs/product/ROADMAP.md`. Always verify the relevant documentation before implementing.
 
 ## Engineering behavior
 
@@ -60,7 +58,7 @@ When implementing:
 
 ## Critical product rules
 
-* Nexbrain must be multi-tenant from the beginning.
+* Wenzap must be multi-tenant from the beginning.
 * Every customer account is an organization/workspace.
 * Business data must be isolated by organization.
 * The frontend must never be trusted to define organization_id directly.
@@ -90,7 +88,7 @@ Use these terms consistently:
 * Stage: step inside a pipeline.
 * Card: item inside a pipeline stage, usually linked to a conversation/contact.
 * Action: operation an agent can execute, such as call webhook, create lead or move pipeline card.
-* Integration: external system connected to Nexbrain.
+* Integration: external system connected to Wenzap.
 * Credit: internal consumption unit for AI usage.
 
 ## Initial modules
