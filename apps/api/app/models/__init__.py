@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_alert import AgentAlert
 from app.models.agent_catalog_category import AgentCatalogCategory
 from app.models.agent_knowledge_base import AgentKnowledgeBase
 from app.models.agent_model_settings import AgentModelSettings
@@ -54,6 +55,7 @@ __all__ = [
     "WorkspaceSubscription",
     "UsageCounter",
     "Agent",
+    "AgentAlert",
     "Channel",
     "ChannelCredential",
     "AgentPromptSettings",

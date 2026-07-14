@@ -287,6 +287,21 @@ def generate_conversation_agent_reply(
     try:
         llm_response = llm_client.complete(request)
     except LLMProviderError as exc:
+        # Notify admin of the error
+        from app.services.agent_alert_service import notify_agent_error  # noqa: PLC0415
+        notify_agent_error(
+            db,
+            workspace_id=workspace_id,
+            agent_id=agent.id,
+            conversation_id=conversation.id,
+            error_code=EC_LLM_ERROR,
+            error_message=str(exc.message)[:500],
+            error_details={
+                "auth_error": exc.auth_error,
+                "transient": exc.transient,
+                "provider": exc.provider if hasattr(exc, "provider") else "unknown",
+            },
+        )
         return _save_run(
             db,
             workspace_id=workspace_id,
