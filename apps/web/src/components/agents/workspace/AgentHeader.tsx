@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bot, ChevronRight, Coins, WifiOff } from "lucide-react";
+import { Bot, ChevronRight, Coins } from "lucide-react";
 import { api } from "@/lib/api";
 import { AgentStatusBadge } from "@/components/agents/AgentStatusBadge";
 import type { Agent, AiModel, MemberRole, AgentStatus } from "@/lib/api";
@@ -111,11 +111,6 @@ export function AgentHeader({
                   {agent.model_name}
                 </span>
               )}
-
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-nb-warning/10 text-nb-warning border border-nb-warning/20">
-                <WifiOff className="w-3 h-3" />
-                Sem canal
-              </span>
             </div>
           </div>
         </div>
