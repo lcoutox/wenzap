@@ -414,7 +414,7 @@ export function ConfigGeral({
         </Field>
         <Field
           label="Objetivo do agente"
-          hint="Descrição interna para identificar a função deste agente. As regras de comportamento ficam na aba Comportamento."
+          hint="Descrição interna para identificar a função deste agente. As regras de comportamento ficam na aba Instruções."
         >
           <textarea
             value={description}

@@ -97,7 +97,7 @@ export function StepReview({
       </div>
 
       <p className="text-xs text-nb-muted px-1">
-        As instruções de comportamento foram configuradas pelo template e podem ser ajustadas depois na aba Comportamento.
+        As instruções de comportamento foram configuradas pelo template e podem ser ajustadas depois na aba Instruções.
       </p>
     </div>
   );

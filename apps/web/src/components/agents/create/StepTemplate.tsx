@@ -15,7 +15,7 @@ export function StepTemplate({
           Com qual template você quer começar?
         </h2>
         <p className="text-sm text-nb-muted mt-1">
-          O template pré-configura o comportamento do agente. Você pode ajustar tudo depois.
+          O template pré-configura as instruções do agente. Você pode ajustar tudo depois.
         </p>
       </div>
 
