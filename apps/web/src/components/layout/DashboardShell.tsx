@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { UserMenuDropdown } from "./UserMenuDropdown";
+import { NotificationBell } from "./notification-bell";
 import { useAppAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import type { Subscription, Usage } from "@/lib/api";
@@ -104,7 +105,10 @@ export function DashboardShell({
             </span>
           </div>
 
-          <UserMenuDropdown />
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <UserMenuDropdown />
+          </div>
         </header>
 
         {/* Content area */}
