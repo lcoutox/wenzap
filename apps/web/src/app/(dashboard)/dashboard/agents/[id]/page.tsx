@@ -25,6 +25,7 @@ import type { ConfigTab } from "@/components/agents/workspace/ConfigTabs";
 import { AgentChat }            from "@/components/agents/workspace/tabs/AgentChat";
 import { ImplantarTab }          from "@/components/agents/workspace/tabs/ImplantarTab";
 import { ConfigGeral }           from "@/components/agents/workspace/tabs/ConfigGeral";
+import { ConfigApresentacao }    from "@/components/agents/workspace/tabs/ConfigApresentacao";
 import { ConfigComportamento }   from "@/components/agents/workspace/tabs/ConfigComportamento";
 import { ConfigConhecimento }    from "@/components/agents/workspace/tabs/ConfigConhecimento";
 import { ConfigModelo }          from "@/components/agents/workspace/tabs/ConfigModelo";
@@ -360,11 +361,8 @@ export default function AgentWorkspacePage() {
                 />
               )}
 
-              {configTab === "comportamento" && (
-                <ConfigComportamento
-                  instructionsMode={instructionsMode}
-                  guidedConfig={guidedConfig}
-                  advancedPrompt={advancedPrompt}
+              {configTab === "apresentacao" && (
+                <ConfigApresentacao
                   responseStyle={responseStyle}
                   languageMode={languageMode}
                   replyDelaySeconds={replyDelaySeconds}
@@ -372,12 +370,28 @@ export default function AgentWorkspacePage() {
                   saving={saving}
                   saveError={saveError}
                   saveSuccess={saveSuccess}
-                  onInstructionsModeChange={setInstructionsMode}
-                  onGuidedConfigChange={setGuidedConfig}
-                  onAdvancedPromptChange={setAdvancedPrompt}
                   onResponseStyleChange={setResponseStyle}
                   onLanguageModeChange={setLanguageMode}
                   onReplyDelaySecondsChange={setReplyDelaySeconds}
+                />
+              )}
+
+              {configTab === "comportamento" && (
+                <ConfigComportamento
+                  instructionsMode={instructionsMode}
+                  guidedConfig={guidedConfig}
+                  advancedPrompt={advancedPrompt}
+                  systemPrompt={systemPrompt}
+                  persona={persona}
+                  readonly={readonly}
+                  saving={saving}
+                  saveError={saveError}
+                  saveSuccess={saveSuccess}
+                  onInstructionsModeChange={setInstructionsMode}
+                  onGuidedConfigChange={setGuidedConfig}
+                  onAdvancedPromptChange={setAdvancedPrompt}
+                  onSystemPromptChange={setSystemPrompt}
+                  onPersonaChange={setPersona}
                 />
               )}
 

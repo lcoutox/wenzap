@@ -10,8 +10,6 @@ import type {
   GuidedRole,
   GuidedWhenNoInfo,
   InstructionsMode,
-  LanguageMode,
-  ResponseStyle,
 } from "@/lib/api";
 import { AgentFormSection } from "@/components/agents/AgentFormSection";
 import { SaveBar } from "@/components/agents/workspace/SaveBar";
@@ -66,19 +64,6 @@ const DONT_ITEMS: { value: GuidedDontItem; label: string }[] = [
   { value: "no_official_partner_claims", label: "Não dizer que é parceiro oficial sem confirmação" },
   { value: "no_sensitive_data",          label: "Não pedir dados sensíveis sem necessidade" },
   { value: "no_out_of_scope",            label: "Não responder fora do escopo da empresa" },
-];
-
-const RESPONSE_STYLE_OPTIONS: { value: ResponseStyle; label: string; description: string }[] = [
-  { value: "concise",  label: "Objetivo",    description: "Respostas curtas e diretas. Ideal para widget e WhatsApp." },
-  { value: "balanced", label: "Equilibrado", description: "Respostas claras com contexto suficiente, sem excesso de detalhe." },
-  { value: "detailed", label: "Detalhado",   description: "Respostas mais completas para suporte aprofundado." },
-];
-
-const LANGUAGE_OPTIONS: { value: LanguageMode; label: string }[] = [
-  { value: "auto", label: "Automático — responde no idioma do usuário" },
-  { value: "pt",   label: "Português (Brasil)" },
-  { value: "en",   label: "Inglês" },
-  { value: "es",   label: "Espanhol" },
 ];
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
@@ -411,52 +396,91 @@ function GuidedForm({
 
 function AdvancedForm({
   advancedPrompt,
+  systemPrompt,
+  persona,
   onChange,
+  onSystemPromptChange,
+  onPersonaChange,
   readonly,
 }: {
   advancedPrompt: string;
+  systemPrompt: string;
+  persona: string;
   onChange: (v: string) => void;
+  onSystemPromptChange: (v: string) => void;
+  onPersonaChange: (v: string) => void;
   readonly: boolean;
 }) {
   return (
-    <AgentFormSection
-      title="Instruções avançadas"
-      description="Escreva as instruções completas do agente em texto livre."
-    >
-      <div className="mb-3 p-3 bg-nb-elevated border border-nb-border rounded-xl text-xs text-nb-muted leading-relaxed">
-        No modo avançado, suas instruções substituem o modo guiado. As regras internas de segurança, conhecimento, ferramentas e limites da plataforma continuam sendo aplicadas pelo Wenzap.
-      </div>
-      <div className="space-y-1.5">
-        <textarea
-          value={advancedPrompt}
-          onChange={(e) => onChange(e.target.value)}
-          rows={14}
-          maxLength={20000}
-          disabled={readonly}
-          placeholder={
-            readonly
-              ? ""
-              : "Ex: Você é um agente de suporte especializado em SaaS B2B. Responda de forma objetiva, não invente informações e peça para falar com um humano quando não souber responder."
-          }
-          className={readonly ? disabledInput : baseInput}
-        />
-        <p className="text-xs text-nb-muted">{advancedPrompt.length} / 20000 caracteres</p>
-      </div>
-    </AgentFormSection>
+    <div className="space-y-6">
+      <AgentFormSection
+        title="Instruções do agente"
+        description="Explique como o agente deve se comportar, quais regras deve seguir e o que deve evitar. Obrigatório para ativar o agente."
+      >
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium text-nb-secondary">Instruções</label>
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => onSystemPromptChange(e.target.value)}
+            rows={10}
+            maxLength={8000}
+            disabled={readonly}
+            placeholder={readonly ? "" : "Ex: Responda de forma objetiva, não invente informações e peça para falar com um humano quando não souber responder."}
+            className={readonly ? disabledInput : baseInput}
+          />
+          <p className="text-xs text-nb-muted">{systemPrompt.length} / 8000 caracteres</p>
+        </div>
+      </AgentFormSection>
+
+      <AgentFormSection
+        title="Tom de voz"
+        description="Defina o estilo de comunicação do agente."
+      >
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium text-nb-secondary">Tom de voz</label>
+          <textarea
+            value={persona}
+            onChange={(e) => onPersonaChange(e.target.value)}
+            rows={4}
+            maxLength={1000}
+            disabled={readonly}
+            placeholder={readonly ? "" : "Ex: Profissional, simpático e direto ao ponto"}
+            className={readonly ? disabledInput : baseInput}
+          />
+          <p className="text-xs text-nb-muted">{persona.length} / 1000 caracteres</p>
+        </div>
+      </AgentFormSection>
+
+      <AgentFormSection
+        title="Instruções avançadas (legado)"
+        description="Escreva as instruções completas do agente em texto livre."
+      >
+        <div className="mb-3 p-3 bg-nb-elevated border border-nb-border rounded-xl text-xs text-nb-muted leading-relaxed">
+          No modo avançado, suas instruções substituem o modo guiado. As regras internas de segurança, conhecimento, ferramentas e limites da plataforma continuam sendo aplicadas pelo Wenzap.
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium text-nb-secondary">Instruções completas</label>
+          <textarea
+            value={advancedPrompt}
+            onChange={(e) => onChange(e.target.value)}
+            rows={14}
+            maxLength={20000}
+            disabled={readonly}
+            placeholder={
+              readonly
+                ? ""
+                : "Ex: Você é um agente de suporte especializado em SaaS B2B. Responda de forma objetiva, não invente informações e peça para falar com um humano quando não souber responder."
+            }
+            className={readonly ? disabledInput : baseInput}
+          />
+          <p className="text-xs text-nb-muted">{advancedPrompt.length} / 20000 caracteres</p>
+        </div>
+      </AgentFormSection>
+    </div>
   );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-
-// ── Reply delay options ───────────────────────────────────────────────────────
-
-const REPLY_DELAY_OPTIONS: { value: number; label: string; recommended?: boolean }[] = [
-  { value: 0,  label: "Imediato" },
-  { value: 3,  label: "3 segundos" },
-  { value: 5,  label: "5 segundos", recommended: true },
-  { value: 8,  label: "8 segundos" },
-  { value: 15, label: "15 segundos" },
-];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -464,9 +488,8 @@ export function ConfigComportamento({
   instructionsMode,
   guidedConfig,
   advancedPrompt,
-  responseStyle,
-  languageMode,
-  replyDelaySeconds,
+  systemPrompt,
+  persona,
   readonly,
   saving,
   saveError,
@@ -474,16 +497,14 @@ export function ConfigComportamento({
   onInstructionsModeChange,
   onGuidedConfigChange,
   onAdvancedPromptChange,
-  onResponseStyleChange,
-  onLanguageModeChange,
-  onReplyDelaySecondsChange,
+  onSystemPromptChange,
+  onPersonaChange,
 }: {
   instructionsMode: InstructionsMode;
   guidedConfig: GuidedConfig;
   advancedPrompt: string;
-  responseStyle: ResponseStyle;
-  languageMode: LanguageMode;
-  replyDelaySeconds: number;
+  systemPrompt: string;
+  persona: string;
   readonly: boolean;
   saving: boolean;
   saveError: string | null;
@@ -491,96 +512,11 @@ export function ConfigComportamento({
   onInstructionsModeChange: (m: InstructionsMode) => void;
   onGuidedConfigChange: (c: GuidedConfig) => void;
   onAdvancedPromptChange: (v: string) => void;
-  onResponseStyleChange: (v: ResponseStyle) => void;
-  onLanguageModeChange: (v: LanguageMode) => void;
-  onReplyDelaySecondsChange: (v: number) => void;
+  onSystemPromptChange: (v: string) => void;
+  onPersonaChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
-      {/* Estilo de resposta */}
-      <AgentFormSection
-        title="Estilo de resposta"
-        description="Define o tamanho e a profundidade das respostas geradas pelo agente."
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {RESPONSE_STYLE_OPTIONS.map(({ value, label, description }) => {
-            const active = responseStyle === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                disabled={readonly}
-                onClick={() => !readonly && onResponseStyleChange(value)}
-                className={`text-left rounded-xl border p-4 transition-colors ${
-                  active
-                    ? "border-nb-primary bg-nb-primary/5 ring-1 ring-nb-primary/30"
-                    : "border-nb-border bg-nb-elevated hover:border-nb-border-strong"
-                } ${readonly ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-              >
-                <p className={`text-sm font-semibold mb-1 ${active ? "text-nb-primary-strong" : "text-nb-text"}`}>{label}</p>
-                <p className="text-xs text-nb-muted leading-relaxed">{description}</p>
-              </button>
-            );
-          })}
-        </div>
-      </AgentFormSection>
-
-      {/* Idioma */}
-      <AgentFormSection
-        title="Idioma"
-        description="Define em qual idioma o agente responde, independente do idioma da pergunta."
-      >
-        <select
-          value={languageMode}
-          disabled={readonly}
-          onChange={(e) => onLanguageModeChange(e.target.value as LanguageMode)}
-          className={readonly ? disabledSelect : baseSelect}
-        >
-          {LANGUAGE_OPTIONS.map(({ value, label }) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-      </AgentFormSection>
-
-      {/* Tempo de resposta */}
-      <AgentFormSection
-        title="Tempo de resposta"
-        description="O agente espera alguns segundos após a última mensagem do cliente antes de responder. Isso evita respostas quebradas quando o cliente envia várias mensagens seguidas."
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {REPLY_DELAY_OPTIONS.map(({ value, label, recommended }) => {
-            const active = replyDelaySeconds === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                disabled={readonly}
-                onClick={() => !readonly && onReplyDelaySecondsChange(value)}
-                className={`
-                  relative text-left rounded-xl border p-3 transition-all text-sm
-                  ${readonly ? "cursor-not-allowed opacity-60" : "cursor-pointer"}
-                  ${active
-                    ? "border-nb-primary bg-nb-primary-bg/50 ring-1 ring-nb-primary/40"
-                    : "border-nb-border bg-nb-elevated hover:border-nb-border-strong"}
-                `}
-              >
-                <span className={`font-medium ${active ? "text-nb-primary-strong" : "text-nb-text"}`}>
-                  {label}
-                </span>
-                {recommended && (
-                  <span className="block text-[10px] text-nb-primary mt-0.5">Recomendado</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {replyDelaySeconds === 0 && (
-          <p className="text-xs text-nb-muted mt-2">
-            Pode responder mais rápido, mas pode gerar respostas antes do cliente terminar de digitar.
-          </p>
-        )}
-      </AgentFormSection>
-
       {/* Modo de instruções */}
       <AgentFormSection
         title="Modo de configuração"
@@ -614,7 +550,15 @@ export function ConfigComportamento({
       {instructionsMode === "guided" ? (
         <GuidedForm config={guidedConfig} onChange={onGuidedConfigChange} readonly={readonly} />
       ) : (
-        <AdvancedForm advancedPrompt={advancedPrompt} onChange={onAdvancedPromptChange} readonly={readonly} />
+        <AdvancedForm
+          advancedPrompt={advancedPrompt}
+          systemPrompt={systemPrompt}
+          persona={persona}
+          onChange={onAdvancedPromptChange}
+          onSystemPromptChange={onSystemPromptChange}
+          onPersonaChange={onPersonaChange}
+          readonly={readonly}
+        />
       )}
 
       {!readonly && (
