@@ -26,7 +26,6 @@ import type {
   MemberRole,
   WebWidgetConfig,
 } from "@/lib/api";
-import { EmbeddedSignupButton } from "@/components/agents/workspace/whatsapp/EmbeddedSignupButton";
 import { EvolutionQRConnect } from "@/components/agents/workspace/whatsapp/EvolutionQRConnect";
 import { planAllowsChannelType } from "@/lib/plan";
 import { PlanGateBadge } from "@/components/plan/PlanGateBadge";
@@ -812,7 +811,6 @@ function WhatsAppConnectCard({
   writable,
   saveError,
   saving,
-  onEmbeddedSuccess,
   onEvolutionSuccess,
   onManualOpen,
 }: {
@@ -820,7 +818,6 @@ function WhatsAppConnectCard({
   writable: boolean;
   saveError: string | null;
   saving: boolean;
-  onEmbeddedSuccess: (ch: WhatsAppChannel) => void;
   onEvolutionSuccess: (ch: WhatsAppChannel) => void;
   onManualOpen: () => void;
 }) {
@@ -843,26 +840,11 @@ function WhatsAppConnectCard({
 
       {writable ? (
         <>
-          {/* Quick CTA — QR Code (Evolution bridge, available today) */}
+          {/* WhatsApp QR Code Connection */}
           <div className="space-y-2">
             <EvolutionQRConnect agentId={agentId} onSuccess={onEvolutionSuccess} />
             <p className="text-[11px] text-nb-muted text-center leading-relaxed">
-              Rápido: escaneie o QR Code com o WhatsApp da empresa, como no WhatsApp Web.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-nb-border" />
-            <span className="text-[10px] font-medium text-nb-muted uppercase tracking-widest">ou</span>
-            <div className="h-px flex-1 bg-nb-border" />
-          </div>
-
-          {/* Official Meta CTA — Embedded Signup */}
-          <div className="space-y-2">
-            <EmbeddedSignupButton agentId={agentId} onSuccess={onEmbeddedSuccess} />
-            <p className="text-[11px] text-nb-muted text-center leading-relaxed">
-              Conexão oficial via Meta. Você será direcionado para escolher ou conectar seu número do
-              WhatsApp Business.
+              Escaneie o QR Code com o WhatsApp da empresa, como no WhatsApp Web.
             </p>
           </div>
 
@@ -1169,10 +1151,6 @@ export function ImplantarTab({
                   writable={writable}
                   saveError={saveError}
                   saving={saving}
-                  onEmbeddedSuccess={(ch) => {
-                    setWaChannels((prev) => [ch, ...prev]);
-                    showSuccess("Canal WhatsApp conectado com sucesso.");
-                  }}
                   onEvolutionSuccess={(ch) => {
                     setWaChannels((prev) => [ch, ...prev]);
                     showSuccess("Canal WhatsApp conectado com sucesso.");
