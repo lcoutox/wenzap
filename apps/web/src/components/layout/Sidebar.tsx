@@ -16,6 +16,7 @@ import {
   KanbanSquare,
 } from "lucide-react";
 import type { Subscription, Usage } from "@/lib/api";
+import { useUnreadAlertsCount } from "@/hooks/use-unread-alerts-count";
 
 function WenzapIcon({ size = 28 }: { size?: number }) {
   return (
@@ -142,6 +143,7 @@ export function Sidebar({
   usage: Usage | null;
 }) {
   const pathname = usePathname();
+  const { count: unreadAlertsCount } = useUnreadAlertsCount();
 
   // Routes absorbed into Configurações (no longer in the nav array).
   const SETTINGS_SUBROUTES = ["/dashboard/members", "/dashboard/plan"];
@@ -178,6 +180,7 @@ export function Sidebar({
       <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
+          const showBadge = href === "/dashboard/admin/meta-review" && unreadAlertsCount > 0;
           return (
             <Link
               key={href}
@@ -196,7 +199,19 @@ export function Sidebar({
                 <span className="absolute left-0 inset-y-1.5 w-0.5 bg-nb-primary rounded-full" />
               )}
               <Icon className={`w-4 h-4 flex-shrink-0 ${active ? "text-nb-primary-strong" : ""}`} />
-              {!collapsed && <span>{label}</span>}
+              {!collapsed && (
+                <span className="flex-1 flex items-center justify-between">
+                  <span>{label}</span>
+                  {showBadge && (
+                    <span className="ml-auto flex items-center justify-center w-5 h-5 rounded-full bg-nb-danger text-white text-xs font-bold">
+                      {unreadAlertsCount > 9 ? "9+" : unreadAlertsCount}
+                    </span>
+                  )}
+                </span>
+              )}
+              {collapsed && showBadge && (
+                <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-nb-danger" />
+              )}
             </Link>
           );
         })}

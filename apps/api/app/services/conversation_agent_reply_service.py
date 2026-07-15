@@ -284,9 +284,35 @@ def generate_conversation_agent_reply(
         temperature=float(model_settings.temperature),
     )
 
-    try:
-        llm_response = llm_client.complete(request)
-    except LLMProviderError as exc:
+    # ── Call LLM with automatic retries ───────────────────────────────────────
+    llm_response = None
+    last_error = None
+    backoff_ms = 500
+    max_retries = 2
+
+    for attempt in range(max_retries + 1):
+        try:
+            llm_response = llm_client.complete(request)
+            break  # Success
+        except LLMProviderError as exc:
+            last_error = exc
+            # Don't retry auth errors (configuration problem)
+            if exc.auth_error:
+                break
+            # Don't retry permanent errors
+            if not exc.transient:
+                break
+            # Transient error — retry if attempts remain
+            if attempt < max_retries:
+                import time
+                time.sleep(backoff_ms / 1000.0)
+                backoff_ms = min(backoff_ms * 2, 5000)
+            else:
+                break
+
+    # Handle LLM errors
+    if llm_response is None and last_error is not None:
+        exc = last_error
         # Notify admin of the error
         from app.services.agent_alert_service import notify_agent_error  # noqa: PLC0415
         notify_agent_error(
