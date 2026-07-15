@@ -31,7 +31,6 @@ import { PlaygroundSidebar } from "./PlaygroundSidebar";
 
 type BlockReason =
   | "archived"
-  | "no_system_prompt"
   | "no_model"
   | "model_not_executable"
   | "viewer"
@@ -47,7 +46,6 @@ function getBlockReason(
 ): BlockReason {
   if (role === "viewer") return "viewer";
   if (agent.status === "archived") return "archived";
-  if (!agent.system_prompt?.trim()) return "no_system_prompt";
   if (!activeModel) return "no_model";
   if (!modelExecutable) return "model_not_executable";
   return null;
@@ -57,7 +55,6 @@ function blockMessage(reason: BlockReason): string {
   switch (reason) {
     case "viewer":              return "Você não tem permissão para testar este agente.";
     case "archived":            return "Este agente está arquivado e não pode ser testado.";
-    case "no_system_prompt":    return "Configure um system_prompt em Configurações → Prompt antes de testar.";
     case "no_model":            return "Configure um modelo em Configurações → Modelo antes de testar.";
     case "model_not_executable":return "O modelo selecionado não está disponível para execução nesta fase. Selecione um modelo Anthropic ou Wenzap compatível.";
     default:                    return "";
