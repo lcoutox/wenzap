@@ -281,8 +281,23 @@ function GuidedForm({
         </Field>
       </AgentFormSection>
 
-      {/* Seção 2 — Estilo de conversa */}
-      <AgentFormSection title="2. Estilo de conversa" description="Como o agente deve se comunicar?">
+      {/* Seção 2 — Quando não souber */}
+      <AgentFormSection title="2. Quando não souber" description="O que o agente deve fazer quando não tiver informação suficiente?">
+        <select
+          value={config.when_no_info ?? ""}
+          disabled={readonly}
+          onChange={(e) => upd({ when_no_info: (e.target.value as GuidedWhenNoInfo) || null })}
+          className={readonly ? disabledSelect : baseSelect}
+        >
+          <option value="">Selecione (opcional)</option>
+          {WHEN_NO_INFO_OPTIONS.map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </AgentFormSection>
+
+      {/* Seção 3 — Estilo de conversa */}
+      <AgentFormSection title="3. Estilo de conversa" description="Como o agente deve se comunicar?">
         <Field label="Postura do agente">
           <select
             value={config.posture ?? ""}
@@ -322,8 +337,8 @@ function GuidedForm({
         </Field>
       </AgentFormSection>
 
-      {/* Seção 3 — Regras de atuação */}
-      <AgentFormSection title="3. Regras de atuação" description="O que o agente deve e não deve fazer.">
+      {/* Seção 4 — Regras de atuação */}
+      <AgentFormSection title="4. Regras de atuação" description="O que o agente deve e não deve fazer.">
         <div className="space-y-4">
           <Field label="O que o agente deve fazer">
             <CheckboxList
@@ -361,21 +376,6 @@ function GuidedForm({
             </div>
           </Field>
         </div>
-      </AgentFormSection>
-
-      {/* Seção 4 — Quando não souber */}
-      <AgentFormSection title="4. Quando não souber" description="O que o agente deve fazer quando não tiver informação suficiente?">
-        <select
-          value={config.when_no_info ?? ""}
-          disabled={readonly}
-          onChange={(e) => upd({ when_no_info: (e.target.value as GuidedWhenNoInfo) || null })}
-          className={readonly ? disabledSelect : baseSelect}
-        >
-          <option value="">Selecione (opcional)</option>
-          {WHEN_NO_INFO_OPTIONS.map(({ value, label }) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
       </AgentFormSection>
 
       {/* Seção 5 — Exemplos */}
