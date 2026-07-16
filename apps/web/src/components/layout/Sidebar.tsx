@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { Subscription, Usage } from "@/lib/api";
 import { useUnreadAlertsCount } from "@/hooks/use-unread-alerts-count";
+import { getLimitState, limitPct } from "@/lib/plan";
 
 function WenzapIcon({ size = 28 }: { size?: number }) {
   return (
@@ -59,20 +60,42 @@ function PlanCard({
   subscription: Subscription | null;
   usage: Usage | null;
 }) {
-  const plan         = subscription?.plan;
-  const creditsUsed  = usage?.ai_credits_used ?? 0;
-  const creditsTotal = plan?.monthly_ai_credits ?? 1;
-  const pct          = Math.min(100, Math.round((creditsUsed / creditsTotal) * 100));
+  // subscription and usage load via two independent requests (DashboardShell)
+  // that can resolve in either order. Rendering derived state (% used, "esgotado")
+  // from a partial pair — e.g. real usage against a not-yet-loaded plan's
+  // fallback limit — flashes an incorrect state for one frame. Wait for both.
+  if (!subscription || !usage) {
+    if (collapsed) {
+      return (
+        <div className="px-3 pb-4">
+          <div className="w-8 h-8 rounded-lg bg-nb-elevated border border-nb-border animate-pulse mx-auto" />
+        </div>
+      );
+    }
+    return (
+      <div className="mx-3 mb-4 p-3 rounded-xl border border-nb-border bg-nb-elevated animate-pulse">
+        <div className="h-3 w-16 bg-nb-panel rounded mb-3" />
+        <div className="h-1 bg-nb-panel rounded-full mb-3" />
+        <div className="h-6 bg-nb-panel rounded-lg" />
+      </div>
+    );
+  }
 
-  const barColor     = pct >= 90 ? "bg-nb-danger" : pct >= 70 ? "bg-nb-warning" : "bg-nb-primary";
-  const isExhausted  = pct >= 100;
-  const isWarning    = pct >= 70 && pct < 100;
+  const plan         = subscription.plan;
+  const creditsUsed  = usage.ai_credits_used;
+  const creditsTotal = plan.monthly_ai_credits;
+  const pct          = limitPct(creditsUsed, creditsTotal);
+  const state        = getLimitState(creditsUsed, creditsTotal);
+
+  const barColor     = state === "exceeded" || state === "danger" ? "bg-nb-danger" : state === "warning" ? "bg-nb-warning" : "bg-nb-primary";
+  const isExhausted  = state === "exceeded";
+  const isWarning    = state === "warning" || state === "danger";
 
   if (collapsed) {
     return (
       <div className="px-3 pb-4">
         <div
-          title={plan ? `${plan.name} — ${pct}% de créditos usados` : "Sem plano ativo"}
+          title={`${plan.name} — ${pct}% de créditos usados`}
           className={`flex items-center justify-center w-8 h-8 rounded-lg border cursor-default mx-auto ${
             isExhausted ? "bg-nb-danger/10 border-nb-danger/30" :
             isWarning   ? "bg-nb-warning/10 border-nb-warning/30" :
@@ -93,28 +116,28 @@ function PlanCard({
     }`}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-nb-secondary truncate">
-          {plan?.name ?? "Sem plano"}
+          {plan.name}
         </span>
         <TrendingUp className="w-3.5 h-3.5 text-nb-muted flex-shrink-0" />
       </div>
 
-      {plan && (
-        <div className="mb-2">
-          <div className="flex justify-between text-[10px] mb-1">
-            <span className="text-nb-muted">Créditos IA</span>
-            {isExhausted
-              ? <span className="text-nb-danger font-semibold">Esgotado</span>
-              : <span className="text-nb-muted">{creditsUsed.toLocaleString("pt-BR")} / {creditsTotal.toLocaleString("pt-BR")}</span>
-            }
-          </div>
-          <div className="h-1 bg-nb-border rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-          </div>
-          {isWarning && (
-            <p className="text-[10px] text-nb-warning mt-1">Perto do limite de créditos.</p>
-          )}
+      <div className="mb-2">
+        <div className="flex justify-between text-[10px] mb-1">
+          <span className="text-nb-muted">Créditos IA</span>
+          {isExhausted
+            ? <span className="text-nb-danger font-semibold">Esgotado</span>
+            : creditsTotal <= 0
+            ? <span className="text-nb-muted">Ilimitado</span>
+            : <span className="text-nb-muted">{creditsUsed.toLocaleString("pt-BR")} / {creditsTotal.toLocaleString("pt-BR")}</span>
+          }
         </div>
-      )}
+        <div className="h-1 bg-nb-border rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+        </div>
+        {isWarning && (
+          <p className="text-[10px] text-nb-warning mt-1">Perto do limite de créditos.</p>
+        )}
+      </div>
 
       <Link
         href="/dashboard/plan"
