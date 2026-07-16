@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertCircle, CheckCircle } from "lucide-react";
-import { api } from "@/lib/api";
+import { CheckCircle } from "lucide-react";
 
-export default function BillingPage() {
+function SuccessAlert() {
   const searchParams = useSearchParams();
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -17,6 +16,17 @@ export default function BillingPage() {
     }
   }, [searchParams]);
 
+  if (!success) return null;
+
+  return (
+    <div className="rounded-xl border border-nb-success bg-nb-success/5 p-4 flex gap-3">
+      <CheckCircle className="w-5 h-5 text-nb-success flex-shrink-0 mt-0.5" />
+      <p className="text-sm text-nb-text">{success}</p>
+    </div>
+  );
+}
+
+export default function BillingPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -25,13 +35,9 @@ export default function BillingPage() {
         <p className="text-sm text-nb-muted mt-0.5">Gerencie sua assinatura e método de pagamento</p>
       </div>
 
-      {/* Success Alert */}
-      {success && (
-        <div className="rounded-xl border border-nb-success bg-nb-success/5 p-4 flex gap-3">
-          <CheckCircle className="w-5 h-5 text-nb-success flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-nb-text">{success}</p>
-        </div>
-      )}
+      <Suspense>
+        <SuccessAlert />
+      </Suspense>
 
       {/* Info Section */}
       <div className="rounded-xl border border-nb-border bg-nb-surface p-6 space-y-4">
