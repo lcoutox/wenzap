@@ -159,6 +159,18 @@ def test_signup_weak_password_returns_422(db: Session, starter_plan: Plan):
         assert r.status_code == 422
 
 
+def test_signup_disabled_returns_403(db: Session, starter_plan: Plan, monkeypatch):
+    from app.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router.settings, "signup_enabled", False)
+    with _auth_client(db) as client:
+        r = _signup(client, "blocked@example.com", "password123")
+    assert r.status_code == 403
+
+    user = db.query(User).filter_by(email="blocked@example.com").first()
+    assert user is None
+
+
 def test_signup_normalizes_email_lowercase(db: Session, starter_plan: Plan):
     with _auth_client(db) as client:
         r = _signup(client, "UPPER@EXAMPLE.COM", "password123")

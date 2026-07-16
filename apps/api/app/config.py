@@ -150,6 +150,12 @@ class Settings(BaseSettings):
             "enterprise": self.stripe_price_id_enterprise,
         }
 
+    # ── Signup gate ───────────────────────────────────────────────────────────
+    # Set to False to block new self-serve account creation (e.g. before public
+    # launch, or during a production testing window). Existing accounts/sessions
+    # are unaffected — this only gates POST /auth/signup.
+    signup_enabled: bool = True
+
     # ── AI prompt debug ───────────────────────────────────────────────────────
     # When True, logs a structured summary of each assembled system prompt
     # (sections included, lengths, flags). In dev only, also logs the first

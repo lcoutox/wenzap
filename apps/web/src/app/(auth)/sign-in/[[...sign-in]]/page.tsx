@@ -132,13 +132,15 @@ export default function SignInPage() {
             </button>
           </form>
 
-          {/* Sign-up link */}
-          <p className="mt-6 text-center text-xs text-nb-muted">
-            Não tem uma conta?{" "}
-            <Link href="/sign-up" className="text-nb-primary hover:text-nb-primary-strong transition-colors font-medium">
-              Criar conta
-            </Link>
-          </p>
+          {/* Sign-up link — hidden when signup is disabled (pre-launch / testing window) */}
+          {process.env.NEXT_PUBLIC_SIGNUP_ENABLED !== "false" && (
+            <p className="mt-6 text-center text-xs text-nb-muted">
+              Não tem uma conta?{" "}
+              <Link href="/sign-up" className="text-nb-primary hover:text-nb-primary-strong transition-colors font-medium">
+                Criar conta
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

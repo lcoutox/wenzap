@@ -3,6 +3,11 @@ import type { NextRequest } from "next/server";
 
 const AUTH_COOKIE = "wenzap_session";
 
+// Set SIGNUP_ENABLED=false to block self-serve account creation (e.g. before
+// public launch, or during a production testing window). Existing sessions
+// are unaffected — this only gates the /sign-up route.
+const SIGNUP_ENABLED = process.env.SIGNUP_ENABLED !== "false";
+
 const PUBLIC_PREFIXES = [
   "/sign-in",
   "/sign-up",
@@ -36,6 +41,13 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = "/sign-in";
     url.searchParams.set("redirect_url", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  if (!SIGNUP_ENABLED && pathname.startsWith("/sign-up") && !hasSession) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/sign-in";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

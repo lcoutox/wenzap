@@ -202,6 +202,12 @@ def _get_token_from_cookie(request: Request) -> str | None:
 def signup(
     body: SignupRequest, response: Response, request: Request, db: Session = Depends(get_db)
 ) -> AuthMeOut:
+    if not settings.signup_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cadastro de novas contas está temporariamente desabilitado.",
+        )
+
     validate_password_strength(body.password)
 
     existing = db.scalar(select(User).where(User.email == body.email))
