@@ -454,115 +454,118 @@ function CatalogConfigModal({
     .map((id) => categories.find((c) => c.id === id)?.name)
     .filter(Boolean);
 
-  return (
-    <>
-      <Modal open={open && !pickerOpen} onClose={onClose} title="Configurar Catálogo">
-        <div className="space-y-5">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2].map((i) => <div key={i} className="h-12 bg-nb-elevated rounded-xl animate-pulse" />)}
-            </div>
-          ) : error ? (
-            <p className="text-sm text-nb-danger">{error}</p>
-          ) : (
-            <>
-              {/* Enable toggle */}
-              <div className="flex items-center justify-between p-4 bg-nb-panel border border-nb-border rounded-xl">
-                <div>
-                  <p className="text-sm font-medium text-nb-text">Usar Catálogo nas respostas</p>
-                  <p className="text-xs text-nb-muted mt-0.5">
-                    Permite que o agente consulte produtos e serviços cadastrados.
-                  </p>
-                </div>
-                <Toggle
-                  checked={scope.catalog_enabled}
-                  disabled={readonly || saving}
-                  onChange={handleToggle}
-                />
-              </div>
-
-              {scope.catalog_enabled && (
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-nb-muted uppercase tracking-wide">
-                    Escopo do Catálogo
-                  </p>
-
-                  {(["all", "selected"] as const).map((opt) => (
-                    <label
-                      key={opt}
-                      className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${
-                        scope.category_scope === opt
-                          ? "border-nb-primary/40 bg-nb-primary/5"
-                          : "border-nb-border hover:border-nb-border-strong"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="catalog-scope"
-                        checked={scope.category_scope === opt}
-                        onChange={() => !readonly && !saving && handleScopeChange(opt)}
-                        disabled={readonly || saving}
-                        className="mt-0.5 accent-nb-primary"
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-nb-text">
-                          {opt === "all" ? "Todo o Catálogo" : "Categorias selecionadas"}
-                        </p>
-                        <p className="text-xs text-nb-muted mt-0.5">
-                          {opt === "all"
-                            ? "O agente consulta todos os itens do catálogo."
-                            : "Restrinja o agente a categorias específicas."}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
-
-                  {scope.category_scope === "selected" && (
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        disabled={readonly || saving}
-                        onClick={() => setPickerOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Selecionar categorias
-                      </button>
-                      {selectedNames.length > 0 && (
-                        <ul className="mt-2 flex flex-col gap-1">
-                          {selectedNames.map((name) => (
-                            <li key={name} className="flex items-center gap-2 text-xs text-nb-muted">
-                              <span className="w-1.5 h-1.5 rounded-full bg-nb-primary shrink-0" />
-                              {name}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {saveError && <p className="text-xs text-nb-danger">{saveError}</p>}
-              {saving && (
-                <div className="flex items-center gap-2 text-xs text-nb-muted">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Salvando…
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </Modal>
-
+  // Render category picker modal inside the main modal flow
+  if (pickerOpen) {
+    return (
       <CategoryPickerModal
-        open={pickerOpen}
+        open={true}
         onClose={() => setPickerOpen(false)}
         categories={categories}
         selectedIds={scope.category_ids}
         onSave={handleCategorySave}
       />
-    </>
+    );
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Configurar Catálogo">
+      <div className="space-y-5">
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2].map((i) => <div key={i} className="h-12 bg-nb-elevated rounded-xl animate-pulse" />)}
+          </div>
+        ) : error ? (
+          <p className="text-sm text-nb-danger">{error}</p>
+        ) : (
+          <>
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between p-4 bg-nb-panel border border-nb-border rounded-xl">
+              <div>
+                <p className="text-sm font-medium text-nb-text">Usar Catálogo nas respostas</p>
+                <p className="text-xs text-nb-muted mt-0.5">
+                  Permite que o agente consulte produtos e serviços cadastrados.
+                </p>
+              </div>
+              <Toggle
+                checked={scope.catalog_enabled}
+                disabled={readonly || saving}
+                onChange={handleToggle}
+              />
+            </div>
+
+            {scope.catalog_enabled && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-nb-muted uppercase tracking-wide">
+                  Escopo do Catálogo
+                </p>
+
+                {(["all", "selected"] as const).map((opt) => (
+                  <label
+                    key={opt}
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${
+                      scope.category_scope === opt
+                        ? "border-nb-primary/40 bg-nb-primary/5"
+                        : "border-nb-border hover:border-nb-border-strong"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="catalog-scope"
+                      checked={scope.category_scope === opt}
+                      onChange={() => !readonly && !saving && handleScopeChange(opt)}
+                      disabled={readonly || saving}
+                      className="mt-0.5 accent-nb-primary"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-nb-text">
+                        {opt === "all" ? "Todo o Catálogo" : "Categorias selecionadas"}
+                      </p>
+                      <p className="text-xs text-nb-muted mt-0.5">
+                        {opt === "all"
+                          ? "O agente consulta todos os itens do catálogo."
+                          : "Restrinja o agente a categorias específicas."}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+
+                {scope.category_scope === "selected" && (
+                  <div className="pt-1 space-y-2">
+                    <button
+                      type="button"
+                      disabled={readonly || saving}
+                      onClick={() => setPickerOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Selecionar categorias
+                    </button>
+                    {selectedNames.length > 0 && (
+                      <ul className="flex flex-col gap-1">
+                        {selectedNames.map((name) => (
+                          <li key={name} className="flex items-center gap-2 text-xs text-nb-muted">
+                            <span className="w-1.5 h-1.5 rounded-full bg-nb-primary shrink-0" />
+                            {name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {saveError && <p className="text-xs text-nb-danger">{saveError}</p>}
+            {saving && (
+              <div className="flex items-center gap-2 text-xs text-nb-muted">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Salvando…
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
