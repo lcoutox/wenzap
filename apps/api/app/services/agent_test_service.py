@@ -77,13 +77,17 @@ from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_co
 
 logger = logging.getLogger(__name__)
 
-# Phase 3: only these Anthropic model_name values can be executed.
-# Both provider=anthropic and provider=nexbrain models are allowed
-# if their model_name is in this set (nexbrain wraps Anthropic models).
-ANTHROPIC_EXECUTABLE_MODELS: set[str] = {
+# Executable models: Anthropic Claude + OpenAI GPT + Nexbrain wrappers
+# provider=anthropic and provider=nexbrain: Claude models
+# provider=openai: GPT models
+EXECUTABLE_MODELS: set[str] = {
+    # Anthropic Claude
     "claude-haiku-4-5",
     "claude-sonnet-4-6",
     "claude-opus-4-8",
+    # OpenAI GPT
+    "gpt-4o-mini",
+    "gpt-4o",
 }
 
 
@@ -537,8 +541,8 @@ def _validate_plan(plan_code: str, model: AiModel) -> None:
 
 def _validate_runtime_support(model: AiModel, provider: AiModelProvider) -> None:
     code = provider.code.lower()
-    if code in ("anthropic", "nexbrain"):
-        if model.model_name not in ANTHROPIC_EXECUTABLE_MODELS:
+    if code in ("anthropic", "nexbrain", "openai"):
+        if model.model_name not in EXECUTABLE_MODELS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
@@ -551,7 +555,7 @@ def _validate_runtime_support(model: AiModel, provider: AiModelProvider) -> None
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "This model's provider is not supported for execution yet. "
-                "Please select an Anthropic or Nexbrain model."
+                "Please select a model from Anthropic, OpenAI, or Nexbrain."
             ),
         )
 

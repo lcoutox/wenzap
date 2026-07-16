@@ -44,11 +44,15 @@ function findActiveModel(catalog: AiCatalog | null, aiModelId: string | null): A
   return null;
 }
 
-// Phase 3: models executable via Anthropic SDK
+// Models executable for playground testing (backend + frontend support)
 const EXECUTABLE_MODEL_NAMES = new Set([
+  // Anthropic Claude
   "claude-haiku-4-5",
   "claude-sonnet-4-6",
   "claude-opus-4-8",
+  // OpenAI GPT
+  "gpt-4o-mini",
+  "gpt-4o",
 ]);
 
 function isModelExecutable(catalog: AiCatalog | null, activeModel: AiModel | null): boolean {
@@ -57,7 +61,7 @@ function isModelExecutable(catalog: AiCatalog | null, activeModel: AiModel | nul
     const found = provider.models.find((m) => m.id === activeModel.id);
     if (found) {
       return (
-        (provider.code === "anthropic" || provider.code === "nexbrain") &&
+        (provider.code === "anthropic" || provider.code === "openai" || provider.code === "nexbrain") &&
         EXECUTABLE_MODEL_NAMES.has(activeModel.model_name)
       );
     }
