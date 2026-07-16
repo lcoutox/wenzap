@@ -783,8 +783,8 @@ export function ConfigFerramentas({
         </p>
         <div className="flex flex-col gap-3">
 
-          {/* Knowledge Base */}
-          <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+          {/* Knowledge Base — só mostra se não está ativo */}
+          {!kbActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
             <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
               <BookOpen className="w-4 h-4 text-nb-muted" />
             </div>
@@ -807,10 +807,10 @@ export function ConfigFerramentas({
                 <><Plus className="w-3.5 h-3.5" /> Adicionar</>
               )}
             </button>
-          </div>
+          </div>}
 
-          {/* Catalog */}
-          <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+          {/* Catalog — só mostra se não está ativo */}
+          {!catalogActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
             <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
               <ShoppingBag className="w-4 h-4 text-nb-muted" />
             </div>
@@ -833,7 +833,7 @@ export function ConfigFerramentas({
                 <><Plus className="w-3.5 h-3.5" /> Adicionar</>
               )}
             </button>
-          </div>
+          </div>}
 
           {/* Roadmap */}
           <RoadmapCard
