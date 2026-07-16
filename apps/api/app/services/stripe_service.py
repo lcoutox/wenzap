@@ -196,10 +196,14 @@ class StripeService:
             logger.error("STRIPE_WEBHOOK_SECRET is not set — rejecting webhook")
             return None
         try:
-            return stripe.Webhook.construct_event(payload, sig_header, settings.stripe_webhook_secret)
+            event = stripe.Webhook.construct_event(payload, sig_header, settings.stripe_webhook_secret)
         except (ValueError, stripe.error.SignatureVerificationError) as e:
             logger.error("Invalid Stripe webhook: %s", e)
             return None
+        # construct_event returns a StripeObject, not a plain dict — newer SDK
+        # versions dropped dict-style .get() support on it. Downstream code
+        # (webhook handler) expects a plain nested dict, so convert here once.
+        return event.to_dict_recursive()
 
     def log_sync_action(
         self,
