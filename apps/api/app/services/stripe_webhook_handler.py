@@ -1,16 +1,19 @@
 """
 Stripe webhook event handler for subscription lifecycle management.
 
-Processes:
-- Subscription creation/updates/cancellations
-- Invoice payment success/failure
-- Idempotent processing via stripe_event_id
+Every workspace already has exactly one WorkspaceSubscription row (created at
+signup on the starter plan — see auth.py _provision_workspace), so handlers
+here only ever UPDATE that row, never create one.
+
+Idempotency: each event is recorded in stripe_events keyed by stripe_event_id
+before processing; already-processed events are skipped.
 """
 
-import json
 import logging
+import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.plan import Plan
@@ -20,253 +23,214 @@ from app.services.stripe_service import StripeService
 
 logger = logging.getLogger(__name__)
 
+_STRIPE_STATUS_MAP = {
+    "active": "active",
+    "trialing": "active",
+    "past_due": "past_due",
+    "unpaid": "past_due",
+    "incomplete": "past_due",
+    "incomplete_expired": "canceled",
+    "canceled": "canceled",
+}
+
 
 class StripeWebhookHandler:
-    """Handler for processing Stripe webhook events."""
+    """Routes verified Stripe events to per-type handlers."""
 
     def __init__(self, stripe_service: StripeService):
-        """Initialize webhook handler with Stripe service."""
         self.stripe_service = stripe_service
 
     def process_event(self, event: dict, db: Session) -> bool:
-        """
-        Process a Stripe webhook event with idempotency.
+        """Process a Stripe webhook event with idempotency. Returns False if already processed."""
+        event_id = event["id"]
+        event_type = event["type"]
+        obj = event.get("data", {}).get("object", {})
 
-        Args:
-            event: Stripe event dict (from verify_webhook_signature)
-            db: Database session
-
-        Returns:
-            True if processed successfully, False if already processed
-        """
-        event_id = event.get("id")
-        event_type = event.get("type")
-        data = event.get("data", {})
-        obj = data.get("object", {})
-
-        # Check if event already processed (idempotency)
-        existing = db.query(StripeEvent).filter(
-            StripeEvent.stripe_event_id == event_id
-        ).first()
-
+        existing = db.scalar(select(StripeEvent).where(StripeEvent.stripe_event_id == event_id))
         if existing and existing.processed_at:
-            logger.info(f"Event {event_id} already processed, skipping")
+            logger.info("Event %s already processed, skipping", event_id)
             return False
 
-        try:
-            # Mark as processing (create if doesn't exist)
-            if not existing:
-                stripe_event = StripeEvent(
-                    stripe_event_id=event_id,
-                    event_type=event_type,
-                    workspace_id=self._extract_workspace_id(obj),
-                    payload=obj,
-                )
-                db.add(stripe_event)
-                db.flush()
-            else:
-                stripe_event = existing
+        workspace_sub = self._resolve_workspace_sub(db, obj)
 
-            # Route to specific handler
-            handler_method = getattr(self, f"handle_{event_type.replace('.', '_')}", None)
-            if handler_method:
-                handler_method(obj, db)
-                stripe_event.processed_at = datetime.now(timezone.utc)
-                db.commit()
-                logger.info(f"Processed event {event_id} ({event_type})")
-                return True
-            else:
-                logger.warning(f"No handler for event type: {event_type}")
-                return False
-
-        except Exception as e:
-            db.rollback()
-            logger.error(f"Error processing event {event_id}: {e}", exc_info=True)
-            self.stripe_service.log_sync_action(
-                db,
-                workspace_id=self._extract_workspace_id(obj),
-                action="webhook_process",
-                status="failed",
-                error_message=str(e),
+        if not existing:
+            existing = StripeEvent(
+                stripe_event_id=event_id,
+                event_type=event_type,
+                workspace_id=workspace_sub.workspace_id if workspace_sub else None,
+                payload=obj,
             )
-            raise
+            db.add(existing)
+            db.flush()
 
-    def handle_customer_subscription_created(self, subscription: dict, db: Session) -> None:
-        """Handle customer.subscription.created event."""
-        workspace_id = self._extract_workspace_id(subscription)
-        customer_id = subscription.get("customer")
-        subscription_id = subscription.get("id")
-        plan_id = self._extract_plan_id_from_subscription(subscription)
+        handler = getattr(self, f"handle_{event_type.replace('.', '_')}", None)
+        if not handler:
+            logger.info("No handler for event type %s, marking as processed (no-op)", event_type)
+            existing.processed_at = datetime.now(timezone.utc)
+            db.commit()
+            return True
 
-        if not workspace_id:
-            logger.warning("Subscription created without workspace_id metadata")
+        handler(obj, workspace_sub, db)
+        existing.processed_at = datetime.now(timezone.utc)
+        db.commit()
+        logger.info("Processed event %s (%s)", event_id, event_type)
+        return True
+
+    def _resolve_workspace_sub(self, db: Session, obj: dict) -> WorkspaceSubscription | None:
+        """Resolve the WorkspaceSubscription row for a Stripe object via metadata, falling back
+        to matching by Stripe customer id (covers invoice events, which carry no metadata)."""
+        workspace_id = obj.get("metadata", {}).get("workspace_id")
+        if workspace_id:
+            try:
+                return db.scalar(
+                    select(WorkspaceSubscription).where(
+                        WorkspaceSubscription.workspace_id == uuid.UUID(workspace_id)
+                    )
+                )
+            except ValueError:
+                pass
+
+        customer_id = obj.get("customer")
+        if customer_id:
+            return db.scalar(
+                select(WorkspaceSubscription).where(
+                    WorkspaceSubscription.stripe_customer_id == customer_id
+                )
+            )
+        return None
+
+    def _sync_plan_from_subscription(self, db: Session, subscription: dict) -> Plan | None:
+        items = subscription.get("items", {}).get("data", [])
+        if not items:
+            return None
+        price_id = items[0].get("price", {}).get("id")
+        if not price_id:
+            return None
+        plan_code = self.stripe_service.plan_code_for_price_id(price_id)
+        if not plan_code:
+            logger.warning("Unrecognized Stripe price_id %s — cannot sync plan", price_id)
+            return None
+        return db.scalar(select(Plan).where(Plan.code == plan_code))
+
+    # ── Event handlers ───────────────────────────────────────────────────────
+
+    def handle_customer_subscription_created(
+        self, subscription: dict, workspace_sub: WorkspaceSubscription | None, db: Session
+    ) -> None:
+        if workspace_sub is None:
+            logger.error("subscription.created with no resolvable workspace: %s", subscription.get("id"))
             return
 
-        # Find or create workspace subscription
-        workspace_sub = db.query(WorkspaceSubscription).filter(
-            WorkspaceSubscription.workspace_id == workspace_id
-        ).first()
+        plan = self._sync_plan_from_subscription(db, subscription)
+        if plan:
+            workspace_sub.plan_id = plan.id
 
-        if not workspace_sub:
-            raise ValueError(f"No workspace subscription found for {workspace_id}")
-
-        # Update with Stripe IDs
-        workspace_sub.stripe_subscription_id = subscription_id
-        workspace_sub.stripe_customer_id = customer_id
-        workspace_sub.status = "active"
+        workspace_sub.stripe_subscription_id = subscription["id"]
+        workspace_sub.stripe_customer_id = subscription["customer"]
+        workspace_sub.status = _STRIPE_STATUS_MAP.get(subscription.get("status"), "active")
         workspace_sub.auto_renew = True
         workspace_sub.cancel_at_period_end = False
-
-        # Update period dates
-        current_period_start = subscription.get("current_period_start")
-        current_period_end = subscription.get("current_period_end")
-
-        if current_period_start:
-            workspace_sub.period_start = datetime.fromtimestamp(
-                current_period_start, tz=timezone.utc
-            )
-        if current_period_end:
-            workspace_sub.period_end = datetime.fromtimestamp(
-                current_period_end, tz=timezone.utc
-            )
+        self._apply_period(workspace_sub, subscription)
 
         db.commit()
-        logger.info(
-            f"Created subscription {subscription_id} for workspace {workspace_id}"
-        )
         self.stripe_service.log_sync_action(
             db,
-            workspace_id=workspace_id,
-            action="create",
+            workspace_id=workspace_sub.workspace_id,
+            action="subscription_created",
             status="success",
-            stripe_response={"subscription_id": subscription_id},
+            stripe_response={"subscription_id": subscription["id"], "plan": plan.code if plan else None},
         )
 
-    def handle_customer_subscription_updated(self, subscription: dict, db: Session) -> None:
-        """Handle customer.subscription.updated event."""
-        subscription_id = subscription.get("id")
-        workspace_id = self._extract_workspace_id(subscription)
-
-        if not workspace_id:
-            logger.warning(f"Subscription {subscription_id} updated without workspace_id")
+    def handle_customer_subscription_updated(
+        self, subscription: dict, workspace_sub: WorkspaceSubscription | None, db: Session
+    ) -> None:
+        if workspace_sub is None:
+            logger.warning("subscription.updated with no resolvable workspace: %s", subscription.get("id"))
             return
 
-        workspace_sub = db.query(WorkspaceSubscription).filter(
-            WorkspaceSubscription.workspace_id == workspace_id
-        ).first()
+        plan = self._sync_plan_from_subscription(db, subscription)
+        if plan:
+            workspace_sub.plan_id = plan.id
 
-        if not workspace_sub:
-            logger.warning(f"No workspace subscription for update event: {workspace_id}")
-            return
-
-        # Update cancellation status if changed
-        cancel_at_period_end = subscription.get("cancel_at_period_end", False)
-        if cancel_at_period_end:
-            workspace_sub.cancel_at_period_end = True
-            workspace_sub.status = "cancelling"
-
-        # Update period dates
-        current_period_end = subscription.get("current_period_end")
-        if current_period_end:
-            workspace_sub.period_end = datetime.fromtimestamp(
-                current_period_end, tz=timezone.utc
-            )
+        workspace_sub.status = _STRIPE_STATUS_MAP.get(subscription.get("status"), workspace_sub.status)
+        workspace_sub.cancel_at_period_end = bool(subscription.get("cancel_at_period_end"))
+        workspace_sub.auto_renew = not workspace_sub.cancel_at_period_end
+        self._apply_period(workspace_sub, subscription)
 
         db.commit()
-        logger.info(f"Updated subscription {subscription_id} for workspace {workspace_id}")
         self.stripe_service.log_sync_action(
             db,
-            workspace_id=workspace_id,
-            action="update",
+            workspace_id=workspace_sub.workspace_id,
+            action="subscription_updated",
             status="success",
-            stripe_response={"subscription_id": subscription_id},
+            stripe_response={"subscription_id": subscription["id"], "plan": plan.code if plan else None},
         )
 
-    def handle_customer_subscription_deleted(self, subscription: dict, db: Session) -> None:
-        """Handle customer.subscription.deleted event."""
-        subscription_id = subscription.get("id")
-        workspace_id = self._extract_workspace_id(subscription)
-
-        if not workspace_id:
-            logger.warning(f"Subscription {subscription_id} deleted without workspace_id")
+    def handle_customer_subscription_deleted(
+        self, subscription: dict, workspace_sub: WorkspaceSubscription | None, db: Session
+    ) -> None:
+        if workspace_sub is None:
+            logger.warning("subscription.deleted with no resolvable workspace: %s", subscription.get("id"))
             return
 
-        workspace_sub = db.query(WorkspaceSubscription).filter(
-            WorkspaceSubscription.workspace_id == workspace_id
-        ).first()
+        starter = db.scalar(select(Plan).where(Plan.code == "starter"))
+        if starter:
+            workspace_sub.plan_id = starter.id
 
-        if not workspace_sub:
-            logger.warning(f"No workspace subscription for deletion: {workspace_id}")
-            return
-
-        # Mark as cancelled/downgraded
-        workspace_sub.status = "inactive"
+        workspace_sub.status = "canceled"
         workspace_sub.auto_renew = False
+        workspace_sub.cancel_at_period_end = False
+        workspace_sub.stripe_subscription_id = None
         workspace_sub.cancelled_at = datetime.now(timezone.utc)
-        workspace_sub.cancellation_reason = subscription.get("cancellation_details", {}).get(
-            "reason", "cancelled_by_stripe"
+        workspace_sub.cancellation_reason = (
+            subscription.get("cancellation_details", {}).get("reason") or "cancelled_by_stripe"
         )
 
         db.commit()
-        logger.info(f"Cancelled subscription {subscription_id} for workspace {workspace_id}")
         self.stripe_service.log_sync_action(
             db,
-            workspace_id=workspace_id,
-            action="cancel",
+            workspace_id=workspace_sub.workspace_id,
+            action="subscription_deleted",
             status="success",
-            stripe_response={"subscription_id": subscription_id},
+            stripe_response={"subscription_id": subscription.get("id")},
         )
 
-    def handle_invoice_payment_succeeded(self, invoice: dict, db: Session) -> None:
-        """Handle invoice.payment_succeeded event."""
-        invoice_id = invoice.get("id")
-        customer_id = invoice.get("customer")
-        workspace_id = self._extract_workspace_id(invoice)
+    def handle_invoice_payment_succeeded(
+        self, invoice: dict, workspace_sub: WorkspaceSubscription | None, db: Session
+    ) -> None:
+        if workspace_sub is None:
+            return
+        if workspace_sub.status == "past_due":
+            workspace_sub.status = "active"
+            db.commit()
+        self.stripe_service.log_sync_action(
+            db,
+            workspace_id=workspace_sub.workspace_id,
+            action="payment_succeeded",
+            status="success",
+            stripe_response={"invoice_id": invoice.get("id"), "amount_paid": invoice.get("amount_paid")},
+        )
 
-        logger.info(f"Invoice {invoice_id} paid for customer {customer_id}")
-
-        if workspace_id:
-            self.stripe_service.log_sync_action(
-                db,
-                workspace_id=workspace_id,
-                action="payment_succeeded",
-                status="success",
-                stripe_response={"invoice_id": invoice_id, "amount": invoice.get("total")},
-            )
-
-    def handle_invoice_payment_failed(self, invoice: dict, db: Session) -> None:
-        """Handle invoice.payment_failed event."""
-        invoice_id = invoice.get("id")
-        customer_id = invoice.get("customer")
-        workspace_id = self._extract_workspace_id(invoice)
-
-        logger.error(f"Invoice {invoice_id} payment failed for customer {customer_id}")
-
-        if workspace_id:
-            self.stripe_service.log_sync_action(
-                db,
-                workspace_id=workspace_id,
-                action="payment_failed",
-                status="failed",
-                error_message=f"Invoice {invoice_id} payment failed",
-            )
+    def handle_invoice_payment_failed(
+        self, invoice: dict, workspace_sub: WorkspaceSubscription | None, db: Session
+    ) -> None:
+        if workspace_sub is None:
+            return
+        workspace_sub.status = "past_due"
+        db.commit()
+        self.stripe_service.log_sync_action(
+            db,
+            workspace_id=workspace_sub.workspace_id,
+            action="payment_failed",
+            status="failed",
+            error_message=f"Invoice {invoice.get('id')} payment failed",
+        )
 
     @staticmethod
-    def _extract_workspace_id(stripe_object: dict) -> str | None:
-        """Extract workspace_id from Stripe object metadata."""
-        metadata = stripe_object.get("metadata", {})
-        return metadata.get("workspace_id")
-
-    @staticmethod
-    def _extract_plan_id_from_subscription(subscription: dict) -> str | None:
-        """Extract plan_id from Stripe subscription items."""
-        items = subscription.get("items", {}).get("data", [])
-        if items:
-            price_id = items[0].get("price", {}).get("id")
-            # Map Stripe price ID back to plan code (inverse of _plan_to_price_id)
-            price_to_plan = {
-                "price_growth_monthly_brl": "growth",
-                "price_scale_monthly_brl": "scale",
-            }
-            return price_to_plan.get(price_id)
-        return None
+    def _apply_period(workspace_sub: WorkspaceSubscription, subscription: dict) -> None:
+        start = subscription.get("current_period_start")
+        end = subscription.get("current_period_end")
+        if start:
+            workspace_sub.current_period_start = datetime.fromtimestamp(start, tz=timezone.utc)
+        if end:
+            workspace_sub.current_period_end = datetime.fromtimestamp(end, tz=timezone.utc)

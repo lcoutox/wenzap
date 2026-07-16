@@ -12,8 +12,7 @@ interface UpgradePromptProps {
 }
 
 const DEFAULT_TITLE = "Recurso Premium";
-const DEFAULT_DESC  =
-  "Planos pagos estarão disponíveis em breve. Fale com a equipe para liberar mais uso.";
+const DEFAULT_DESC  = "Disponível no plano Growth ou superior.";
 
 export function UpgradePrompt({
   title = DEFAULT_TITLE,

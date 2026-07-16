@@ -8,8 +8,7 @@ import type { Subscription, Usage } from "@/lib/api";
 import { PlanLimitBar } from "@/components/plan/PlanLimitBar";
 import { getLimitState } from "@/lib/plan";
 
-const UPGRADE_MSG =
-  "Planos pagos estarão disponíveis em breve. Fale com a equipe para liberar mais uso.";
+const UPGRADE_MSG = "Faça upgrade para liberar mais uso e recursos.";
 
 export function PlanUsageSettingsSection() {
   const [sub, setSub]     = useState<Subscription | null>(null);

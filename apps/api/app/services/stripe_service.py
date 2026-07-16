@@ -4,225 +4,201 @@ Stripe integration service for billing subscriptions, checkouts, and webhooks.
 Handles:
 - Customer management
 - Checkout sessions
-- Subscription lifecycle
-- Webhook verification and processing
+- Billing portal sessions
+- Subscription cancellation
+- Coupon validation
+- Webhook signature verification
 """
 
-import hashlib
-import hmac
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
 import stripe
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.plan import Plan
-from app.models.stripe_event import StripeEvent
 from app.models.stripe_sync_log import StripeSyncLog
-from app.models.workspace_subscription import WorkspaceSubscription
+from app.models.user import User
 from app.models.workspace import Workspace
+from app.models.workspace_subscription import WorkspaceSubscription
 
 logger = logging.getLogger(__name__)
 
 
-class StripeService:
-    """Service for Stripe operations."""
+class StripeNotConfiguredError(RuntimeError):
+    """Raised when a Stripe operation is attempted without required config."""
 
-    def __init__(self, api_key: str):
-        """Initialize Stripe service with API key."""
-        stripe.api_key = api_key
+
+class StripeService:
+    """Service for Stripe operations. One instance per request (see Depends(get_stripe_service))."""
+
+    def __init__(self) -> None:
+        stripe.api_key = settings.stripe_api_key
+
+    def _require_configured(self) -> None:
+        if not settings.stripe_api_key:
+            raise StripeNotConfiguredError(
+                "STRIPE_API_KEY is not set. Billing is not available in this environment."
+            )
+
+    def price_id_for_plan(self, plan_code: str) -> str:
+        price_id = settings.stripe_price_by_plan_code.get(plan_code)
+        if not price_id:
+            raise ValueError(f"No Stripe price configured for plan '{plan_code}'")
+        return price_id
+
+    def plan_code_for_price_id(self, price_id: str) -> str | None:
+        for code, pid in settings.stripe_price_by_plan_code.items():
+            if pid == price_id:
+                return code
+        return None
 
     def create_customer(self, workspace: Workspace, db: Session) -> str:
-        """
-        Create a Stripe customer or return existing customer_id.
+        """Create a Stripe customer or return the existing customer_id."""
+        self._require_configured()
 
-        Args:
-            workspace: Workspace instance
-            db: Database session
-
-        Returns:
-            Stripe customer ID (cus_...)
-        """
-        workspace_sub = db.query(WorkspaceSubscription).filter(
-            WorkspaceSubscription.workspace_id == workspace.id
-        ).first()
-
+        workspace_sub = db.scalar(
+            select(WorkspaceSubscription).where(WorkspaceSubscription.workspace_id == workspace.id)
+        )
         if workspace_sub and workspace_sub.stripe_customer_id:
             return workspace_sub.stripe_customer_id
 
-        try:
-            customer = stripe.Customer.create(
-                name=workspace.name,
-                email=workspace.admin_email or "noreply@wenzap.com.br",
-                metadata={"workspace_id": str(workspace.id)},
-            )
-            logger.info(f"Created Stripe customer {customer.id} for workspace {workspace.id}")
-            return customer.id
-        except stripe.error.StripeError as e:
-            logger.error(f"Failed to create Stripe customer: {e}")
-            raise
+        owner = db.scalar(select(User).where(User.id == workspace.owner_user_id))
+        owner_email = owner.email if owner else None
+        if not owner_email:
+            raise ValueError(f"Workspace {workspace.id} has no resolvable owner email")
+
+        customer = stripe.Customer.create(
+            name=workspace.name,
+            email=owner_email,
+            metadata={"workspace_id": str(workspace.id)},
+        )
+        logger.info("Created Stripe customer %s for workspace %s", customer.id, workspace.id)
+        return customer.id
 
     def create_checkout_session(
         self,
         workspace: Workspace,
         target_plan: Plan,
+        db: Session,
         coupon_code: str | None = None,
-        db: Session | None = None,
     ) -> str:
-        """
-        Create a Stripe checkout session for subscription upgrade.
-
-        Args:
-            workspace: Workspace instance
-            target_plan: Target Plan to upgrade to
-            coupon_code: Optional coupon code for discount
-            db: Database session (required to create customer if needed)
-
-        Returns:
-            Stripe checkout session URL
-        """
-        if not db:
-            raise ValueError("Database session required")
+        """Create a Stripe Checkout session for a subscription upgrade. Returns the checkout URL."""
+        self._require_configured()
 
         customer_id = self.create_customer(workspace, db)
+        price_id = self.price_id_for_plan(target_plan.code)
 
-        # Map plan code to Stripe price ID
-        price_id = self._plan_to_price_id(target_plan.code)
+        session_params: dict = {
+            "mode": "subscription",
+            "customer": customer_id,
+            "line_items": [{"price": price_id, "quantity": 1}],
+            "success_url": f"{settings.app_url}/dashboard/plan?checkout=success",
+            "cancel_url": f"{settings.app_url}/dashboard/plan?checkout=cancelled",
+            "metadata": {"workspace_id": str(workspace.id), "plan_code": target_plan.code},
+            # Propagated onto the created Subscription object so webhook handlers
+            # can resolve the workspace without a metadata round-trip.
+            "subscription_data": {
+                "metadata": {"workspace_id": str(workspace.id), "plan_code": target_plan.code}
+            },
+        }
+        if coupon_code:
+            session_params["discounts"] = [{"coupon": coupon_code}]
+        else:
+            session_params["allow_promotion_codes"] = True
 
-        try:
-            session_params = {
-                "payment_method_types": ["card"],
-                "mode": "subscription",
-                "customer": customer_id,
-                "line_items": [
-                    {
-                        "price": price_id,
-                        "quantity": 1,
-                    }
-                ],
-                "success_url": "https://app.wenzap.com.br/dashboard/billing?success=true",
-                "cancel_url": "https://app.wenzap.com.br/dashboard?cancelled=true",
-                "metadata": {
-                    "workspace_id": str(workspace.id),
-                    "plan_code": target_plan.code,
-                },
-            }
+        session = stripe.checkout.Session.create(**session_params)
+        logger.info("Created checkout session %s for workspace %s", session.id, workspace.id)
+        return session.url
 
-            # Add coupon if provided
-            if coupon_code:
-                session_params["discounts"] = [{"coupon": coupon_code}]
+    def create_portal_session(self, workspace: Workspace, db: Session) -> str:
+        """Create a Stripe Billing Portal session. Returns the portal URL."""
+        self._require_configured()
 
-            session = stripe.checkout.Session.create(**session_params)
-            logger.info(f"Created checkout session {session.id} for workspace {workspace.id}")
-            return session.url
+        workspace_sub = db.scalar(
+            select(WorkspaceSubscription).where(WorkspaceSubscription.workspace_id == workspace.id)
+        )
+        if not workspace_sub or not workspace_sub.stripe_customer_id:
+            raise ValueError("No Stripe customer found for this workspace")
 
-        except stripe.error.StripeError as e:
-            logger.error(f"Failed to create checkout session: {e}")
-            raise
+        session = stripe.billing_portal.Session.create(
+            customer=workspace_sub.stripe_customer_id,
+            return_url=f"{settings.app_url}/dashboard/plan",
+        )
+        return session.url
 
     def cancel_subscription(self, workspace: Workspace, db: Session, reason: str | None = None) -> None:
-        """
-        Cancel subscription at period end (graceful cancellation).
+        """Cancel a subscription at period end (graceful cancellation)."""
+        self._require_configured()
 
-        Args:
-            workspace: Workspace instance
-            db: Database session
-            reason: Optional cancellation reason
-        """
-        workspace_sub = db.query(WorkspaceSubscription).filter(
-            WorkspaceSubscription.workspace_id == workspace.id
-        ).first()
-
+        workspace_sub = db.scalar(
+            select(WorkspaceSubscription).where(WorkspaceSubscription.workspace_id == workspace.id)
+        )
         if not workspace_sub or not workspace_sub.stripe_subscription_id:
-            logger.warning(f"No subscription found for workspace {workspace.id}")
-            return
+            raise ValueError("No active Stripe subscription found for this workspace")
 
-        try:
-            stripe.Subscription.modify(
-                workspace_sub.stripe_subscription_id,
-                cancel_at_period_end=True,
-                metadata={"cancellation_reason": reason or "user_requested"},
-            )
-            logger.info(f"Marked subscription {workspace_sub.stripe_subscription_id} for cancellation")
-        except stripe.error.StripeError as e:
-            logger.error(f"Failed to cancel subscription: {e}")
-            raise
+        stripe.Subscription.modify(
+            workspace_sub.stripe_subscription_id,
+            cancel_at_period_end=True,
+            metadata={"cancellation_reason": reason or "user_requested"},
+        )
+        logger.info("Marked subscription %s for cancellation", workspace_sub.stripe_subscription_id)
 
     def validate_coupon(self, coupon_code: str, target_plan: Plan) -> dict:
-        """
-        Validate a coupon code and return discount details.
+        """Validate a coupon code and return discount details for target_plan."""
+        self._require_configured()
 
-        Args:
-            coupon_code: Coupon code to validate
-            target_plan: Plan to apply coupon to
-
-        Returns:
-            Dictionary with coupon details and discounted price
-        """
         try:
             coupon = stripe.Coupon.retrieve(coupon_code)
-
-            # Validation checks
-            if not coupon.valid:
-                return {"valid": False, "error": "Coupon is invalid"}
-
-            if coupon.redeem_by and coupon.redeem_by < datetime.now(timezone.utc).timestamp():
-                return {"valid": False, "error": "Coupon expired"}
-
-            if coupon.max_redemptions and coupon.times_redeemed >= coupon.max_redemptions:
-                return {"valid": False, "error": "Coupon exhausted"}
-
-            # Calculate discounted price
-            original_price = target_plan.monthly_price_cents
-            discount_amount = 0
-
-            if coupon.percent_off:
-                discount_amount = int(original_price * coupon.percent_off / 100)
-            elif coupon.amount_off:
-                discount_amount = coupon.amount_off
-
-            discounted_price = max(0, original_price - discount_amount)
-
-            return {
-                "valid": True,
-                "code": coupon_code,
-                "discount_type": "percent" if coupon.percent_off else "fixed",
-                "discount_value": coupon.percent_off or (coupon.amount_off / 100),
-                "original_price_cents": original_price,
-                "discounted_price_cents": discounted_price,
-                "expires_at": datetime.fromtimestamp(coupon.redeem_by, tz=timezone.utc).isoformat()
-                if coupon.redeem_by
-                else None,
-            }
-
         except stripe.error.InvalidRequestError:
-            return {"valid": False, "error": "Coupon not found"}
-        except Exception as e:
-            logger.error(f"Coupon validation error: {e}")
-            return {"valid": False, "error": str(e)}
+            return {"valid": False, "error": "Cupom não encontrado"}
 
-    def verify_webhook_signature(self, payload: bytes, sig_header: str, webhook_secret: str) -> dict | None:
-        """
-        Verify Stripe webhook signature and return event data.
+        if not coupon.valid:
+            return {"valid": False, "error": "Cupom inválido ou expirado"}
 
-        Args:
-            payload: Raw webhook payload
-            sig_header: Stripe signature header
-            webhook_secret: Webhook secret from Stripe
+        if coupon.max_redemptions and coupon.times_redeemed >= coupon.max_redemptions:
+            return {"valid": False, "error": "Cupom esgotado"}
 
-        Returns:
-            Event dict if valid, None if invalid
-        """
-        try:
-            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-            return event
-        except ValueError as e:
-            logger.error(f"Invalid webhook payload: {e}")
+        original_price = target_plan.monthly_price_cents
+        if coupon.percent_off:
+            discount_amount = round(original_price * coupon.percent_off / 100)
+            discount_type = "percent"
+            discount_value = coupon.percent_off
+        elif coupon.amount_off:
+            discount_amount = coupon.amount_off
+            discount_type = "fixed"
+            discount_value = coupon.amount_off / 100
+        else:
+            discount_amount = 0
+            discount_type = "fixed"
+            discount_value = 0
+
+        discounted_price = max(0, original_price - discount_amount)
+
+        return {
+            "valid": True,
+            "code": coupon_code,
+            "discount_type": discount_type,
+            "discount_value": discount_value,
+            "original_price_cents": original_price,
+            "discounted_price_cents": discounted_price,
+            "expires_at": datetime.fromtimestamp(coupon.redeem_by, tz=timezone.utc).isoformat()
+            if coupon.redeem_by
+            else None,
+        }
+
+    def verify_webhook_signature(self, payload: bytes, sig_header: str) -> dict | None:
+        """Verify a Stripe webhook signature and return the parsed event, or None if invalid."""
+        if not settings.stripe_webhook_secret:
+            logger.error("STRIPE_WEBHOOK_SECRET is not set — rejecting webhook")
             return None
-        except stripe.error.SignatureVerificationError as e:
-            logger.error(f"Invalid webhook signature: {e}")
+        try:
+            return stripe.Webhook.construct_event(payload, sig_header, settings.stripe_webhook_secret)
+        except (ValueError, stripe.error.SignatureVerificationError) as e:
+            logger.error("Invalid Stripe webhook: %s", e)
             return None
 
     def log_sync_action(
@@ -234,17 +210,7 @@ class StripeService:
         stripe_response: dict | None = None,
         error_message: str | None = None,
     ) -> None:
-        """
-        Log a Stripe sync action for audit trail.
-
-        Args:
-            db: Database session
-            workspace_id: Workspace ID (if applicable)
-            action: Action type (create, cancel, update, etc.)
-            status: Status (success, failed, pending)
-            stripe_response: Stripe API response (if successful)
-            error_message: Error message (if failed)
-        """
+        """Log a Stripe sync action for audit trail. Commits independently of the caller's transaction."""
         log = StripeSyncLog(
             workspace_id=workspace_id,
             action=action,
@@ -254,24 +220,8 @@ class StripeService:
         )
         db.add(log)
         db.commit()
-        logger.info(f"Logged Stripe sync: action={action}, status={status}, workspace={workspace_id}")
 
-    @staticmethod
-    def _plan_to_price_id(plan_code: str) -> str:
-        """
-        Map Wenzap plan code to Stripe price ID.
 
-        Args:
-            plan_code: Wenzap plan code (e.g., "growth", "scale")
-
-        Returns:
-            Stripe price ID
-        """
-        price_map = {
-            "growth": "price_growth_monthly_brl",
-            "scale": "price_scale_monthly_brl",
-        }
-        price_id = price_map.get(plan_code)
-        if not price_id:
-            raise ValueError(f"Unknown plan code: {plan_code}")
-        return price_id
+def get_stripe_service() -> StripeService:
+    """FastAPI dependency — one StripeService per request."""
+    return StripeService()

@@ -130,6 +130,26 @@ class Settings(BaseSettings):
     # Set to True to log emails instead of sending via Resend (dev/test).
     email_sandbox_mode: bool = False
 
+    # ── Stripe billing ────────────────────────────────────────────────────────
+    # Secret API key from https://dashboard.stripe.com/apikeys.
+    # Empty in dev/test — StripeService raises a clear error if used unconfigured.
+    stripe_api_key: str = ""
+    # Signing secret for the /webhooks/stripe endpoint (dashboard → Webhooks).
+    stripe_webhook_secret: str = ""
+    # Stripe Price IDs, one per paid plan code. Configured per-environment so
+    # they never need a code change to add/rotate a price.
+    stripe_price_id_growth: str = ""
+    stripe_price_id_scale: str = ""
+    stripe_price_id_enterprise: str = ""
+
+    @property
+    def stripe_price_by_plan_code(self) -> dict[str, str]:
+        return {
+            "growth": self.stripe_price_id_growth,
+            "scale": self.stripe_price_id_scale,
+            "enterprise": self.stripe_price_id_enterprise,
+        }
+
     # ── AI prompt debug ───────────────────────────────────────────────────────
     # When True, logs a structured summary of each assembled system prompt
     # (sections included, lengths, flags). In dev only, also logs the first

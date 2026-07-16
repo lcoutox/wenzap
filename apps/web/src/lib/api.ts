@@ -56,6 +56,17 @@ export type Subscription = {
   current_period_end: string;
 };
 
+export type CouponValidation = {
+  valid: boolean;
+  code?: string | null;
+  discount_type?: "percent" | "fixed" | null;
+  discount_value?: number | null;
+  original_price_cents?: number | null;
+  discounted_price_cents?: number | null;
+  expires_at?: string | null;
+  error?: string | null;
+};
+
 export type Usage = {
   // Metered (reset monthly)
   ai_credits_used: number;
@@ -1209,6 +1220,25 @@ export const api = {
     list: () => cookieFetch<Plan[]>("/plans"),
     current: () => cookieFetch<Subscription>("/workspaces/current/plan"),
     usage: () => cookieFetch<Usage>("/workspaces/current/usage"),
+  },
+  billing: {
+    checkoutSession: (planCode: string, couponCode?: string) =>
+      cookieFetch<{ checkout_url: string }>("/workspaces/current/billing/checkout-session", {
+        method: "POST",
+        body: JSON.stringify({ plan_code: planCode, coupon_code: couponCode || undefined }),
+      }),
+    portalSession: () =>
+      cookieFetch<{ portal_url: string }>("/workspaces/current/billing/portal-session"),
+    validateCoupon: (couponCode: string, planCode: string) =>
+      cookieFetch<CouponValidation>("/workspaces/current/billing/validate-coupon", {
+        method: "POST",
+        body: JSON.stringify({ coupon_code: couponCode, plan_code: planCode }),
+      }),
+    cancel: (reason?: string) =>
+      cookieFetch<void>("/workspaces/current/billing/cancel", {
+        method: "POST",
+        body: JSON.stringify({ reason: reason || undefined }),
+      }),
   },
   aiModels: {
     list: () => cookieFetch<AiCatalog>("/ai-models"),

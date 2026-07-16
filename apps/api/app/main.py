@@ -14,6 +14,7 @@ from app.routers import (
     agents,
     ai_models,
     auth,
+    billing,
     catalog,
     channels,
     contacts,
@@ -30,6 +31,7 @@ from app.routers import (
     pipelines,
     plans,
     public_widgets,
+    stripe_webhooks,
     whatsapp_embedded_signup,
     whatsapp_webhooks,
     workspaces,
@@ -96,6 +98,8 @@ app.include_router(agent_alerts.router)
 app.include_router(workspaces.router)
 app.include_router(members.router)
 app.include_router(plans.router)
+app.include_router(billing.router)
+app.include_router(stripe_webhooks.router)
 app.include_router(agents.router)
 app.include_router(catalog.router)
 app.include_router(knowledge_bases.router)
