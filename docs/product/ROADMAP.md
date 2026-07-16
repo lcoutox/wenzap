@@ -85,6 +85,9 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Múltiplas bases por agente | ✅ Feito | — |
 | Catálogo de produtos | ✅ Feito | — |
 | Fonte via URL (scraping) | ⬜ Planejado | — |
+| Fonte via Google Drive | ⬜ Planejado | — |
+| Fonte via Notion | ⬜ Planejado | — |
+| Fonte via YouTube (transcrições) | ⬜ Planejado | — |
 | Fonte via Q&A estruturado | ⬜ Planejado | — |
 | Atualização automática de fontes | ⬜ Planejado | — |
 | Revisão e curadoria de chunks | ⬜ Planejado | — |
@@ -112,6 +115,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Envio de mensagens como humano | ✅ Feito | — |
 | Resposta automática pelo agente | ✅ Feito | — |
 | Assumir conversa (human handoff) | ✅ Feito | — |
+| Marcar conversa como resolvida | ⬜ Planejado | — |
 | Filtros e busca no inbox | ⬜ Planejado | — |
 | Atribuição de conversa a operador | ⬜ Planejado | — |
 | Tags em conversas | ⬜ Planejado | — |
@@ -169,6 +173,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Automação por tag de conversa | ⬜ Planejado | — |
 | Automação por etapa de pipeline | ⬜ Planejado | — |
 | Agendamento de mensagem | ⬜ Planejado | — |
+| Follow-up automático pós-conversa | ⬜ Planejado | — |
 
 ---
 
@@ -231,10 +236,16 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 | 2 | Filtros e busca no inbox | Inbox | Necessário assim que volume crescer |
 | 3 | Cobrança real (Stripe) | Billing | Pré-requisito para monetização |
 | 4 | HTTP Tool (agente chama webhook) | Ferramentas | Abre casos de uso operacionais |
-| 5 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
-| 6 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
-| 7 | Instagram como canal | Canais | Alta demanda esperada |
-| 8 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 5 | Marcar conversa como resolvida | Inbox | Automação essencial, baixa complexidade |
+| 6 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
+| 7 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
+| 8 | Transferência para humano (action) | Ferramentas | Handoff estruturado, essencial para suporte |
+| 9 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
+| 10 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
+| 11 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
+| 12 | Follow-up automático pós-conversa | Automações | Retenção e engagement |
+| 13 | Instagram como canal | Canais | Alta demanda esperada |
+| 14 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
 
 ---
 
