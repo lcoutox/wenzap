@@ -144,7 +144,7 @@ class TestRetryDelivery:
         with _make_client(db, user_a, workspace_a) as client:
             resp = client.post(_retry_url(conv.id, msg.id))
         assert resp.status_code == 422
-        assert "outbound" in resp.json()["detail"]
+        assert "enviadas" in resp.json()["detail"]
 
     def test_422_when_delivery_not_failed(
         self, db: Session, user_a: User, workspace_a: Workspace
@@ -158,7 +158,7 @@ class TestRetryDelivery:
         with _make_client(db, user_a, workspace_a) as client:
             resp = client.post(_retry_url(conv.id, msg.id))
         assert resp.status_code == 422
-        assert "failed" in resp.json()["detail"]
+        assert "falha" in resp.json()["detail"]
 
     def test_422_when_delivery_is_none(
         self, db: Session, user_a: User, workspace_a: Workspace

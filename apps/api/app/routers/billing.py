@@ -34,13 +34,13 @@ def _require_billing_manager(db: Session, workspace: Workspace, user: User) -> N
     """Only owner/admin can manage billing — mirrors update_workspace's guard."""
     role = get_current_member_role(db, workspace.id, user.id)
     if role not in (MemberRole.owner, MemberRole.admin):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permissões insuficientes.")
 
 
 def _get_plan_or_404(db: Session, plan_code: str) -> Plan:
     plan = db.scalar(select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True)))
     if plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plano não encontrado.")
     return plan
 
 

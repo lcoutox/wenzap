@@ -55,7 +55,7 @@ def test_delete_nonexistent_file_is_noop(provider):
 
 
 def test_get_nonexistent_file_raises(provider):
-    with pytest.raises(StorageError, match="File not found"):
+    with pytest.raises(StorageError, match="Arquivo não encontrado"):
         provider.get_file("missing.txt")
 
 
@@ -158,12 +158,12 @@ def test_factory_s3_raises_without_config():
 def test_factory_unknown_provider_raises():
     with patch("app.services.storage.factory.settings") as mock_settings:
         mock_settings.storage_provider = "azure"
-        with pytest.raises(StorageError, match="Unknown storage provider"):
+        with pytest.raises(StorageError, match="Provedor de armazenamento desconhecido"):
             get_storage_provider()
 
 
 def test_factory_empty_provider_raises():
     with patch("app.services.storage.factory.settings") as mock_settings:
         mock_settings.storage_provider = ""
-        with pytest.raises(StorageError, match="Unknown storage provider"):
+        with pytest.raises(StorageError, match="Provedor de armazenamento desconhecido"):
             get_storage_provider()

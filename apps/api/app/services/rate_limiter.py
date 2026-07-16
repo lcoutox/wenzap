@@ -37,7 +37,7 @@ def _check(key: str, limit: int, window_seconds: int) -> None:
     if len(dq) >= limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many requests. Please wait a moment and try again.",
+            detail="Muitas requisições. Aguarde um momento e tente novamente.",
             headers={"Retry-After": str(window_seconds)},
         )
 

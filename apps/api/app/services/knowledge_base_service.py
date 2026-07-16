@@ -60,7 +60,7 @@ def get_knowledge_base_or_404(
     if kb is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found.",
+            detail="Base de conhecimento não encontrada.",
         )
     return kb
 
@@ -126,9 +126,9 @@ def _check_kb_limit(db: Session, workspace_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Knowledge base limit reached for your plan "
-                f"({plan.knowledge_bases_limit} allowed). "
-                "Archive an existing knowledge base or upgrade your plan."
+                f"Limite de bases de conhecimento do seu plano atingido "
+                f"({plan.knowledge_bases_limit} permitida(s)). "
+                "Faça upgrade do plano ou arquive uma base de conhecimento existente."
             ),
         )
 

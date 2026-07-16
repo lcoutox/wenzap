@@ -85,7 +85,7 @@ def _get_item_or_404(db: Session, workspace_id: uuid.UUID, item_id: uuid.UUID) -
         )
     )
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado.")
     return item
 
 
@@ -103,7 +103,7 @@ def _get_media_or_404(
         )
     )
     if media is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mídia não encontrada.")
     return media
 
 
@@ -177,8 +177,8 @@ def upload_media(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                f"File type not allowed: {mime!r}. "
-                "Accepted types: JPEG, PNG, WebP, GIF, PDF."
+                f"Tipo de arquivo não permitido: {mime!r}. "
+                "Tipos aceitos: JPEG, PNG, WebP, GIF, PDF."
             ),
         )
 
@@ -189,12 +189,12 @@ def upload_media(
         mb = limit / 1_048_576
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"File too large. Maximum size for this type is {mb:.0f} MB.",
+            detail=f"Arquivo muito grande. O tamanho máximo para este tipo é {mb:.0f} MB.",
         )
     if size == 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="File must not be empty.",
+            detail="O arquivo não pode estar vazio.",
         )
 
     file_type = _derive_file_type(mime)
@@ -251,7 +251,7 @@ def upload_media(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Storage error: {exc}",
+            detail=f"Erro de armazenamento: {exc}",
         ) from exc
 
     db.commit()
@@ -326,7 +326,7 @@ def set_primary(
     if media.file_type != "image":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only images can be set as primary.",
+            detail="Somente imagens podem ser definidas como principal.",
         )
 
     # Unset all other primaries.
@@ -367,7 +367,7 @@ def reorder_media(
     if len(rows) != len(items):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="One or more media IDs not found in this item.",
+            detail="Um ou mais IDs de mídia não foram encontrados neste item.",
         )
 
     by_id = {m.id: m for m in rows}

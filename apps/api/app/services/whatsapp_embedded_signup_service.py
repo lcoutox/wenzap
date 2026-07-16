@@ -51,7 +51,7 @@ def _state_signing_key() -> bytes:
     if not key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Server configuration error: APP_ENCRYPTION_KEY is not set.",
+            detail="Erro de configuração do servidor: APP_ENCRYPTION_KEY não está definida.",
         )
     # Derive a distinct sub-key for state signing so it is decoupled from Fernet.
     return hashlib.sha256(f"nexbrain-signup-state:{key}".encode()).digest()
@@ -527,6 +527,6 @@ def resolve_agent_or_404(
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found in this workspace.",
+            detail="Agente não encontrado neste workspace.",
         )
     return agent

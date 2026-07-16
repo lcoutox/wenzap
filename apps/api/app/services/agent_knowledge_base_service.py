@@ -68,7 +68,7 @@ def connect_knowledge_base(
         if existing.is_active:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="This knowledge base is already connected to the agent.",
+                detail="Esta base de conhecimento já está conectada ao agente.",
             )
         # Reactivate existing inactive connection
         existing.is_active = True
@@ -125,7 +125,7 @@ def disconnect_knowledge_base(
     if conn is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found.",
+            detail="Conexão não encontrada.",
         )
     db.delete(conn)
     db.commit()
@@ -147,7 +147,7 @@ def _get_agent_or_404(
     if agent is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found.",
+            detail="Agente não encontrado.",
         )
     return agent
 
@@ -168,7 +168,7 @@ def _get_kb_or_404(
     if kb is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found.",
+            detail="Base de conhecimento não encontrada.",
         )
     return kb
 
@@ -192,7 +192,7 @@ def _get_connection_with_kb_or_404(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found.",
+            detail="Conexão não encontrada.",
         )
     return row[0], row[1]
 

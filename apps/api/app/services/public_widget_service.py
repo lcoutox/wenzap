@@ -84,7 +84,7 @@ def _resolve_active_web_widget(db: Session, public_key: str) -> Channel:
     if not channel:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Widget not found.",
+            detail="Widget não encontrado.",
         )
     return channel
 
@@ -93,7 +93,7 @@ def _check_origin(channel: Channel, origin: str | None) -> None:
     if not is_origin_allowed(origin, channel.allowed_origins or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Origin not allowed.",
+            detail="Origem não permitida.",
         )
 
 
@@ -276,7 +276,7 @@ def _create_new_session(db: Session, channel: Channel) -> WidgetSession:
 
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Failed to generate a unique session token. Please try again.",
+        detail="Falha ao gerar um token de sessão único. Tente novamente.",
     )
 
 
@@ -339,7 +339,7 @@ def _resolve_session_or_401(
     if not session_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-Session-Token header is required.",
+            detail="O cabeçalho X-Session-Token é obrigatório.",
         )
     session = db.scalar(
         select(WidgetSession).where(
@@ -351,7 +351,7 @@ def _resolve_session_or_401(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token.",
+            detail="Token de sessão inválido ou expirado.",
         )
     return session
 
@@ -378,17 +378,17 @@ def update_widget_contact(
     if not contact:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session contact not found.",
+            detail="Contato da sessão não encontrado.",
         )
 
     # Validate required fields against channel config.
     errors: list[str] = []
     if cfg.get("require_name") and not data.name:
-        errors.append("name is required for this widget.")
+        errors.append("O nome é obrigatório para este widget.")
     if cfg.get("require_email") and not data.email:
-        errors.append("email is required for this widget.")
+        errors.append("O e-mail é obrigatório para este widget.")
     if cfg.get("require_phone") and not data.phone:
-        errors.append("phone is required for this widget.")
+        errors.append("O telefone é obrigatório para este widget.")
     if errors:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

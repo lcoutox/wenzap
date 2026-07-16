@@ -152,7 +152,7 @@ def check_evolution_connection_status(db: Session, channel: Channel) -> str:
     if not base_url or not instance_name or not token:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Evolution channel is missing base_url, instance_name or credential.",
+            detail="O canal Evolution está sem base_url, instance_name ou credential.",
         )
 
     state = _call_connection_state(base_url, instance_name, token)
@@ -209,7 +209,7 @@ def _require_master_config() -> None:
     if not settings.evolution_api_base_url or not settings.evolution_master_api_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Evolution API is not configured on this server.",
+            detail="A API Evolution não está configurada neste servidor.",
         )
 
 
@@ -235,7 +235,7 @@ def _call_create_instance(instance_name: str) -> dict:
         logger.exception("evolution_provisioning create_instance failed instance=%s", instance_name)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to create the Evolution instance.",
+            detail="Falha ao criar a instância Evolution.",
         ) from exc
 
 
@@ -262,7 +262,7 @@ def _call_connection_state(base_url: str, instance_name: str, token: str) -> str
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to check the Evolution instance connection state.",
+            detail="Falha ao verificar o estado de conexão da instância Evolution.",
         ) from exc
 
 

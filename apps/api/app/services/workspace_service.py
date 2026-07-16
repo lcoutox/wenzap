@@ -18,7 +18,7 @@ def update_workspace(
 ) -> Workspace:
     if current_user_role not in (MemberRole.owner, MemberRole.admin):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permissões insuficientes."
         )
 
     if data.name is not None:
@@ -28,7 +28,7 @@ def update_workspace(
             select(Workspace).where(Workspace.slug == data.slug, Workspace.id != workspace.id)
         )
         if existing:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slug already in use")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slug já está em uso.")
         workspace.slug = data.slug
 
     db.commit()
@@ -48,5 +48,5 @@ def get_current_member_role(
         )
     )
     if member is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not an active member")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Não é um membro ativo.")
     return MemberRole(member.role)

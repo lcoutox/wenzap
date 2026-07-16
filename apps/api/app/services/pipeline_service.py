@@ -39,7 +39,7 @@ def get_pipeline_or_404(db: Session, workspace_id: uuid.UUID, pipeline_id: uuid.
         )
     )
     if pipeline is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline não encontrado.")
     return pipeline
 
 
@@ -58,7 +58,7 @@ def get_stage_or_404(
     )
     if stage is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline stage not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Etapa do pipeline não encontrada."
         )
     return stage
 
@@ -78,7 +78,7 @@ def _get_entry_or_404(
     )
     if entry is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline entry not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Card do pipeline não encontrado."
         )
     return entry
 
@@ -114,8 +114,9 @@ def _check_pipelines_limit(db: Session, workspace_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Pipeline limit reached for your plan ({plan.pipelines_limit} pipeline(s) "
-                "allowed). Upgrade your plan or archive an existing pipeline to create a new one."
+                f"Limite de pipelines do seu plano atingido ({plan.pipelines_limit} "
+                "pipeline(s) permitido(s)). Faça upgrade do plano ou arquive um pipeline "
+                "existente para criar um novo."
             ),
         )
 
@@ -164,7 +165,7 @@ def delete_pipeline(
     if active_count > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete pipeline with active entries.",
+            detail="Não é possível excluir um pipeline com cards ativos.",
         )
     pipeline.is_active = False
     pipeline.updated_at = datetime.now(timezone.utc)
@@ -208,7 +209,7 @@ def create_stage(
         if agent is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Assigned agent not found in this workspace.",
+                detail="Agente responsável não encontrado neste workspace.",
             )
 
     stage = PipelineStage(
@@ -241,7 +242,7 @@ def update_stage(
         if agent is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Assigned agent not found in this workspace.",
+                detail="Agente responsável não encontrado neste workspace.",
             )
 
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -288,7 +289,7 @@ def delete_stage(
     if active_count > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete stage with active entries.",
+            detail="Não é possível excluir uma etapa com cards ativos.",
         )
     db.delete(stage)
     db.commit()
@@ -473,7 +474,7 @@ def create_entry(
     )
     if conv is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversa não encontrada."
         )
 
     # Validate stage belongs to pipeline if provided
@@ -490,7 +491,7 @@ def create_entry(
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Conversation is already in this pipeline.",
+            detail="A conversa já está neste pipeline.",
         )
 
     now = datetime.now(timezone.utc)
@@ -615,7 +616,7 @@ def update_agent_pipeline_settings(
         select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id)
     )
     if agent is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agente não encontrado.")
 
     pipeline_id = data.default_pipeline_id
     stage_id = data.default_pipeline_stage_id
@@ -630,7 +631,7 @@ def update_agent_pipeline_settings(
         if pipeline is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Pipeline not found in this workspace.",
+                detail="Pipeline não encontrado neste workspace.",
             )
 
         if stage_id is not None:
@@ -643,14 +644,14 @@ def update_agent_pipeline_settings(
             if stage is None:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail="Stage does not belong to the specified pipeline.",
+                    detail="A etapa não pertence ao pipeline especificado.",
                 )
     else:
         # If no pipeline, stage should also be None
         if stage_id is not None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Cannot set default_pipeline_stage_id without default_pipeline_id.",
+                detail="Não é possível definir default_pipeline_stage_id sem default_pipeline_id.",
             )
 
     agent.default_pipeline_id = pipeline_id

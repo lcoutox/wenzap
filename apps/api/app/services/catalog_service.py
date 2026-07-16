@@ -105,7 +105,7 @@ def get_category_or_404(
         )
     )
     if cat is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoria não encontrada.")
     return cat
 
 
@@ -145,7 +145,7 @@ def update_category(
 
     if "parent_id" in payload and payload["parent_id"] is not None:
         if payload["parent_id"] == category_id:
-            raise HTTPException(status_code=400, detail="A category cannot be its own parent.")
+            raise HTTPException(status_code=400, detail="Uma categoria não pode ser sua própria categoria pai.")
         get_category_or_404(db, workspace_id, payload["parent_id"])
 
     for field, value in payload.items():
@@ -272,7 +272,7 @@ def get_item_or_404(
         )
     )
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado.")
     return item
 
 
@@ -287,13 +287,13 @@ def _check_catalog_items_limit(db: Session, workspace_id: uuid.UUID) -> None:
     if sub is None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="No active subscription found for this workspace.",
+            detail="Nenhuma assinatura ativa encontrada para este workspace.",
         )
     plan = db.scalar(select(Plan).where(Plan.id == sub.plan_id))
     if plan is None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Subscription plan not found.",
+            detail="Plano de assinatura não encontrado.",
         )
     active_count = db.scalar(
         select(func.count()).where(
@@ -305,9 +305,9 @@ def _check_catalog_items_limit(db: Session, workspace_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Catalog item limit reached for your plan "
-                f"({plan.catalog_items_limit} item(s) allowed). "
-                "Archive existing items or upgrade your plan to add more."
+                f"Limite de itens do catálogo do seu plano atingido "
+                f"({plan.catalog_items_limit} item(s) permitido(s)). "
+                "Faça upgrade do plano ou arquive itens existentes para adicionar mais."
             ),
         )
 

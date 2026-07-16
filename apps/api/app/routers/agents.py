@@ -51,7 +51,7 @@ def _require_role(
     role = get_current_member_role(db, workspace.id, user.id)
     if role not in allowed:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permissões insuficientes."
         )
     return role
 

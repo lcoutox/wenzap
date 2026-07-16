@@ -96,7 +96,7 @@ def get_source_or_404(
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge source not found.",
+            detail="Fonte de conhecimento não encontrada.",
         )
     return source
 
@@ -133,7 +133,7 @@ def reprocess_source(
     if source.status == "processing":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Source is currently being processed. Try again shortly.",
+            detail="A fonte está sendo processada no momento. Tente novamente em instantes.",
         )
 
     source.status = "processing"
@@ -189,7 +189,7 @@ def _get_kb_or_404(
     if kb is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found.",
+            detail="Base de conhecimento não encontrada.",
         )
     return kb
 
@@ -213,9 +213,9 @@ def _check_source_limit(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Source limit reached for this knowledge base "
-                f"({plan.sources_per_kb_limit} allowed). "
-                "Archive an existing source or upgrade your plan."
+                f"Limite de fontes atingido para esta base de conhecimento "
+                f"({plan.sources_per_kb_limit} permitidas). "
+                "Arquive uma fonte existente ou faça upgrade do seu plano."
             ),
         )
 
@@ -254,8 +254,8 @@ def _prepare_content(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"Source content exceeds the maximum allowed size of "
-                f"{max_chars:,} characters for your plan."
+                f"O conteúdo da fonte excede o tamanho máximo permitido de "
+                f"{max_chars:,} caracteres para o seu plano."
             ),
         )
 

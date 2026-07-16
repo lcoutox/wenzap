@@ -114,7 +114,7 @@ async def mark_alert_as_read(
     )
 
     if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
+        raise HTTPException(status_code=404, detail="Alerta não encontrado.")
 
     alert.is_read = True
     alert.read_at = datetime.now(timezone.utc)
@@ -145,7 +145,7 @@ async def delete_alert(
     )
 
     if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
+        raise HTTPException(status_code=404, detail="Alerta não encontrado.")
 
     db.delete(alert)
     db.commit()

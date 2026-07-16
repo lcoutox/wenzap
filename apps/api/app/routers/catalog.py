@@ -43,7 +43,7 @@ def _require_role(
     if role not in allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
+            detail="Permissões insuficientes.",
         )
     return role
 

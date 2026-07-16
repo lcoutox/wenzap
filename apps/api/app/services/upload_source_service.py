@@ -93,8 +93,8 @@ def upload_knowledge_source(
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=(
-                f"File size {len(file_data):,} bytes exceeds the limit of "
-                f"{size_limit:,} bytes for your plan."
+                f"O tamanho do arquivo ({len(file_data):,} bytes) excede o limite de "
+                f"{size_limit:,} bytes do seu plano."
             ),
         )
 
@@ -106,8 +106,8 @@ def upload_knowledge_source(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"File type {ext!r} is not supported. "
-                f"Accepted extensions: {', '.join(sorted(_EXT_MAP))}."
+                f"O tipo de arquivo {ext!r} não é suportado. "
+                f"Extensões aceitas: {', '.join(sorted(_EXT_MAP))}."
             ),
         )
 
@@ -117,15 +117,15 @@ def upload_knowledge_source(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"MIME type {normalised_mime!r} is not accepted for {ext!r} files. "
-                f"Expected one of: {', '.join(sorted(accepted_mimes))}."
+                f"O tipo MIME {normalised_mime!r} não é aceito para arquivos {ext!r}. "
+                f"Esperado um dos seguintes: {', '.join(sorted(accepted_mimes))}."
             ),
         )
 
     if ext == ".pdf" and not file_data.startswith(_PDF_MAGIC):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File does not appear to be a valid PDF (missing %PDF header).",
+            detail="O arquivo não parece ser um PDF válido (cabeçalho %PDF ausente).",
         )
 
     # 5. Resolve effective title.
@@ -170,7 +170,7 @@ def upload_knowledge_source(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Storage error: {exc}",
+            detail=f"Erro de armazenamento: {exc}",
         ) from exc
 
     source.storage_key = storage_key

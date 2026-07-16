@@ -31,11 +31,11 @@ def get_workspace_subscription(db: Session, workspace_id: uuid.UUID) -> Subscrip
         select(WorkspaceSubscription).where(WorkspaceSubscription.workspace_id == workspace_id)
     )
     if sub is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No subscription found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhuma assinatura encontrada")
 
     plan = db.scalar(select(Plan).where(Plan.id == sub.plan_id))
     if plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plano não encontrado")
 
     return SubscriptionOut(
         plan=plan,

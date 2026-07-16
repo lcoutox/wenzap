@@ -110,7 +110,7 @@ def _require_contact(db: Session, workspace_id: uuid.UUID, contact_id: uuid.UUID
         )
     )
     if not contact:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contato não encontrado.")
     return contact
 
 
@@ -122,7 +122,7 @@ def _require_agent(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID) ->
         )
     )
     if not agent:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agente não encontrado.")
     return agent
 
 
@@ -139,7 +139,7 @@ def _require_active_member(
     if not member:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="assigned_user_id is not an active member of this workspace.",
+            detail="assigned_user_id não é um membro ativo deste workspace.",
         )
 
 
@@ -202,7 +202,7 @@ def get_conversation_or_404(
     if not conv:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found.",
+            detail="Conversa não encontrada.",
         )
     return conv
 
@@ -228,7 +228,7 @@ def get_conversation_detail(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found.",
+            detail="Conversa não encontrada.",
         )
     conv, contact_name, contact_meta = row
     return _conv_to_dict(conv, contact_name, contact_meta)
@@ -263,7 +263,7 @@ def take_over_conversation(
     if conv.status not in _TAKE_OVER_ALLOWED_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot take over an archived conversation.",
+            detail="Não é possível assumir uma conversa arquivada.",
         )
 
     # Validate that the user is an active member of the workspace.
@@ -290,7 +290,7 @@ def return_to_ai(
     if conv.status not in _TAKE_OVER_ALLOWED_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot return an archived conversation to AI.",
+            detail="Não é possível devolver uma conversa arquivada para a IA.",
         )
 
     conv.assigned_user_id = None

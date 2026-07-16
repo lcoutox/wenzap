@@ -54,7 +54,7 @@ def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID)
         select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id)
     )
     if agent is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agente não encontrado.")
     return agent
 
 
@@ -154,14 +154,14 @@ def _check_plan_limit(db: Session, workspace_id: uuid.UUID) -> None:
     if sub is None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="No active subscription found for this workspace.",
+            detail="Nenhuma assinatura ativa encontrada para este workspace.",
         )
 
     plan = db.scalar(select(Plan).where(Plan.id == sub.plan_id))
     if plan is None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Subscription plan not found.",
+            detail="Plano de assinatura não encontrado.",
         )
 
     active_count = db.scalar(
@@ -175,8 +175,9 @@ def _check_plan_limit(db: Session, workspace_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Agent limit reached for your plan ({plan.agents_limit} agent(s) allowed). "
-                "Upgrade your plan or archive an existing agent to create a new one."
+                f"Limite de agentes do seu plano atingido ({plan.agents_limit} agente(s) "
+                "permitido(s)). Faça upgrade do plano ou arquive um agente existente para "
+                "criar um novo."
             ),
         )
 
@@ -290,7 +291,7 @@ def update_agent(
     if agent.status == AgentStatus.archived.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Archived agents cannot be edited.",
+            detail="Agentes arquivados não podem ser editados.",
         )
 
     update_data = data.model_dump(exclude_unset=True)
@@ -327,7 +328,7 @@ def update_agent(
         if not validate_context_tier(tier_val):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid context_tier '{tier_val}'.",
+                detail=f"context_tier inválido: '{tier_val}'.",
             )
         plan_code = _get_workspace_plan_code(db, workspace_id)
         if not plan_allows_context_tier(plan_code, tier_val):
@@ -344,7 +345,7 @@ def update_agent(
         if delay_val not in _VALID_REPLY_DELAYS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"reply_delay_seconds must be one of: {sorted(_VALID_REPLY_DELAYS)}.",
+                detail=f"reply_delay_seconds deve ser um dos valores: {sorted(_VALID_REPLY_DELAYS)}.",
             )
         prompt.reply_delay_seconds = delay_val
 
@@ -393,9 +394,9 @@ def update_agent_status(
 
     if new_status not in _VALID_TRANSITIONS[current]:
         if current == AgentStatus.archived:
-            detail = "Archived agents cannot change status."
+            detail = "Agentes arquivados não podem mudar de status."
         else:
-            detail = f"Cannot transition from '{current.value}' to '{new_status.value}'."
+            detail = f"Não é possível mudar o status de '{current.value}' para '{new_status.value}'."
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
     if new_status == AgentStatus.active:
@@ -409,7 +410,7 @@ def update_agent_status(
             if not adv:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Configure advanced_prompt before activating this agent.",
+                    detail="Configure o prompt avançado antes de ativar este agente.",
                 )
         else:
             cfg = (getattr(prompt, "guided_config", None) or {}) if prompt else {}
@@ -420,7 +421,7 @@ def update_agent_status(
             if not has_guided and not legacy:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Configure agent behavior before activating.",
+                    detail="Configure o comportamento do agente antes de ativar.",
                 )
 
     agent.status = new_status.value

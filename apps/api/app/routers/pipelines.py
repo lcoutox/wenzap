@@ -41,9 +41,9 @@ def _check_pipelines_feature(db: Session, workspace: Workspace) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-            "Pipelines are not available on your current plan. "
-            "Upgrade to access this feature."
-        ),
+                "Pipelines não estão disponíveis no seu plano atual. "
+                "Faça upgrade para acessar este recurso."
+            ),
         )
 
 

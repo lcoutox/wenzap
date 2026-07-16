@@ -117,7 +117,7 @@ def _require_starter_plan(db: Session) -> Plan:
     if plan is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Platform configuration error: starter plan not available.",
+            detail="Erro de configuração da plataforma: plano inicial não disponível.",
         )
     return plan
 
@@ -177,11 +177,11 @@ def _get_user_workspace(user: User, db: Session) -> Workspace:
     )
     if member is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="No active workspace found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Nenhum workspace ativo encontrado."
         )
     workspace = db.scalar(select(Workspace).where(Workspace.id == member.workspace_id))
     if workspace is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace não encontrado.")
     return workspace
 
 
@@ -306,19 +306,19 @@ def logout(response: Response, request: Request, db: Session = Depends(get_db)) 
 def me(request: Request, db: Session = Depends(get_db)) -> AuthMeOut:
     token = _get_token_from_cookie(request)
     if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado.")
 
     session = get_session_by_token(db, token)
     if session is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or revoked"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão expirada ou revogada."
         )
 
     db.commit()
 
     user = db.scalar(select(User).where(User.id == session.user_id))
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado.")
 
     workspace = _get_user_workspace(user, db)
     return _build_me_response(user, workspace)

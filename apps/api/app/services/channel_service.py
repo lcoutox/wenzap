@@ -46,7 +46,7 @@ def _resolve_agent_or_404(
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found in this workspace.",
+            detail="Agente não encontrado neste workspace.",
         )
     return agent
 
@@ -84,13 +84,13 @@ def _check_channels_limit(db: Session, workspace_id: uuid.UUID) -> None:
     if sub is None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="No active subscription found for this workspace.",
+            detail="Nenhuma assinatura ativa encontrada para este workspace.",
         )
     plan = db.scalar(select(Plan).where(Plan.id == sub.plan_id))
     if plan is None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Subscription plan not found.",
+            detail="Plano de assinatura não encontrado.",
         )
     active_count = db.scalar(
         select(func.count()).where(
@@ -102,9 +102,9 @@ def _check_channels_limit(db: Session, workspace_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Channel limit reached for your plan "
-                f"({plan.channels_limit} channel(s) allowed). "
-                "Archive an existing channel or upgrade your plan to add more."
+                f"Limite de canais do seu plano atingido "
+                f"({plan.channels_limit} canal(is) permitido(s)). "
+                "Faça upgrade do plano ou arquive um canal existente para adicionar mais."
             ),
         )
 
@@ -143,7 +143,7 @@ def create_channel(
 
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Failed to generate a unique public key. Please try again.",
+        detail="Falha ao gerar uma chave pública única. Tente novamente.",
     )
 
 
@@ -161,7 +161,7 @@ def get_channel_or_404(
     if not channel:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Channel not found.",
+            detail="Canal não encontrado.",
         )
     return channel
 

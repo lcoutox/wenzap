@@ -410,7 +410,7 @@ def test_archived_agent_cannot_be_tested(db):
         with _make_client(db, user, ws) as client:
             r = _post_test(client, agent.id)
     assert r.status_code == 400
-    assert "archived" in r.json()["detail"].lower()
+    assert "arquivado" in r.json()["detail"].lower()
 
 
 def test_draft_agent_with_system_prompt_can_be_tested(db):

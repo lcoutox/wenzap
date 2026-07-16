@@ -164,7 +164,7 @@ class TestUpload:
             item_id = _create_item(client)
             r = _upload(client, item_id, filename="vid.mp4", data=b"\x00"*100, ct="video/mp4")
         assert r.status_code == 422
-        assert "not allowed" in r.json()["detail"].lower()
+        assert "não permitido" in r.json()["detail"].lower()
 
     def test_reject_oversized_image(self, db: Session):
         owner, ws = _setup(db)
@@ -173,7 +173,7 @@ class TestUpload:
             big = b"\xff\xd8\xff" + b"\x00" * (11 * 1024 * 1024)
             r = _upload(client, item_id, data=big)
         assert r.status_code == 422
-        assert "large" in r.json()["detail"].lower()
+        assert "grande" in r.json()["detail"].lower()
 
     def test_reject_oversized_pdf(self, db: Session):
         owner, ws = _setup(db)

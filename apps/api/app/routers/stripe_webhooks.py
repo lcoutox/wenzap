@@ -29,11 +29,11 @@ async def handle_stripe_webhook(
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
     if not sig_header:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing stripe-signature header")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cabeçalho stripe-signature ausente.")
 
     event = stripe_service.verify_webhook_signature(payload, sig_header)
     if not event:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assinatura inválida.")
 
     handler = StripeWebhookHandler(stripe_service)
     try:

@@ -14,7 +14,7 @@ class LocalStorageProvider(StorageProvider):
 
     def __init__(self, root_path: str) -> None:
         if not root_path:
-            raise StorageError("LocalStorageProvider requires a non-empty root_path.")
+            raise StorageError("LocalStorageProvider requer um root_path não vazio.")
         self._root = os.path.abspath(root_path)
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ class LocalStorageProvider(StorageProvider):
     def get_file(self, key: str) -> bytes:
         path = self._safe_resolve(key)
         if not os.path.isfile(path):
-            raise StorageError(f"File not found: {key!r}")
+            raise StorageError(f"Arquivo não encontrado: {key!r}")
         with open(path, "rb") as fh:
             return fh.read()
 
@@ -60,11 +60,13 @@ class LocalStorageProvider(StorageProvider):
         - keys that escape the root after normalization (e.g. "../../evil")
         """
         if not key or not key.strip():
-            raise StorageError("Storage key must not be empty.")
+            raise StorageError("A chave de armazenamento não pode estar vazia.")
 
         # Reject keys that look like absolute paths before joining.
         if os.path.isabs(key):
-            raise StorageError(f"Storage key must be a relative path, got: {key!r}")
+            raise StorageError(
+                f"A chave de armazenamento deve ser um caminho relativo, recebido: {key!r}"
+            )
 
         resolved = os.path.abspath(os.path.join(self._root, key))
 
@@ -73,7 +75,7 @@ class LocalStorageProvider(StorageProvider):
         root_prefix = self._root + os.sep
         if resolved != self._root and not resolved.startswith(root_prefix):
             raise StorageError(
-                f"Storage key {key!r} resolves outside the storage root."
+                f"A chave de armazenamento {key!r} resolve para fora da raiz de armazenamento."
             )
 
         return resolved

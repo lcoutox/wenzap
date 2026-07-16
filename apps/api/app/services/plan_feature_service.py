@@ -117,9 +117,9 @@ def check_channel_type_or_402(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Channel type '{channel_type}' is not available on the "
-                f"{plan_code.title()} plan. "
-                "Upgrade your plan to enable this channel."
+                f"O canal '{channel_type}' não está disponível no plano "
+                f"{plan_code.title()}. "
+                "Faça upgrade do plano para habilitar este canal."
             ),
         )
 
@@ -150,7 +150,7 @@ def check_users_limit(db: Session, workspace_id: uuid.UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Member limit reached for your plan ({plan.users_limit} user(s) allowed). "
-                "Upgrade your plan to invite more members."
+                f"Limite de membros do seu plano atingido ({plan.users_limit} "
+                "usuário(s) permitido(s)). Faça upgrade do plano para convidar mais membros."
             ),
         )

@@ -50,6 +50,6 @@ def get_storage_provider() -> StorageProvider:
         )
 
     raise StorageError(
-        f"Unknown storage provider: {provider!r}. "
-        "Supported values: 'local', 'r2', 's3'."
+        f"Provedor de armazenamento desconhecido: {provider!r}. "
+        "Valores suportados: 'local', 'r2', 's3'."
     )

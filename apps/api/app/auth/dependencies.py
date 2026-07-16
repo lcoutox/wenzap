@@ -28,13 +28,13 @@ def get_current_user(
     token = request.cookies.get(settings.auth_cookie_name)
     if not token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado."
         )
 
     session = get_session_by_token(db, token)
     if session is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or revoked"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão expirada ou revogada."
         )
 
     # Commit here so last_seen_at is persisted even on read-only routes
@@ -43,7 +43,7 @@ def get_current_user(
 
     user = db.scalar(select(User).where(User.id == session.user_id))
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado.")
 
     return user
 
@@ -81,7 +81,7 @@ def get_current_workspace(
             ws_id = uuid.UUID(x_workspace_id)
         except ValueError:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid workspace id"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="ID de workspace inválido."
             )
 
         member = db.scalar(
@@ -94,7 +94,7 @@ def get_current_workspace(
         if member is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not an active member of this workspace",
+                detail="Não é um membro ativo deste workspace.",
             )
 
         workspace = db.scalar(
@@ -105,7 +105,7 @@ def get_current_workspace(
         )
         if workspace is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Workspace não encontrado."
             )
         return workspace
 
@@ -123,10 +123,10 @@ def get_current_workspace(
     if member is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active workspace found for user",
+            detail="Nenhum workspace ativo encontrado para o usuário.",
         )
 
     workspace = db.scalar(select(Workspace).where(Workspace.id == member.workspace_id))
     if workspace is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace não encontrado.")
     return workspace

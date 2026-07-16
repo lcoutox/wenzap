@@ -85,7 +85,7 @@ def _require_active_member(
     if not member:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="sender_user_id is not an active member of this workspace.",
+            detail="sender_user_id não corresponde a um membro ativo deste workspace.",
         )
 
 
@@ -101,7 +101,7 @@ def _require_agent(
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found.",
+            detail="Agente não encontrado.",
         )
     return agent
 
@@ -124,7 +124,7 @@ def create_message(
         if current_user_id is None and data.sender_user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="current_user_id is required for sender_type='human'.",
+                detail="current_user_id é obrigatório quando sender_type='human'.",
             )
         uid = data.sender_user_id if data.sender_user_id is not None else current_user_id
         _require_active_member(db, workspace_id, uid)
@@ -135,7 +135,7 @@ def create_message(
             # Customer messages don't carry an internal user.
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="sender_user_id must not be set for sender_type='customer'.",
+                detail="sender_user_id não deve ser informado quando sender_type='customer'.",
             )
 
     elif data.sender_type == "agent":
@@ -145,8 +145,8 @@ def create_message(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
-                    "agent_id is required for sender_type='agent' "
-                    "when the conversation has no assigned agent."
+                    "agent_id é obrigatório quando sender_type='agent' "
+                    "e a conversa não possui um agente atribuído."
                 ),
             )
         _require_agent(db, workspace_id, aid)

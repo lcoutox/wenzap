@@ -104,7 +104,7 @@ def get_model_or_404(db: Session, model_id: uuid.UUID) -> AiModel:
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="AI model not found or inactive.",
+            detail="Modelo de IA não encontrado ou inativo.",
         )
     return model
 
@@ -114,7 +114,7 @@ def validate_model_for_plan(model: AiModel, plan_code: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Model '{model.display_name}' requires the "
-                f"'{model.min_plan_code}' plan or higher."
+                f"O modelo '{model.display_name}' requer o plano "
+                f"'{model.min_plan_code}' ou superior."
             ),
         )

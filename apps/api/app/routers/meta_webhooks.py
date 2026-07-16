@@ -38,7 +38,7 @@ async def meta_webhook_verify(
         return hub_challenge or ""
 
     logger.warning("meta_review_webhook verification failed mode=%s", hub_mode)
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification failed")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Falha na verificação do webhook.")
 
 
 @router.post("/whatsapp", status_code=200)
@@ -53,7 +53,7 @@ async def meta_webhook_receive(request: Request, db: Session = Depends(get_db)):
     signature = request.headers.get("X-Hub-Signature-256")
     if not webhook_handler.verify_signature(raw_body, signature):
         logger.warning("meta_review_webhook invalid signature")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Assinatura inválida.")
 
     try:
         payload = await request.json()

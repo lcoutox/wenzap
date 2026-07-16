@@ -46,7 +46,7 @@ def _require_write_role(db: Session, workspace: Workspace, user: User) -> None:
     if role not in _WRITE_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
+            detail="Permissões insuficientes.",
         )
 
 

@@ -28,19 +28,19 @@ class S3StorageProvider(StorageProvider):
         public_base_url: str = "",
     ) -> None:
         if not bucket:
-            raise StorageError("S3StorageProvider: bucket name is required.")
+            raise StorageError("S3StorageProvider: o nome do bucket é obrigatório.")
         if not endpoint_url:
-            raise StorageError("S3StorageProvider: endpoint_url is required.")
+            raise StorageError("S3StorageProvider: endpoint_url é obrigatório.")
         if not access_key_id or not secret_access_key:
             raise StorageError(
-                "S3StorageProvider: access_key_id and secret_access_key are required."
+                "S3StorageProvider: access_key_id e secret_access_key são obrigatórios."
             )
 
         try:
             import boto3
             from botocore.config import Config
         except ImportError as exc:
-            raise StorageError("boto3 is not installed. Run: uv add boto3") from exc
+            raise StorageError("boto3 não está instalado. Execute: uv add boto3") from exc
 
         self._bucket = bucket
         self._public_base_url = public_base_url.rstrip("/") if public_base_url else ""
@@ -62,22 +62,22 @@ class S3StorageProvider(StorageProvider):
         try:
             self._client.put_object(**kwargs)
         except Exception as exc:
-            raise StorageError(f"S3 put_file failed for key {key!r}: {exc}") from exc
+            raise StorageError(f"Falha ao enviar arquivo (S3 put_file) para a chave {key!r}: {exc}") from exc
 
     def get_file(self, key: str) -> bytes:
         try:
             response = self._client.get_object(Bucket=self._bucket, Key=key)
             return response["Body"].read()
         except self._client.exceptions.NoSuchKey:
-            raise StorageError(f"File not found: {key!r}")
+            raise StorageError(f"Arquivo não encontrado: {key!r}")
         except Exception as exc:
-            raise StorageError(f"S3 get_file failed for key {key!r}: {exc}") from exc
+            raise StorageError(f"Falha ao obter arquivo (S3 get_file) para a chave {key!r}: {exc}") from exc
 
     def delete_file(self, key: str) -> None:
         try:
             self._client.delete_object(Bucket=self._bucket, Key=key)
         except Exception as exc:
-            raise StorageError(f"S3 delete_file failed for key {key!r}: {exc}") from exc
+            raise StorageError(f"Falha ao excluir arquivo (S3 delete_file) para a chave {key!r}: {exc}") from exc
 
     def exists(self, key: str) -> bool:
         try:
@@ -97,5 +97,5 @@ class S3StorageProvider(StorageProvider):
             )
         except Exception as exc:
             raise StorageError(
-                f"S3 generate_presigned_url failed for key {key!r}: {exc}"
+                f"Falha ao gerar URL assinada (S3 generate_presigned_url) para a chave {key!r}: {exc}"
             ) from exc

@@ -31,7 +31,7 @@ def _require_role(
     if role not in allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
+            detail="Permissões insuficientes.",
         )
     return role
 
@@ -173,7 +173,7 @@ def retry_message_delivery(
     if conv.channel_type != "whatsapp":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Retry only supported for WhatsApp conversations.",
+            detail="Reenvio é suportado apenas para conversas do WhatsApp.",
         )
 
     msg = db.scalar(
@@ -184,19 +184,19 @@ def retry_message_delivery(
         )
     )
     if msg is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mensagem não encontrada.")
 
     if msg.direction != "outbound" or msg.sender_type not in {"human", "agent"}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only outbound messages can be retried.",
+            detail="Apenas mensagens enviadas podem ser reenviadas.",
         )
 
     delivery = (msg.metadata_json or {}).get("delivery", {})
     if delivery.get("status") != "failed":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Message delivery is not in failed state.",
+            detail="A entrega da mensagem não está em estado de falha.",
         )
 
     from app.services.messaging import deliver_outbound_message  # noqa: PLC0415

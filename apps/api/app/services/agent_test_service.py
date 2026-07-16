@@ -279,7 +279,7 @@ def run_agent_test(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Error connecting to the model. Please try again.",
+            detail="Erro ao conectar com o modelo. Tente novamente.",
         )
 
     # ── Success: credits + run + assistant message in one transaction ─────────
@@ -413,7 +413,7 @@ def _get_agent_or_404(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID)
         select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id)
     )
     if agent is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agente não encontrado.")
     return agent
 
 
@@ -421,7 +421,7 @@ def _validate_agent_testable(agent: Agent) -> None:
     if agent.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Archived agents cannot be tested.",
+            detail="Agentes arquivados não podem ser testados.",
         )
 
 
@@ -446,7 +446,7 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
             if not effective:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Configure advanced_prompt before testing this agent.",
+                    detail="Configure o prompt avançado antes de testar este agente.",
                 )
         elif mode == "guided":
             cfg = getattr(ps, "guided_config", None) or {}
@@ -459,7 +459,7 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
             if not has_guided and not system_prompt.strip():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Configure agent instructions before testing.",
+                    detail="Configure as instruções do agente antes de testar.",
                 )
         return ps
 
@@ -468,7 +468,7 @@ def _get_prompt_settings(db: Session, agent: Agent) -> AgentPromptSettings:
     if not effective_prompt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A system_prompt is required to test this agent.",
+            detail="É necessário um system_prompt para testar este agente.",
         )
 
     stub = AgentPromptSettings.__new__(AgentPromptSettings)
@@ -491,7 +491,7 @@ def _get_model_settings_or_400(db: Session, agent: Agent) -> AgentModelSettings:
     if ms is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This agent has no model configured. Select a model in Settings → Modelo.",
+            detail="Este agente não tem um modelo configurado. Selecione um modelo em Configurações → Modelo.",
         )
     return ms
 
@@ -502,14 +502,14 @@ def _get_model_and_provider(
     model = db.scalar(select(AiModel).where(AiModel.id == ms.ai_model_id))
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Configured model not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Modelo configurado não encontrado."
         )
     provider = db.scalar(
         select(AiModelProvider).where(AiModelProvider.id == model.provider_id)
     )
     if provider is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Model provider not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Provedor do modelo não encontrado."
         )
     return model, provider
 
@@ -517,12 +517,12 @@ def _get_model_and_provider(
 def _validate_model_active(model: AiModel, provider: AiModelProvider) -> None:
     if not model.is_active:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="AI model not found or inactive."
+            status_code=status.HTTP_404_NOT_FOUND, detail="Modelo de IA não encontrado ou inativo."
         )
     if not provider.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The provider for this model is currently unavailable.",
+            detail="O provedor deste modelo está indisponível no momento.",
         )
 
 
@@ -533,8 +533,8 @@ def _validate_plan(plan_code: str, model: AiModel) -> None:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=(
-                f"Model '{model.display_name}' requires the "
-                f"'{model.min_plan_code}' plan or higher."
+                f"O modelo '{model.display_name}' requer o plano "
+                f"'{model.min_plan_code}' ou superior."
             ),
         )
 
@@ -546,16 +546,16 @@ def _validate_runtime_support(model: AiModel, provider: AiModelProvider) -> None
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    "This model is not available for execution in the current phase. "
-                    "Please select a supported model."
+                    "Este modelo não está disponível para execução na fase atual. "
+                    "Selecione um modelo suportado."
                 ),
             )
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "This model's provider is not supported for execution yet. "
-                "Please select a model from Anthropic, OpenAI, or Nexbrain."
+                "O provedor deste modelo ainda não é suportado para execução. "
+                "Selecione um modelo da Anthropic, OpenAI ou Wenzap."
             ),
         )
 
@@ -576,7 +576,7 @@ def _validate_credits(
     if counter.ai_credits_used + credits_needed > monthly_limit:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="Insufficient AI credits to run this agent.",
+            detail="Créditos de IA insuficientes para executar este agente.",
         )
 
 

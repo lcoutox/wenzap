@@ -56,7 +56,7 @@ def _validate_image(data: bytes, content_type: str | None) -> str:
     if len(data) > _MAX_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"Avatar must be at most {_MAX_SIZE_BYTES // (1024 * 1024)} MB.",
+            detail=f"O avatar deve ter no máximo {_MAX_SIZE_BYTES // (1024 * 1024)} MB.",
         )
 
     normalised = (content_type or "").split(";")[0].strip().lower()
@@ -74,14 +74,14 @@ def _validate_image(data: bytes, content_type: str | None) -> str:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"File declared as {normalised!r} but content does not match. "
-                "Accepted: JPEG, PNG, WebP."
+                f"Arquivo declarado como {normalised!r}, mas o conteúdo não corresponde. "
+                "Aceitos: JPEG, PNG, WebP."
             ),
         )
 
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Avatar must be a JPEG, PNG, or WebP image.",
+        detail="O avatar deve ser uma imagem JPEG, PNG ou WebP.",
     )
 
 
