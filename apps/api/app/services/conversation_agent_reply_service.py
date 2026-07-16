@@ -419,6 +419,12 @@ def generate_conversation_agent_reply(
         conversation.id, run.id, response_msg.id,
     )
 
+    # Pipeline.2 Fase 2 — best-effort auto-routing by entry_condition. Runs
+    # after the reply is already committed so a classifier failure never
+    # blocks the actual customer-facing reply.
+    from app.services.pipeline_auto_routing_service import maybe_route_conversation  # noqa: PLC0415
+    maybe_route_conversation(db, workspace_id, conversation)
+
     # Deliver agent reply to WhatsApp when the conversation came from that channel.
     if conversation.channel_type == "whatsapp":
         try:

@@ -32,7 +32,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Convite de membros e RBAC | ✅ Feito | Phase 1 |
 | Planos e limites de uso | ✅ Feito | Plans.1–5 |
 | Verificação de e-mail | ✅ Feito | Auth.6 |
-| Upgrade de plano (self-serve) | ⬜ Planejado | — |
+| Upgrade de plano (self-serve, Stripe Checkout) | ✅ Feito | `824d8ab` |
 | Configurações avançadas do workspace (logo, timezone) | ⬜ Planejado | — |
 
 ---
@@ -139,15 +139,23 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 
 ### 7. Pipeline
 
+**Pipeline.2 (automação completa) implementado (2026-07-16)**: `docs/pipeline/pipeline-full-automation-prd.md`. Resolveu todos os campos "salvo mas não executado" identificados na auditoria comparativa contra o FluxVolt. Automação (webhook, entry_condition, stay_limit, ações de entrada) gated pela feature `pipeline_automations` (Scale+); CRUD manual continua em qualquer plano.
+
 | Item | Status | Ref |
 |---|---|---|
 | Pipeline com etapas e cards | ✅ Feito | Pipeline.1 |
 | Enviar conversa para pipeline (inbox) | ✅ Feito | `73c3651` |
 | Extra prompt por etapa | ✅ Feito | — |
 | Múltiplos pipelines por workspace | ✅ Feito | — |
-| Automações por etapa (mover, notificar) | ⬜ Planejado | — |
-| Templates de pipeline | ⬜ Planejado | — |
-| Métricas por etapa (tempo médio, conversão) | ⬜ Planejado | — |
+| Webhook de etapa (dispatch real) | ✅ Feito | Pipeline.2 — Fase 1 |
+| `entry_condition` — movimentação automática por IA | ✅ Feito | Pipeline.2 — Fase 2 |
+| Auto-avanço por tempo (`stay_limit`) | ✅ Feito | Pipeline.2 — Fase 3 |
+| Ações automáticas de etapa (status/assignee/IA/remoção/coleta de contato) | ✅ Feito | Pipeline.2 — Fase 4 |
+| Histórico de etapa + métricas (tempo médio, conversão) | ✅ Feito | Pipeline.2 — Fase 5 |
+| Drag-and-drop de cards e etapas | ✅ Feito | Pipeline.2 — Fase 6 |
+| `pipelines_limit` do plano aplicado (bug corrigido) | ✅ Feito | Pipeline.2 — Fase 0 |
+| Templates de pipeline | ⬜ Planejado | Backlog (fora do Pipeline.2) |
+| API pública de criação de conversa em etapa | ⬜ Planejado | Backlog (fora do Pipeline.2) |
 
 ---
 
@@ -208,9 +216,10 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Planos Free e Growth | ✅ Feito | Plans.1–5 |
 | Feature gates por plano | ✅ Feito | Plans.4 |
 | Prompts de upgrade na UI | ✅ Feito | Plans.2 |
-| Cobrança real (Stripe) | ⬜ Planejado | — |
-| Portal de faturamento (self-serve) | ⬜ Planejado | — |
-| Plano Scale | ⬜ Planejado | — |
+| Cobrança real (Stripe) | ✅ Feito | `824d8ab`, `4d13086` |
+| Portal de faturamento (self-serve) | ✅ Feito | `824d8ab` (Stripe Customer Portal) |
+| Cupons de desconto no checkout | ✅ Feito | `824d8ab` |
+| Plano Scale — checkout self-serve | ⬜ Planejado | Hoje é sales-assisted (`is_public=false`), preço e price ID já configurados |
 
 ---
 
@@ -234,18 +243,18 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 |---|---|---|---|
 | 1 | Fonte via URL (scraping) | Base de Conhecimento | Reduz fricção no onboarding |
 | 2 | Filtros e busca no inbox | Inbox | Necessário assim que volume crescer |
-| 3 | Cobrança real (Stripe) | Billing | Pré-requisito para monetização |
-| 4 | HTTP Tool (agente chama webhook) | Ferramentas | Abre casos de uso operacionais |
-| 5 | Marcar conversa como resolvida | Inbox | Automação essencial, baixa complexidade |
-| 6 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
-| 7 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
-| 8 | Transferência para humano (action) | Ferramentas | Handoff estruturado, essencial para suporte |
-| 9 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
-| 10 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
-| 11 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
-| 12 | Follow-up automático pós-conversa | Automações | Retenção e engagement |
-| 13 | Instagram como canal | Canais | Alta demanda esperada |
-| 14 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 3 | HTTP Tool (agente chama webhook) | Ferramentas | Abre casos de uso operacionais |
+| 4 | Marcar conversa como resolvida | Inbox | Automação essencial, baixa complexidade |
+| 5 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
+| 6 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
+| 7 | Transferência para humano (action) | Ferramentas | Handoff estruturado, essencial para suporte |
+| 8 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
+| 9 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
+| 10 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
+| 11 | Follow-up automático pós-conversa | Automações | Retenção e engagement |
+| 12 | Instagram como canal | Canais | Alta demanda esperada |
+| 13 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 14 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
 
 ---
 
@@ -265,5 +274,7 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 - `docs/product/PRODUCT_VISION.md` — visão e posicionamento
 - `docs/product/PRODUCT_MODULES.md` — detalhamento de módulos
 - `docs/agents/agent-module-refactor-prd.md` — PRD detalhado do módulo de agentes
+- `docs/pipeline/conversation-pipeline-foundation.md` — fundação do módulo de Pipeline (Pipeline.1)
+- `docs/pipeline/pipeline-full-automation-prd.md` — PRD de automação completa do Pipeline (Pipeline.2)
 - `docs/architecture/ARCHITECTURE_PRINCIPLES.md` — princípios de arquitetura
 - `docs/billing/` — feature gates e planos

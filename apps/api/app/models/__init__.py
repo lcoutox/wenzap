@@ -28,6 +28,7 @@ from app.models.knowledge_source import KnowledgeSource
 from app.models.password_reset_token import PasswordResetToken
 from app.models.pipeline import Pipeline
 from app.models.pipeline_entry import PipelineEntry
+from app.models.pipeline_entry_stage_history import PipelineEntryStageHistory
 from app.models.pipeline_stage import PipelineStage
 from app.models.plan import Plan
 from app.models.plan_feature import PlanFeature

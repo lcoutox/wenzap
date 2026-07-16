@@ -363,30 +363,37 @@ def workspace_b(db: Session, user_b: User) -> Workspace:
 
 @pytest.fixture()
 def growth_plan(db: Session) -> Plan:
-    """Growth plan for tests that need WhatsApp or other growth+ features."""
+    """
+    Growth plan for tests that need WhatsApp or other growth+ features.
+
+    subscription_a depends on feature_matrix, which get-or-creates a bare-bones
+    Plan row (code/name/is_public/sort_order only, everything else at column
+    defaults e.g. pipelines_limit=1) for every plan code including "growth" —
+    so by the time this fixture runs the row may already exist. Always set
+    every field (not just on first-create) so fixture resolution order never
+    silently leaves numeric limits at their column defaults.
+    """
     from sqlalchemy import select as _sel  # noqa: PLC0415
 
     p = db.scalar(_sel(Plan).where(Plan.code == "growth"))
     if p is None:
-        p = Plan(
-            code="growth",
-            name="Growth Test",
-            monthly_price_cents=29700,
-            currency="BRL",
-            agents_limit=3,
-            knowledge_bases_limit=5,
-            users_limit=5,
-            pipelines_limit=5,
-            integrations_limit=5,
-            monthly_ai_credits=7500,
-            monthly_conversations=0,
-            is_active=True,
-            is_public=True,
-            sort_order=20,
-        )
+        p = Plan(code="growth")
         db.add(p)
-        db.commit()
-        db.refresh(p)
+    p.name = "Growth Test"
+    p.monthly_price_cents = 29700
+    p.currency = "BRL"
+    p.agents_limit = 3
+    p.knowledge_bases_limit = 5
+    p.users_limit = 5
+    p.pipelines_limit = 5
+    p.integrations_limit = 5
+    p.monthly_ai_credits = 7500
+    p.monthly_conversations = 0
+    p.is_active = True
+    p.is_public = True
+    p.sort_order = 20
+    db.commit()
+    db.refresh(p)
     return p
 
 
@@ -411,6 +418,55 @@ def growth_subscription_a(
         _update(WorkspaceSubscription)
         .where(WorkspaceSubscription.workspace_id == workspace_a.id)
         .values(plan_id=growth_plan.id, status="active")
+    )
+    db.commit()
+    db.refresh(subscription_a)
+    return subscription_a
+
+
+@pytest.fixture()
+def scale_plan(db: Session) -> Plan:
+    """
+    Scale plan for tests that need pipeline_automations or other scale+ features.
+
+    See growth_plan's docstring — always set every field so fixture resolution
+    order never leaves numeric limits at their column defaults.
+    """
+    from sqlalchemy import select as _sel  # noqa: PLC0415
+
+    p = db.scalar(_sel(Plan).where(Plan.code == "scale"))
+    if p is None:
+        p = Plan(code="scale")
+        db.add(p)
+    p.name = "Scale Test"
+    p.monthly_price_cents = 99700
+    p.currency = "BRL"
+    p.agents_limit = 10
+    p.knowledge_bases_limit = 20
+    p.users_limit = 20
+    p.pipelines_limit = 20
+    p.integrations_limit = 20
+    p.monthly_ai_credits = 50000
+    p.monthly_conversations = 0
+    p.is_active = True
+    p.is_public = False
+    p.sort_order = 30
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@pytest.fixture()
+def scale_subscription_a(
+    db: Session, workspace_a: Workspace, subscription_a: WorkspaceSubscription, scale_plan: Plan, feature_matrix
+) -> WorkspaceSubscription:
+    """Upgrade workspace_a's existing subscription to the Scale plan (unlocks pipeline_automations)."""
+    from sqlalchemy import update as _update  # noqa: PLC0415
+
+    db.execute(
+        _update(WorkspaceSubscription)
+        .where(WorkspaceSubscription.workspace_id == workspace_a.id)
+        .values(plan_id=scale_plan.id, status="active")
     )
     db.commit()
     db.refresh(subscription_a)

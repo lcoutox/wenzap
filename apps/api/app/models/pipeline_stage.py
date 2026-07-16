@@ -32,6 +32,13 @@ class PipelineStage(Base):
     stay_limit_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     webhook_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     webhook_auth_header: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Actions applied to the conversation when an entry moves into this stage.
+    # None = don't touch that field. Pipeline.2 Fase 4.
+    on_enter_conversation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    on_enter_assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    on_enter_ai_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

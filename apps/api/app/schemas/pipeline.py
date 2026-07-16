@@ -47,6 +47,9 @@ class PipelineStageCreate(BaseModel):
     stay_limit_minutes: int | None = None
     webhook_url: str | None = None
     webhook_auth_header: str | None = None
+    on_enter_conversation_status: str | None = None
+    on_enter_assigned_user_id: uuid.UUID | None = None
+    on_enter_ai_enabled: bool | None = None
 
 
 class PipelineStageUpdate(BaseModel):
@@ -63,6 +66,9 @@ class PipelineStageUpdate(BaseModel):
     stay_limit_minutes: int | None = None
     webhook_url: str | None = None
     webhook_auth_header: str | None = None
+    on_enter_conversation_status: str | None = None
+    on_enter_assigned_user_id: uuid.UUID | None = None
+    on_enter_ai_enabled: bool | None = None
 
 
 class PipelineStageOut(BaseModel):
@@ -82,6 +88,9 @@ class PipelineStageOut(BaseModel):
     stay_limit_minutes: int | None
     webhook_url: str | None
     webhook_auth_header: str | None
+    on_enter_conversation_status: str | None
+    on_enter_assigned_user_id: uuid.UUID | None
+    on_enter_ai_enabled: bool | None
     created_at: datetime
     updated_at: datetime
 
@@ -138,3 +147,30 @@ class PipelineEntryOut(BaseModel):
 class AgentPipelineSettingsUpdate(BaseModel):
     default_pipeline_id: uuid.UUID | None = None
     default_pipeline_stage_id: uuid.UUID | None = None
+
+
+# ── Stage history / metrics (Pipeline.2 Fase 5) ──────────────────────────────
+
+class PipelineEntryStageHistoryOut(BaseModel):
+    id: uuid.UUID
+    stage_id: uuid.UUID | None
+    stage_name_snapshot: str
+    entered_at: datetime
+    exited_at: datetime | None
+    moved_by: str
+
+    model_config = {"from_attributes": True}
+
+
+class PipelineStageMetric(BaseModel):
+    stage_id: uuid.UUID
+    stage_name: str
+    avg_minutes_in_stage: float | None
+    entries_passed_through: int
+
+
+class PipelineMetricsOut(BaseModel):
+    stage_metrics: list[PipelineStageMetric]
+    total_entries: int
+    entries_reached_last_stage: int
+    conversion_rate: float | None

@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 import sentry_sdk
 from fastapi import FastAPI, Request
@@ -60,7 +61,14 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("anthropic").setLevel(logging.WARNING)
 
-app = FastAPI(title="Nexbrain API", version="0.2.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    from app.services.pipeline_stay_limit_scheduler import start_background_sweep  # noqa: PLC0415
+    start_background_sweep()
+    yield
+
+
+app = FastAPI(title="Nexbrain API", version="0.2.0", lifespan=lifespan)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Authenticated routes: restrict to configured origins (e.g. the dashboard).

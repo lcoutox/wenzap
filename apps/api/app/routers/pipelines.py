@@ -16,6 +16,8 @@ from app.schemas.pipeline import (
     PipelineEntryCreate,
     PipelineEntryMove,
     PipelineEntryOut,
+    PipelineEntryStageHistoryOut,
+    PipelineMetricsOut,
     PipelineOut,
     PipelineStageCreate,
     PipelineStageOut,
@@ -23,7 +25,7 @@ from app.schemas.pipeline import (
     PipelineUpdate,
     StageReorderRequest,
 )
-from app.services import pipeline_service
+from app.services import pipeline_service, pipeline_webhook_service
 from app.services.agent_service import (
     _build_agent_out,
     _get_model_settings,
@@ -43,6 +45,15 @@ def _check_pipelines_feature(db: Session, workspace: Workspace) -> None:
             "Upgrade to access this feature."
         ),
         )
+
+
+def _validate_stage_webhook_url(webhook_url: str | None) -> None:
+    if not webhook_url:
+        return
+    try:
+        pipeline_webhook_service.validate_webhook_url(webhook_url)
+    except pipeline_webhook_service.WebhookUrlError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
 
 
 # ── Pipelines ─────────────────────────────────────────────────────────────────
@@ -124,6 +135,7 @@ def create_stage(
     db: Session = Depends(get_db),
 ) -> PipelineStageOut:
     _check_pipelines_feature(db, current_workspace)
+    _validate_stage_webhook_url(data.webhook_url)
     return pipeline_service.create_stage(db, current_workspace.id, pipeline_id, data)  # type: ignore[return-value]
 
 
@@ -151,6 +163,8 @@ def update_stage(
     db: Session = Depends(get_db),
 ) -> PipelineStageOut:
     _check_pipelines_feature(db, current_workspace)
+    if "webhook_url" in data.model_fields_set:
+        _validate_stage_webhook_url(data.webhook_url)
     return pipeline_service.update_stage(  # type: ignore[return-value]
         db, current_workspace.id, pipeline_id, stage_id, data
     )
@@ -240,6 +254,37 @@ def remove_entry(
     _check_pipelines_feature(db, current_workspace)
     pipeline_service.remove_entry(db, current_workspace.id, pipeline_id, entry_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Entry history / pipeline metrics (Pipeline.2 Fase 5) ─────────────────────
+
+
+@router.get(
+    "/pipelines/{pipeline_id}/entries/{entry_id}/history",
+    response_model=list[PipelineEntryStageHistoryOut],
+)
+def get_entry_history(
+    pipeline_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> list[PipelineEntryStageHistoryOut]:
+    _check_pipelines_feature(db, current_workspace)
+    return pipeline_service.get_entry_stage_history(  # type: ignore[return-value]
+        db, current_workspace.id, pipeline_id, entry_id
+    )
+
+
+@router.get("/pipelines/{pipeline_id}/metrics", response_model=PipelineMetricsOut)
+def get_pipeline_metrics(
+    pipeline_id: uuid.UUID,
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> PipelineMetricsOut:
+    _check_pipelines_feature(db, current_workspace)
+    return pipeline_service.get_pipeline_metrics(  # type: ignore[return-value]
+        db, current_workspace.id, pipeline_id
+    )
 
 
 # ── Agent pipeline settings ───────────────────────────────────────────────────

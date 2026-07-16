@@ -12,7 +12,9 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.pipeline import Pipeline
 from app.models.pipeline_entry import PipelineEntry
+from app.models.pipeline_entry_stage_history import PipelineEntryStageHistory
 from app.models.pipeline_stage import PipelineStage
+from app.models.plan import Plan
 from app.schemas.pipeline import (
     AgentPipelineSettingsUpdate,
     PipelineCreate,
@@ -23,6 +25,8 @@ from app.schemas.pipeline import (
     PipelineUpdate,
     StageReorderItem,
 )
+from app.services import pipeline_webhook_service
+from app.services.plan_feature_service import get_workspace_plan_code, workspace_allows_feature
 
 # ── Lookup helpers ────────────────────────────────────────────────────────────
 
@@ -92,7 +96,32 @@ def list_pipelines(db: Session, workspace_id: uuid.UUID) -> list[Pipeline]:
     )
 
 
+def _check_pipelines_limit(db: Session, workspace_id: uuid.UUID) -> None:
+    """Raises HTTP 402 if workspace has reached its plan's pipelines_limit."""
+    plan_code = get_workspace_plan_code(db, workspace_id)
+    plan = db.scalar(select(Plan).where(Plan.code == plan_code))
+    if plan is None or plan.pipelines_limit <= 0:
+        return  # 0/absent = unlimited
+
+    active_count = db.scalar(
+        select(func.count()).where(
+            Pipeline.workspace_id == workspace_id,
+            Pipeline.is_active.is_(True),
+        )
+    ) or 0
+
+    if active_count >= plan.pipelines_limit:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Pipeline limit reached for your plan ({plan.pipelines_limit} pipeline(s) "
+                "allowed). Upgrade your plan or archive an existing pipeline to create a new one."
+            ),
+        )
+
+
 def create_pipeline(db: Session, workspace_id: uuid.UUID, data: PipelineCreate) -> Pipeline:
+    _check_pipelines_limit(db, workspace_id)
     pipeline = Pipeline(
         workspace_id=workspace_id,
         name=data.name,
@@ -265,6 +294,115 @@ def delete_stage(
     db.commit()
 
 
+# ── Stage entry effects (Pipeline.2 Fase 1/4/5) ──────────────────────────────
+#
+# Shared by create_entry, move_entry and ensure_conversation_pipeline_entry —
+# every path that puts an entry into a stage goes through here, so history,
+# on_enter actions, removal-stage handling and the webhook always fire
+# consistently regardless of who/what triggered the move.
+
+
+def _record_stage_history(
+    db: Session,
+    workspace_id: uuid.UUID,
+    entry: PipelineEntry,
+    new_stage: PipelineStage | None,
+    moved_by: str,
+    now: datetime,
+) -> None:
+    # Close the currently-open history row for this entry, if any.
+    open_row = db.scalar(
+        select(PipelineEntryStageHistory).where(
+            PipelineEntryStageHistory.entry_id == entry.id,
+            PipelineEntryStageHistory.exited_at.is_(None),
+        )
+    )
+    if open_row is not None:
+        open_row.exited_at = now
+
+    if new_stage is not None:
+        db.add(
+            PipelineEntryStageHistory(
+                workspace_id=workspace_id,
+                entry_id=entry.id,
+                stage_id=new_stage.id,
+                stage_name_snapshot=new_stage.name,
+                entered_at=now,
+                moved_by=moved_by,
+            )
+        )
+
+
+def apply_stage_entry_effects(
+    db: Session,
+    workspace_id: uuid.UUID,
+    entry: PipelineEntry,
+    stage: PipelineStage,
+    previous_stage_id: uuid.UUID | None,
+    moved_by: str,
+) -> None:
+    """
+    Apply everything that should happen when *entry* moves into *stage*:
+    history (always), removal-stage status (always — manual causal effect,
+    not gated), on_enter_* conversation actions + webhook (gated behind the
+    pipeline_automations plan feature, same as entry_condition/stay_limit).
+    """
+    now = datetime.now(timezone.utc)
+    _record_stage_history(db, workspace_id, entry, stage, moved_by, now)
+
+    if stage.is_removal_stage:
+        entry.status = "inactive"
+
+    automations_enabled = workspace_allows_feature(db, workspace_id, "pipeline_automations")
+
+    conversation: Conversation | None = None
+    if automations_enabled and (
+        stage.on_enter_conversation_status is not None
+        or stage.on_enter_assigned_user_id is not None
+        or stage.on_enter_ai_enabled is not None
+    ):
+        conversation = db.scalar(
+            select(Conversation).where(Conversation.id == entry.conversation_id)
+        )
+        if conversation is not None:
+            if stage.on_enter_conversation_status is not None:
+                conversation.status = stage.on_enter_conversation_status
+            if stage.on_enter_assigned_user_id is not None:
+                conversation.assigned_user_id = stage.on_enter_assigned_user_id
+            if stage.on_enter_ai_enabled is not None:
+                conversation.ai_enabled = stage.on_enter_ai_enabled
+            conversation.updated_at = now
+
+    if automations_enabled and stage.webhook_url:
+        try:
+            pipeline_webhook_service.validate_webhook_url(stage.webhook_url)
+        except pipeline_webhook_service.WebhookUrlError:
+            pass  # invalid/unsafe URL — silently skip, already validated at save time
+        else:
+            if conversation is None:
+                conversation = db.scalar(
+                    select(Conversation).where(Conversation.id == entry.conversation_id)
+                )
+            contact = (
+                db.scalar(select(Contact).where(Contact.id == entry.contact_id))
+                if entry.contact_id
+                else None
+            )
+            pipeline_webhook_service.dispatch_stage_entered_webhook(
+                webhook_url=stage.webhook_url,
+                webhook_auth_header=stage.webhook_auth_header,
+                pipeline_id=stage.pipeline_id,
+                stage_id=stage.id,
+                stage_name=stage.name,
+                entry_id=entry.id,
+                conversation_id=entry.conversation_id,
+                contact_id=entry.contact_id,
+                contact_name=contact.name if contact else None,
+                contact_phone=contact.phone if contact else None,
+                previous_stage_id=previous_stage_id,
+            )
+
+
 # ── Entries ───────────────────────────────────────────────────────────────────
 
 
@@ -367,6 +505,13 @@ def create_entry(
         entered_stage_at=now if data.stage_id else None,
     )
     db.add(entry)
+    db.flush()
+
+    if data.stage_id is not None:
+        stage = db.scalar(select(PipelineStage).where(PipelineStage.id == data.stage_id))
+        if stage is not None:
+            apply_stage_entry_effects(db, workspace_id, entry, stage, None, "manual")
+
     db.commit()
     db.refresh(entry)
     return entry
@@ -380,11 +525,15 @@ def move_entry(
     data: PipelineEntryMove,
 ) -> PipelineEntry:
     entry = _get_entry_or_404(db, workspace_id, pipeline_id, entry_id)
-    # Validate stage belongs to this pipeline
-    get_stage_or_404(db, workspace_id, pipeline_id, data.stage_id)
+    stage = get_stage_or_404(db, workspace_id, pipeline_id, data.stage_id)
+    previous_stage_id = entry.stage_id
+    now = datetime.now(timezone.utc)
     entry.stage_id = data.stage_id
-    entry.entered_stage_at = datetime.now(timezone.utc)
-    entry.updated_at = datetime.now(timezone.utc)
+    entry.entered_stage_at = now
+    entry.updated_at = now
+
+    apply_stage_entry_effects(db, workspace_id, entry, stage, previous_stage_id, "manual")
+
     db.commit()
     db.refresh(entry)
     return entry
@@ -446,6 +595,12 @@ def ensure_conversation_pipeline_entry(db: Session, conversation: Conversation) 
     db.add(entry)
     db.flush()
 
+    if stage_id is not None:
+        stage = db.scalar(select(PipelineStage).where(PipelineStage.id == stage_id))
+        if stage is not None:
+            apply_stage_entry_effects(db, conversation.workspace_id, entry, stage, None, "initial")
+            db.flush()
+
 
 # ── Agent pipeline settings ───────────────────────────────────────────────────
 
@@ -504,3 +659,82 @@ def update_agent_pipeline_settings(
     db.commit()
     db.refresh(agent)
     return agent
+
+
+# ── Stage history / metrics (Pipeline.2 Fase 5) ──────────────────────────────
+
+
+def get_entry_stage_history(
+    db: Session,
+    workspace_id: uuid.UUID,
+    pipeline_id: uuid.UUID,
+    entry_id: uuid.UUID,
+) -> list[PipelineEntryStageHistory]:
+    _get_entry_or_404(db, workspace_id, pipeline_id, entry_id)
+    return list(
+        db.scalars(
+            select(PipelineEntryStageHistory)
+            .where(PipelineEntryStageHistory.entry_id == entry_id)
+            .order_by(PipelineEntryStageHistory.entered_at.asc())
+        ).all()
+    )
+
+
+def get_pipeline_metrics(db: Session, workspace_id: uuid.UUID, pipeline_id: uuid.UUID) -> dict:
+    """
+    Average time-in-stage (closed history rows only) and a simple conversion
+    rate: entries that ever reached the last stage (by position) ÷ total
+    entries ever created for this pipeline.
+    """
+    get_pipeline_or_404(db, workspace_id, pipeline_id)
+    stages = list_stages(db, workspace_id, pipeline_id)
+
+    stage_metrics = []
+    for stage in stages:
+        rows = db.scalars(
+            select(PipelineEntryStageHistory).where(
+                PipelineEntryStageHistory.stage_id == stage.id,
+                PipelineEntryStageHistory.exited_at.is_not(None),
+            )
+        ).all()
+        durations_minutes = [
+            (row.exited_at - row.entered_at).total_seconds() / 60.0 for row in rows
+        ]
+        passed_through = db.scalar(
+            select(func.count(func.distinct(PipelineEntryStageHistory.entry_id))).where(
+                PipelineEntryStageHistory.stage_id == stage.id
+            )
+        ) or 0
+        stage_metrics.append(
+            {
+                "stage_id": stage.id,
+                "stage_name": stage.name,
+                "avg_minutes_in_stage": (
+                    sum(durations_minutes) / len(durations_minutes) if durations_minutes else None
+                ),
+                "entries_passed_through": passed_through,
+            }
+        )
+
+    total_entries = db.scalar(
+        select(func.count()).where(PipelineEntry.pipeline_id == pipeline_id)
+    ) or 0
+
+    entries_reached_last_stage = 0
+    conversion_rate = None
+    if stages:
+        last_stage = stages[-1]
+        entries_reached_last_stage = db.scalar(
+            select(func.count(func.distinct(PipelineEntryStageHistory.entry_id))).where(
+                PipelineEntryStageHistory.stage_id == last_stage.id
+            )
+        ) or 0
+        if total_entries > 0:
+            conversion_rate = entries_reached_last_stage / total_entries
+
+    return {
+        "stage_metrics": stage_metrics,
+        "total_entries": total_entries,
+        "entries_reached_last_stage": entries_reached_last_stage,
+        "conversion_rate": conversion_rate,
+    }

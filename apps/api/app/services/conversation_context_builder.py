@@ -27,6 +27,7 @@ from app.config import settings as app_settings
 from app.models.agent import Agent
 from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_prompt_settings import AgentPromptSettings
+from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.models.pipeline_entry import PipelineEntry
@@ -218,6 +219,19 @@ def build_conversation_context(
             system = system + f"\n\n## INSTRUÇÕES DESTA ETAPA\n\n{extra}"
             pipeline_extra_prompt_injected = True
 
+        # Pipeline.2 Fase 4 — request_contact_info: ask for missing contact
+        # fields via prompt injection (no structured collection UI/tool exists
+        # yet, so this reuses the same mechanism as extra_prompt above).
+        if active_stage is not None and active_stage.request_contact_info:
+            missing = _missing_contact_fields(db, active_entry.contact_id)
+            if missing:
+                system = system + (
+                    "\n\n## COLETA DE DADOS\n\n"
+                    f"Ainda faltam os seguintes dados deste contato: {', '.join(missing)}. "
+                    "Peça essas informações de forma natural, no momento apropriado da "
+                    "conversa, sem parecer um formulário."
+                )
+
     if app_settings.ai_prompt_debug:
         _log_prompt_debug(
             agent_id=agent.id,
@@ -253,6 +267,25 @@ def build_conversation_context(
         ],
         pipeline_extra_prompt_injected=pipeline_extra_prompt_injected,
     )
+
+
+# ── Pipeline helpers ──────────────────────────────────────────────────────────
+
+def _missing_contact_fields(db: Session, contact_id: uuid.UUID | None) -> list[str]:
+    """Return which of name/email/phone are still unfilled for this contact."""
+    if contact_id is None:
+        return ["nome", "e-mail", "telefone"]
+    contact = db.scalar(select(Contact).where(Contact.id == contact_id))
+    if contact is None:
+        return ["nome", "e-mail", "telefone"]
+    missing = []
+    if not contact.name:
+        missing.append("nome")
+    if not contact.email:
+        missing.append("e-mail")
+    if not contact.phone:
+        missing.append("telefone")
+    return missing
 
 
 # ── History helpers ───────────────────────────────────────────────────────────

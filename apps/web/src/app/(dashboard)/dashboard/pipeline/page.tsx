@@ -3,9 +3,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import {
+  BarChart3,
   ChevronDown,
   Clock,
   Globe,
+  GripVertical,
   KanbanSquare,
   Loader2,
   MessageSquare,
@@ -15,13 +32,22 @@ import {
   Smartphone,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type {
   Agent,
+  Member,
   Pipeline,
   PipelineEntry,
+  PipelineMetrics,
   PipelineStage,
 } from "@/lib/api";
+
+const CONVERSATION_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "open", label: "Aberta" },
+  { value: "pending", label: "Pendente" },
+  { value: "resolved", label: "Resolvida" },
+  { value: "archived", label: "Arquivada" },
+];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -194,6 +220,7 @@ function StageModal({
   pipelineId,
   initial,
   agents,
+  members,
   nextPosition,
 }: {
   open: boolean;
@@ -202,6 +229,7 @@ function StageModal({
   pipelineId: string;
   initial?: PipelineStage;
   agents: Agent[];
+  members: Member[];
   nextPosition: number;
 }) {
   const isEdit = !!initial;
@@ -211,11 +239,16 @@ function StageModal({
   const [isRequired, setIsRequired] = useState(false);
   const [isRemoval, setIsRemoval] = useState(false);
   const [extraPrompt, setExtraPrompt] = useState("");
+  const [entryCondition, setEntryCondition] = useState("");
   const [assignedAgentId, setAssignedAgentId] = useState("");
+  const [requestContactInfo, setRequestContactInfo] = useState(false);
   const [stayLimitEnabled, setStayLimitEnabled] = useState(false);
   const [stayLimitMinutes, setStayLimitMinutes] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookAuthHeader, setWebhookAuthHeader] = useState("");
+  const [onEnterStatus, setOnEnterStatus] = useState("");
+  const [onEnterAssignedUserId, setOnEnterAssignedUserId] = useState("");
+  const [onEnterAiEnabled, setOnEnterAiEnabled] = useState(""); // "" | "true" | "false"
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -227,10 +260,21 @@ function StageModal({
       setIsRequired(initial?.is_required ?? false);
       setIsRemoval(initial?.is_removal_stage ?? false);
       setExtraPrompt(initial?.extra_prompt ?? "");
+      setEntryCondition(initial?.entry_condition ?? "");
       setAssignedAgentId(initial?.assigned_agent_id ?? "");
+      setRequestContactInfo(initial?.request_contact_info ?? false);
       setStayLimitEnabled(initial?.stay_limit_enabled ?? false);
       setStayLimitMinutes(initial?.stay_limit_minutes?.toString() ?? "");
       setWebhookUrl(initial?.webhook_url ?? "");
+      setOnEnterStatus(initial?.on_enter_conversation_status ?? "");
+      setOnEnterAssignedUserId(initial?.on_enter_assigned_user_id ?? "");
+      setOnEnterAiEnabled(
+        initial?.on_enter_ai_enabled === true
+          ? "true"
+          : initial?.on_enter_ai_enabled === false
+          ? "false"
+          : ""
+      );
       setWebhookAuthHeader(initial?.webhook_auth_header ?? "");
       setError("");
     }
@@ -247,19 +291,24 @@ function StageModal({
       is_required: isRequired,
       is_removal_stage: isRemoval,
       extra_prompt: extraPrompt.trim() || null,
+      entry_condition: entryCondition.trim() || null,
       assigned_agent_id: assignedAgentId || null,
+      request_contact_info: requestContactInfo,
       stay_limit_enabled: stayLimitEnabled,
       stay_limit_minutes: stayLimitEnabled && stayLimitMinutes ? parseInt(stayLimitMinutes) : null,
       webhook_url: webhookUrl.trim() || null,
       webhook_auth_header: webhookAuthHeader.trim() || null,
+      on_enter_conversation_status: onEnterStatus || null,
+      on_enter_assigned_user_id: onEnterAssignedUserId || null,
+      on_enter_ai_enabled: onEnterAiEnabled === "" ? null : onEnterAiEnabled === "true",
     };
     try {
       const saved = isEdit
         ? await api.pipelines.stages.update(pipelineId, initial!.id, payload)
         : await api.pipelines.stages.create(pipelineId, { ...payload, position: nextPosition });
       onSaved(saved);
-    } catch {
-      setError("Erro ao salvar etapa.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Erro ao salvar etapa.");
     } finally {
       setSaving(false);
     }
@@ -353,11 +402,42 @@ function StageModal({
                 ))}
               </select>
             </Field>
+            <Field label="Condição de entrada automática (opcional, requer plano Scale+)">
+              <textarea
+                rows={3}
+                className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:border-nb-primary transition-colors resize-none"
+                placeholder="Ex: Cliente confirmou interesse em comprar"
+                value={entryCondition}
+                onChange={(e) => setEntryCondition(e.target.value)}
+              />
+              <p className="text-[11px] text-nb-muted mt-1.5">
+                Descrita em linguagem natural. A IA avalia a conversa a cada mensagem e move
+                automaticamente pra esta etapa quando a condição for satisfeita.
+              </p>
+            </Field>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded border-nb-border accent-nb-primary mt-0.5"
+                checked={requestContactInfo}
+                onChange={(e) => setRequestContactInfo(e.target.checked)}
+              />
+              <span className="text-xs text-nb-secondary">
+                Pedir dados de contato faltantes (nome, e-mail, telefone) nesta etapa
+              </span>
+            </label>
           </div>
         )}
 
         {tab === "avancado" && (
           <div className="space-y-4">
+            <div className="rounded-lg bg-nb-elevated border border-nb-border px-3 py-2">
+              <p className="text-[11px] text-nb-muted">
+                Limite de permanência, webhook e ações de entrada só disparam em workspaces no
+                plano <strong>Scale</strong> ou superior. No plano atual esses campos ficam
+                salvos mas não são executados.
+              </p>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-nb-secondary">Limite de permanência</p>
@@ -399,6 +479,47 @@ function StageModal({
                 onChange={(e) => setWebhookAuthHeader(e.target.value)}
               />
             </Field>
+
+            <div className="pt-2 border-t border-nb-border">
+              <p className="text-xs font-medium text-nb-secondary mb-3">Ao entrar nesta etapa</p>
+              <div className="space-y-3">
+                <Field label="Mudar status da conversa">
+                  <select
+                    className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text focus:outline-none focus:border-nb-primary transition-colors"
+                    value={onEnterStatus}
+                    onChange={(e) => setOnEnterStatus(e.target.value)}
+                  >
+                    <option value="">Não alterar</option>
+                    {CONVERSATION_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Atribuir a um operador">
+                  <select
+                    className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text focus:outline-none focus:border-nb-primary transition-colors"
+                    value={onEnterAssignedUserId}
+                    onChange={(e) => setOnEnterAssignedUserId(e.target.value)}
+                  >
+                    <option value="">Não alterar</option>
+                    {members.map((m) => (
+                      <option key={m.user_id} value={m.user_id}>{m.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="IA neste agente">
+                  <select
+                    className="w-full bg-nb-elevated border border-nb-border rounded-xl px-3 py-2.5 text-sm text-nb-text focus:outline-none focus:border-nb-primary transition-colors"
+                    value={onEnterAiEnabled}
+                    onChange={(e) => setOnEnterAiEnabled(e.target.value)}
+                  >
+                    <option value="">Não alterar</option>
+                    <option value="true">Ligar IA</option>
+                    <option value="false">Desligar IA (passar pra humano)</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
           </div>
         )}
 
@@ -536,10 +657,22 @@ function EntryCard({
   const contactLabel = entry.contact_name ?? "Contato desconhecido";
   const contactSub = entry.contact_phone ?? entry.contact_email ?? null;
 
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: entry.id,
+    data: { entry },
+  });
+  const dragStyle = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 40 }
+    : undefined;
+
   return (
     <>
       <div
-        className="group relative bg-nb-surface border border-nb-border rounded-xl p-3 hover:border-nb-primary/30 hover:shadow-sm transition-all cursor-pointer"
+        ref={setNodeRef}
+        style={dragStyle}
+        {...listeners}
+        {...attributes}
+        className={`group relative bg-nb-surface border border-nb-border rounded-xl p-3 hover:border-nb-primary/30 hover:shadow-sm transition-all cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
         onClick={() => router.push(`/dashboard/inbox?conversationId=${entry.conversation_id}`)}
       >
         {/* Header */}
@@ -640,11 +773,39 @@ function KanbanColumn({
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: stage.id,
+    data: { stageId: stage.id },
+  });
+  const {
+    attributes: sortAttrs,
+    listeners: sortListeners,
+    setNodeRef: setSortableRef,
+    transform: sortTransform,
+    transition: sortTransition,
+    isDragging: isColumnDragging,
+  } = useSortable({ id: stage.id, data: { type: "stage" } });
+  const columnStyle = {
+    transform: CSS.Transform.toString(sortTransform),
+    transition: sortTransition,
+  };
+
   return (
-    <div className="flex-shrink-0 w-72 flex flex-col bg-nb-panel border border-nb-border rounded-2xl overflow-hidden">
+    <div
+      ref={setSortableRef}
+      style={columnStyle}
+      className={`flex-shrink-0 w-72 flex flex-col bg-nb-panel border rounded-2xl overflow-hidden transition-colors ${isColumnDragging ? "opacity-50" : ""} ${isOver ? "border-nb-primary/50" : "border-nb-border"}`}
+    >
       {/* Column header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-nb-border bg-nb-elevated/50">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span
+            {...sortAttrs}
+            {...sortListeners}
+            className="cursor-grab active:cursor-grabbing text-nb-muted hover:text-nb-secondary shrink-0"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </span>
           <span className="text-xs font-semibold text-nb-text truncate">{stage.name}</span>
           <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium bg-nb-elevated border border-nb-border text-nb-muted rounded-full">
             {entries.length}
@@ -675,7 +836,7 @@ function KanbanColumn({
       </div>
 
       {/* Cards */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[120px]">
+      <div ref={setDroppableRef} className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[120px]">
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <MessageSquare className="w-6 h-6 text-nb-muted mb-2" />
@@ -759,6 +920,9 @@ export default function PipelinePage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [entries, setEntries] = useState<PipelineEntry[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
+  const [metricsOpen, setMetricsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingBoard, setLoadingBoard] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -771,17 +935,19 @@ export default function PipelinePage() {
   const [stageModalOpen, setStageModalOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<PipelineStage | undefined>(undefined);
 
-  // Load pipelines and agents on mount
+  // Load pipelines, agents and members on mount
   useEffect(() => {
     async function init() {
       setLoading(true);
       try {
-        const [pList, aList] = await Promise.all([
+        const [pList, aList, mList] = await Promise.all([
           api.pipelines.list(),
           api.agents.list(),
+          api.members.list(),
         ]);
         setPipelines(pList);
         setAgents(aList);
+        setMembers(mList);
         if (pList.length > 0) setSelectedPipelineId(pList[0].id);
       } catch {
         setError("Erro ao carregar pipelines.");
@@ -795,6 +961,8 @@ export default function PipelinePage() {
   // Load board when selected pipeline changes
   const loadBoard = useCallback(async (pipelineId: string) => {
     setLoadingBoard(true);
+    setMetrics(null);
+    setMetricsOpen(false);
     try {
       const [sList, eList] = await Promise.all([
         api.pipelines.stages.list(pipelineId),
@@ -814,12 +982,76 @@ export default function PipelinePage() {
     if (selectedPipelineId) loadBoard(selectedPipelineId);
   }, [selectedPipelineId, loadBoard]);
 
+  async function toggleMetrics() {
+    if (metricsOpen) { setMetricsOpen(false); return; }
+    setMetricsOpen(true);
+    if (!metrics && selectedPipelineId) {
+      try {
+        setMetrics(await api.pipelines.metrics(selectedPipelineId));
+      } catch {
+        setMetricsOpen(false);
+      }
+    }
+  }
+
   function handleEntryMoved(updated: PipelineEntry) {
     setEntries((prev) => prev.map((e) => e.id === updated.id ? updated : e));
   }
 
   function handleEntryRemoved(id: string) {
     setEntries((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || !selectedPipelineId) return;
+
+    const activeStageIds = new Set(stages.map((s) => s.id));
+    const isColumnDrag = activeStageIds.has(active.id as string);
+
+    if (isColumnDrag) {
+      // Reordering stage columns.
+      if (active.id === over.id) return;
+      const ordered = [...sortedStages];
+      const fromIdx = ordered.findIndex((s) => s.id === active.id);
+      const toIdx = ordered.findIndex((s) => s.id === over.id);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const [moved] = ordered.splice(fromIdx, 1);
+      ordered.splice(toIdx, 0, moved);
+      const reindexed = ordered.map((s, i) => ({ ...s, position: i }));
+      setStages(reindexed);
+      try {
+        await api.pipelines.stages.reorder(
+          selectedPipelineId,
+          reindexed.map((s, i) => ({ id: s.id, position: i }))
+        );
+      } catch {
+        setError("Erro ao reordenar etapas.");
+        loadBoard(selectedPipelineId);
+      }
+      return;
+    }
+
+    // Dragging a card onto a column.
+    const entry = entries.find((e) => e.id === active.id);
+    const targetStageId = over.id as string;
+    if (!entry || entry.stage_id === targetStageId || !activeStageIds.has(targetStageId)) return;
+
+    const previous = entry;
+    setEntries((prev) =>
+      prev.map((e) => (e.id === entry.id ? { ...e, stage_id: targetStageId } : e))
+    );
+    try {
+      const updated = await api.pipelines.entries.move(selectedPipelineId, entry.id, targetStageId);
+      handleEntryMoved(updated);
+    } catch {
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? previous : e)));
+      setError("Erro ao mover conversa.");
+    }
   }
 
   function handleStageSaved(stage: PipelineStage) {
@@ -906,15 +1138,68 @@ export default function PipelinePage() {
             onSelect={setSelectedPipelineId}
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setCreatePipelineOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Novo Pipeline
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleMetrics}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl border transition-colors ${metricsOpen ? "bg-nb-primary/10 border-nb-primary/30 text-nb-primary-strong" : "bg-nb-surface border-nb-border text-nb-secondary hover:bg-nb-elevated"}`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            Métricas
+          </button>
+          <button
+            type="button"
+            onClick={() => setCreatePipelineOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Novo Pipeline
+          </button>
+        </div>
       </div>
+
+      {/* Metrics panel */}
+      {metricsOpen && (
+        <div className="shrink-0 bg-nb-panel border border-nb-border rounded-2xl p-4">
+          {metrics === null ? (
+            <div className="flex items-center gap-2 text-xs text-nb-muted">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando métricas…
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-6 flex-wrap text-xs">
+                <div>
+                  <span className="text-nb-muted">Total de conversas: </span>
+                  <span className="font-semibold text-nb-text">{metrics.total_entries}</span>
+                </div>
+                <div>
+                  <span className="text-nb-muted">Chegaram na última etapa: </span>
+                  <span className="font-semibold text-nb-text">{metrics.entries_reached_last_stage}</span>
+                </div>
+                <div>
+                  <span className="text-nb-muted">Taxa de conversão: </span>
+                  <span className="font-semibold text-nb-text">
+                    {metrics.conversion_rate !== null ? `${Math.round(metrics.conversion_rate * 100)}%` : "—"}
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {metrics.stage_metrics.map((m) => (
+                  <div key={m.stage_id} className="bg-nb-elevated border border-nb-border rounded-xl p-2.5">
+                    <p className="text-[11px] font-medium text-nb-text truncate">{m.stage_name}</p>
+                    <p className="text-[10px] text-nb-muted mt-0.5">
+                      {m.avg_minutes_in_stage !== null
+                        ? `${Math.round(m.avg_minutes_in_stage)} min em média`
+                        : "sem dados de tempo"}
+                    </p>
+                    <p className="text-[10px] text-nb-muted">{m.entries_passed_through} passaram</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mobile stage selector */}
       {stages.length > 0 && (
@@ -939,32 +1224,43 @@ export default function PipelinePage() {
         </div>
       ) : selectedPipelineId ? (
         <>
-          {/* Desktop: horizontal scroll */}
-          <div className="hidden md:flex gap-4 overflow-x-auto pb-4 flex-1 items-start">
-            {sortedStages.map((stage) => (
-              <KanbanColumn
-                key={stage.id}
-                stage={stage}
-                entries={entries.filter((e) => e.stage_id === stage.id)}
-                stages={sortedStages}
-                pipelineId={selectedPipelineId}
-                onEditStage={openEditStage}
-                onMoved={handleEntryMoved}
-                onRemoved={handleEntryRemoved}
-              />
-            ))}
-            {/* Add stage button */}
-            <div className="flex-shrink-0 w-72">
-              <button
-                type="button"
-                onClick={openNewStage}
-                className="w-full flex items-center justify-center gap-2 py-4 border-2 border-dashed border-nb-border rounded-2xl text-sm text-nb-muted hover:border-nb-primary/40 hover:text-nb-primary hover:bg-nb-primary/5 transition-all"
+          {/* Desktop: horizontal scroll, drag-and-drop enabled */}
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="hidden md:flex gap-4 overflow-x-auto pb-4 flex-1 items-start">
+              <SortableContext
+                items={sortedStages.map((s) => s.id)}
+                strategy={horizontalListSortingStrategy}
               >
-                <Plus className="w-4 h-4" />
-                Nova Etapa
-              </button>
+                {sortedStages.map((stage) => (
+                  <KanbanColumn
+                    key={stage.id}
+                    stage={stage}
+                    entries={entries.filter((e) => e.stage_id === stage.id)}
+                    stages={sortedStages}
+                    pipelineId={selectedPipelineId}
+                    onEditStage={openEditStage}
+                    onMoved={handleEntryMoved}
+                    onRemoved={handleEntryRemoved}
+                  />
+                ))}
+              </SortableContext>
+              {/* Add stage button */}
+              <div className="flex-shrink-0 w-72">
+                <button
+                  type="button"
+                  onClick={openNewStage}
+                  className="w-full flex items-center justify-center gap-2 py-4 border-2 border-dashed border-nb-border rounded-2xl text-sm text-nb-muted hover:border-nb-primary/40 hover:text-nb-primary hover:bg-nb-primary/5 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nova Etapa
+                </button>
+              </div>
             </div>
-          </div>
+          </DndContext>
 
           {/* Mobile: single column */}
           <div className="md:hidden flex-1">
@@ -1010,6 +1306,7 @@ export default function PipelinePage() {
             pipelineId={selectedPipelineId}
             initial={editingStage}
             agents={agents}
+            members={members}
             nextPosition={stages.length}
           />
         </>

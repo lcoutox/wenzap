@@ -1005,6 +1005,9 @@ export type PipelineStage = {
   stay_limit_minutes: number | null;
   webhook_url: string | null;
   webhook_auth_header: string | null;
+  on_enter_conversation_status: string | null;
+  on_enter_assigned_user_id: string | null;
+  on_enter_ai_enabled: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -1014,16 +1017,44 @@ export type PipelineStageCreateInput = {
   description?: string | null;
   position?: number;
   assigned_agent_id?: string | null;
+  entry_condition?: string | null;
   extra_prompt?: string | null;
   is_required?: boolean;
   is_removal_stage?: boolean;
+  request_contact_info?: boolean;
   stay_limit_enabled?: boolean;
   stay_limit_minutes?: number | null;
   webhook_url?: string | null;
   webhook_auth_header?: string | null;
+  on_enter_conversation_status?: string | null;
+  on_enter_assigned_user_id?: string | null;
+  on_enter_ai_enabled?: boolean | null;
 };
 
 export type PipelineStageUpdateInput = Partial<PipelineStageCreateInput>;
+
+export type PipelineEntryStageHistory = {
+  id: string;
+  stage_id: string | null;
+  stage_name_snapshot: string;
+  entered_at: string;
+  exited_at: string | null;
+  moved_by: "initial" | "manual" | "entry_condition" | "stay_limit";
+};
+
+export type PipelineStageMetric = {
+  stage_id: string;
+  stage_name: string;
+  avg_minutes_in_stage: number | null;
+  entries_passed_through: number;
+};
+
+export type PipelineMetrics = {
+  stage_metrics: PipelineStageMetric[];
+  total_entries: number;
+  entries_reached_last_stage: number;
+  conversion_rate: number | null;
+};
 
 export type PipelineEntry = {
   id: string;
@@ -1659,7 +1690,13 @@ export const api = {
         }),
       delete: (pipelineId: string, entryId: string) =>
         cookieFetch<void>(`/pipelines/${pipelineId}/entries/${entryId}`, { method: "DELETE" }),
+      history: (pipelineId: string, entryId: string) =>
+        cookieFetch<PipelineEntryStageHistory[]>(
+          `/pipelines/${pipelineId}/entries/${entryId}/history`
+        ),
     },
+    metrics: (pipelineId: string) =>
+      cookieFetch<PipelineMetrics>(`/pipelines/${pipelineId}/metrics`),
   },
   knowledgeBases: {
     list: () => cookieFetch<KnowledgeBase[]>("/knowledge-bases"),
