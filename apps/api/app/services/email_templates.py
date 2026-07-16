@@ -2,9 +2,9 @@
 HTML and plain-text email templates for Wenzap transactional emails.
 
 Design direction:
-- Dark premium background (#070A12)
+- Dark premium background (#0B0F14)
 - White card, max 600px
-- Wenzap brand color (#7C3AED purple)
+- Wenzap brand color (#00E09A verde)
 - Rounded corners, generous spacing
 - Mobile-first
 - CSS inline (no external fonts, no images required)
@@ -20,7 +20,7 @@ def verification_email_html(verification_url: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Confirme seu e-mail no Wenzap</title>
 </head>
-<body style="margin:0;padding:0;background-color:#070A12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">  <!-- noqa: E501 -->
+<body style="margin:0;padding:0;background-color:#0B0F14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">  <!-- noqa: E501 -->
 
   <!-- Preheader (hidden) -->
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
@@ -30,7 +30,7 @@ def verification_email_html(verification_url: str) -> str:
 
   <!-- Outer wrapper -->
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-         style="background-color:#070A12;padding:40px 16px;">
+         style="background-color:#0B0F14;padding:40px 16px;">
     <tr>
       <td align="center">
 
@@ -41,7 +41,7 @@ def verification_email_html(verification_url: str) -> str:
 
           <!-- Top accent bar -->
           <tr>
-            <td style="background:linear-gradient(135deg,#7C3AED 0%,#9F67F5 100%);
+            <td style="background:linear-gradient(135deg,#00E09A 0%,#20e7b2 100%);
                         height:5px;font-size:0;line-height:0;">&nbsp;</td>
           </tr>
 
@@ -53,7 +53,7 @@ def verification_email_html(verification_url: str) -> str:
                   <td style="vertical-align:middle;">
                     <!-- Logo mark: W letter in brand color -->
                     <div style="display:inline-block;width:36px;height:36px;
-                                background:linear-gradient(135deg,#7C3AED,#9F67F5);
+                                background:linear-gradient(135deg,#00E09A,#20e7b2);
                                 border-radius:10px;text-align:center;line-height:36px;
                                 font-size:20px;font-weight:900;color:#ffffff;
                                 font-family:-apple-system,sans-serif;
@@ -89,7 +89,7 @@ def verification_email_html(verification_url: str) -> str:
                   <td align="center" style="padding-bottom:28px;">
                     <a href="{verification_url}"
                        style="display:inline-block;padding:14px 36px;
-                              background:linear-gradient(135deg,#7C3AED 0%,#9F67F5 100%);
+                              background:linear-gradient(135deg,#00E09A 0%,#20e7b2 100%);
                               color:#ffffff;text-decoration:none;border-radius:12px;
                               font-size:15px;font-weight:600;letter-spacing:0.1px;
                               mso-padding-alt:0;line-height:1;">
@@ -105,7 +105,7 @@ def verification_email_html(verification_url: str) -> str:
               </p>
               <p style="margin:0 0 28px;word-break:break-all;">
                 <a href="{verification_url}"
-                   style="font-size:13px;color:#7C3AED;text-decoration:underline;">
+                   style="font-size:13px;color:#00E09A;text-decoration:underline;">
                   {verification_url}
                 </a>
               </p>
@@ -113,8 +113,8 @@ def verification_email_html(verification_url: str) -> str:
               <!-- Expiry notice -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                 <tr>
-                  <td style="background-color:#F9F7FF;border-radius:10px;
-                              padding:14px 18px;border-left:3px solid #7C3AED;">
+                  <td style="background-color:#DCFDF0;border-radius:10px;
+                              padding:14px 18px;border-left:3px solid #00E09A;">
                     <p style="margin:0;font-size:13px;color:#4B5563;line-height:1.5;">
                       &#9200;&nbsp; Este link expira em <strong>24 horas</strong>.
                       Se você não criou uma conta no Wenzap, pode ignorar este e-mail com segurança.
@@ -132,7 +132,7 @@ def verification_email_html(verification_url: str) -> str:
                 Wenzap &mdash; Plataforma de Agentes de IA para Empresas<br />
                 Você está recebendo este e-mail porque se cadastrou em
                 <a href="https://app.wenzap.com.br"
-                   style="color:#7C3AED;text-decoration:none;">app.wenzap.com.br</a>.
+                   style="color:#00E09A;text-decoration:none;">app.wenzap.com.br</a>.
               </p>
             </td>
           </tr>
