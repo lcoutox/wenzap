@@ -58,6 +58,14 @@ export function DashboardShell({
     api.plans.usage().then(setUsage).catch(() => {});
   }, []);
 
+  // Poll usage every 5 seconds to reflect credit consumption in real-time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      api.plans.usage().then(setUsage).catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
