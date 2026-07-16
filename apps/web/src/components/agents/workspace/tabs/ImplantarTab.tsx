@@ -812,17 +812,13 @@ function WhatsAppConnectCard({
   saveError,
   saving,
   onEvolutionSuccess,
-  onManualOpen,
 }: {
   agentId: string;
   writable: boolean;
   saveError: string | null;
   saving: boolean;
   onEvolutionSuccess: (ch: WhatsAppChannel) => void;
-  onManualOpen: () => void;
 }) {
-  const [manualOpen, setManualOpen] = useState(false);
-
   return (
     <div className="bg-nb-panel rounded-2xl border border-nb-border p-5 space-y-5">
       {/* Hero */}
@@ -839,43 +835,12 @@ function WhatsAppConnectCard({
       </div>
 
       {writable ? (
-        <>
-          {/* WhatsApp QR Code Connection */}
-          <div className="space-y-2">
-            <EvolutionQRConnect agentId={agentId} onSuccess={onEvolutionSuccess} />
-            <p className="text-[11px] text-nb-muted text-center leading-relaxed">
-              Escaneie o QR Code com o WhatsApp da empresa, como no WhatsApp Web.
-            </p>
-          </div>
-
-          {/* Manual config accordion */}
-          <div className="border border-nb-border rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setManualOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-2.5 bg-nb-elevated hover:bg-nb-soft transition-colors text-xs"
-            >
-              <span className="text-nb-muted font-medium">Configuração avançada / manual</span>
-              {manualOpen ? <ChevronUp className="w-3.5 h-3.5 text-nb-muted" /> : <ChevronDown className="w-3.5 h-3.5 text-nb-muted" />}
-            </button>
-            {manualOpen && (
-              <div className="bg-nb-bg border-t border-nb-border px-4 py-3 space-y-2">
-                <p className="text-[11px] text-nb-muted leading-relaxed">
-                  Use apenas para testes internos ou configuração assistida pela equipe Wenzap.
-                </p>
-                <button
-                  type="button"
-                  onClick={onManualOpen}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-nb-elevated border border-nb-border text-nb-secondary hover:border-nb-border-strong hover:text-nb-text disabled:opacity-50 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Configurar manualmente
-                </button>
-              </div>
-            )}
-          </div>
-        </>
+        <div className="space-y-2">
+          <EvolutionQRConnect agentId={agentId} onSuccess={onEvolutionSuccess} />
+          <p className="text-[11px] text-nb-muted text-center leading-relaxed">
+            Escaneie o QR Code com o WhatsApp da empresa, como no WhatsApp Web.
+          </p>
+        </div>
       ) : (
         <p className="text-xs text-nb-muted">Apenas administradores podem conectar canais.</p>
       )}
@@ -1155,7 +1120,6 @@ export function ImplantarTab({
                     setWaChannels((prev) => [ch, ...prev]);
                     showSuccess("Canal WhatsApp conectado com sucesso.");
                   }}
-                  onManualOpen={() => { setSaveError(null); setWaModal(true); }}
                 />
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
