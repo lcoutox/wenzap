@@ -4,7 +4,11 @@ Agent Guardrails — Phase 3.2.
 Provides pattern-based prompt injection detection and a safe refusal message.
 
 Scope (Phase 3.2):
-  - Applied only to the internal Playground (POST /agents/{id}/test).
+  - Applied to customer/user messages in both the Playground and production
+    Inbox replies.
+  - Since the tool-calling PRD (Fase 5), also applied to tool_result content
+    before it re-enters the model's context (app/services/agent_llm_executor.py)
+    — a tool's output is untrusted data, same threat model as a user message.
   - Detection is regex-based (fast, no LLM call needed).
   - Covers the most common injection attempts in PT and EN.
 
@@ -12,7 +16,7 @@ Not in scope:
   - External moderation APIs
   - LLM-based risk classifiers
   - PII detection
-  - RAG, Tools, Webhooks, or public channel guardrails
+  - RAG or public channel guardrails
 """
 
 import re

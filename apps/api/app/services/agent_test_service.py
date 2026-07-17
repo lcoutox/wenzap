@@ -49,13 +49,13 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
-from app.llm import client as llm_client
 from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest
 from app.models.agent import Agent
 from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_test_run import AgentTestRun
 from app.models.agent_test_run_retrieved_chunk import AgentTestRunRetrievedChunk
+from app.models.agent_tool_call import AgentToolCall
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.plan import Plan
@@ -70,10 +70,17 @@ from app.services.agent_context_builder import (
     build_system_prompt,
 )
 from app.services.agent_guardrails import detect_prompt_injection, get_safe_refusal_message
+from app.services.agent_llm_executor import run_agent_turn
+from app.services.agent_tool_service import (
+    build_tool_dispatch,
+    build_tool_schema,
+    get_enabled_tools_for_agent,
+)
 from app.services.ai_model_service import PLAN_TIER
 from app.services.catalog_retrieval_service import retrieve_catalog_context
 from app.services.context_tier_service import calculate_credits, get_tier_config
 from app.services.knowledge_retrieval_service import RetrievedChunk, retrieve_context_for_agent
+from app.services.plan_feature_service import plan_allows_feature
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +223,14 @@ def run_agent_test(
 
     agent_instructions = build_agent_instructions_block(prompt_settings)
 
+    tool_dispatch = None
+    tools_schema = None
+    if plan_allows_feature(db, plan_code, "http_tools"):
+        enabled_tools = get_enabled_tools_for_agent(db, workspace_id, agent_id)
+        if enabled_tools:
+            tools_schema = [build_tool_schema(t) for t in enabled_tools]
+            tool_dispatch = build_tool_dispatch(enabled_tools)
+
     system = build_system_prompt(
         agent_name=agent.name,
         agent_description=agent.description,
@@ -229,6 +244,7 @@ def run_agent_test(
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
         agent_instructions_block=agent_instructions,
+        has_tools=bool(tools_schema),
     )
 
     if app_settings.ai_prompt_debug:
@@ -248,10 +264,11 @@ def run_agent_test(
         system=system,
         messages=[LLMMessage(role="user", content=data.message)],
         temperature=float(model_settings.temperature),
+        tools=tools_schema,
     )
 
     try:
-        llm_response = llm_client.complete(request)
+        llm_response = run_agent_turn(request, tool_dispatch=tool_dispatch)
     except LLMProviderError as exc:
         # Error path — user message + run error committed together, no credits.
         _log_run(
@@ -310,6 +327,20 @@ def run_agent_test(
     # Persist all retrieved chunks (injected and filtered) for audit.
     if retrieval_result.chunks:
         _persist_retrieved_chunks(db, run.id, retrieval_result.chunks, injected_obj_ids)
+
+    # Only audit tool calls when tools were actually attached this turn.
+    if tools_schema:
+        for call in llm_response.calls:
+            db.add(AgentToolCall(
+                workspace_id=workspace_id,
+                agent_test_run_id=run.id,
+                call_index=call.call_index,
+                stop_reason=call.stop_reason,
+                input_tokens=call.input_tokens,
+                output_tokens=call.output_tokens,
+                duration_ms=call.duration_ms,
+                tool_calls=call.tool_calls,
+            ))
 
     playground_service.save_assistant_message(
         db, session.id, llm_response.content, run.id

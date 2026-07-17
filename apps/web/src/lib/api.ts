@@ -696,6 +696,44 @@ export type AgentCatalogScopeUpdate = {
   category_ids: string[];
 };
 
+export type HttpToolConfig = {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  url: string;
+  headers: Record<string, string>;
+  timeout_seconds: number;
+};
+
+export type AgentTool = {
+  id: string;
+  workspace_id: string;
+  agent_id: string;
+  tool_type: "http_request";
+  name: string;
+  description: string;
+  is_enabled: boolean;
+  config: HttpToolConfig;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentToolCreateInput = {
+  tool_type: "http_request";
+  name: string;
+  description: string;
+  is_enabled?: boolean;
+  config: HttpToolConfig;
+  sort_order?: number;
+};
+
+export type AgentToolUpdateInput = Partial<{
+  name: string;
+  description: string;
+  is_enabled: boolean;
+  config: HttpToolConfig;
+  sort_order: number;
+}>;
+
 export type CatalogItemCreateInput = {
   name: string;
   category_id?: string | null;
@@ -1644,6 +1682,22 @@ export const api = {
           method: "PUT",
           body: JSON.stringify(data),
         }),
+    },
+    httpTools: {
+      list: (agentId: string) =>
+        cookieFetch<AgentTool[]>(`/agents/${agentId}/tools/http`),
+      create: (agentId: string, data: AgentToolCreateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/http`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (agentId: string, toolId: string, data: AgentToolUpdateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/http/${toolId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (agentId: string, toolId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/tools/http/${toolId}`, { method: "DELETE" }),
     },
   },
   pipelines: {

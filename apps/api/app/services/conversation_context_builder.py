@@ -108,6 +108,7 @@ def build_conversation_context(
     history_limit: int | None = None,
     rag_max_chars: int | None = None,
     catalog_limit: int | None = None,
+    has_tools: bool = False,
 ) -> ConversationContext:
     """
     Build the full context for an automatic agent reply.
@@ -200,6 +201,7 @@ def build_conversation_context(
         rag_context=rag_context,
         catalog_context=catalog_result.context_block,
         channel_hint=conversation.channel_type,
+        has_tools=has_tools,
     )
 
     # ── Pipeline stage extra_prompt injection ─────────────────────────────────

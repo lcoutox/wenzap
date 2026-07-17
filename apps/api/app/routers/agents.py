@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.schemas.agent_knowledge_base import (
     AgentKnowledgeBaseUpdate,
 )
 from app.schemas.agent_test import AgentTestRequest, AgentTestResponse
+from app.schemas.agent_tool import AgentToolCreate, AgentToolOut, AgentToolUpdate
 from app.schemas.playground import (
     PlaygroundSessionCreate,
     PlaygroundSessionOut,
@@ -29,8 +30,10 @@ from app.services import (
     agent_knowledge_base_service,
     agent_service,
     agent_test_service,
+    agent_tool_service,
     playground_service,
 )
+from app.services.plan_feature_service import workspace_allows_feature
 from app.services.workspace_service import get_current_member_role
 
 router = APIRouter(prefix="/agents", dependencies=[Depends(get_verified_user)])
@@ -267,6 +270,72 @@ def disconnect_knowledge_base(
     agent_knowledge_base_service.disconnect_knowledge_base(
         db, current_workspace.id, agent_id, kb_id
     )
+
+
+# ── Agent Tools (tool-calling) ────────────────────────────────────────────────
+
+def _check_http_tools_feature(db: Session, workspace: Workspace) -> None:
+    if not workspace_allows_feature(db, workspace.id, "http_tools"):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                "Ferramentas HTTP não estão disponíveis no seu plano atual. "
+                "Faça upgrade para acessar este recurso."
+            ),
+        )
+
+
+@router.get("/{agent_id}/tools/http", response_model=list[AgentToolOut])
+def list_agent_http_tools(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> list[AgentToolOut]:
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.list_agent_tools(db, current_workspace.id, agent_id)
+
+
+@router.post(
+    "/{agent_id}/tools/http", response_model=AgentToolOut, status_code=status.HTTP_201_CREATED
+)
+def create_agent_http_tool(
+    agent_id: uuid.UUID,
+    data: AgentToolCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _check_http_tools_feature(db, current_workspace)
+    return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.patch("/{agent_id}/tools/http/{tool_id}", response_model=AgentToolOut)
+def update_agent_http_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    data: AgentToolUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.update_agent_tool(
+        db, current_workspace.id, agent_id, tool_id, data
+    )
+
+
+@router.delete("/{agent_id}/tools/http/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_agent_http_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
 
 
 # ── Test endpoint ──────────────────────────────────────────────────────────────

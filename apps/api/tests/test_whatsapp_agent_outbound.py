@@ -100,6 +100,7 @@ def _make_db(agent, model_settings, model, provider, plan, counter, subscription
         plan,            # Plan by id (in _get_workspace_plan_code)
         counter,         # UsageCounter (in _get_usage_counter)
         plan,            # Plan by code (in _has_credits)
+        None,            # PlanFeature lookup for "http_tools" — not enabled, no tools attached
     ]
     db.execute.return_value = None
     return db
@@ -135,6 +136,8 @@ class TestAgentOutboundDelivery:
             input_tokens=10,
             output_tokens=5,
             duration_ms=200,
+            stop_reason="end_turn",
+            content_blocks=[{"type": "text", "text": "Olá! Posso ajudar."}],
         )
 
         _pi = "app.services.conversation_agent_reply_service.detect_prompt_injection"
@@ -188,6 +191,8 @@ class TestAgentOutboundDelivery:
             input_tokens=10,
             output_tokens=5,
             duration_ms=200,
+            stop_reason="end_turn",
+            content_blocks=[{"type": "text", "text": "Olá! Posso ajudar."}],
         )
 
         _pi = "app.services.conversation_agent_reply_service.detect_prompt_injection"

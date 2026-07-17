@@ -38,14 +38,14 @@ def validate_webhook_url(url: str) -> None:
     """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise WebhookUrlError("Webhook URL must use http:// or https://.")
+        raise WebhookUrlError("A URL do webhook deve usar http:// ou https://.")
     if not parsed.hostname:
-        raise WebhookUrlError("Webhook URL must include a hostname.")
+        raise WebhookUrlError("A URL do webhook deve incluir um hostname.")
 
     try:
         infos = socket.getaddrinfo(parsed.hostname, None)
     except socket.gaierror as exc:
-        raise WebhookUrlError(f"Could not resolve webhook hostname: {exc}") from exc
+        raise WebhookUrlError(f"Não foi possível resolver o hostname do webhook: {exc}") from exc
 
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
@@ -58,7 +58,7 @@ def validate_webhook_url(url: str) -> None:
             or ip.is_unspecified
         ):
             raise WebhookUrlError(
-                "Webhook URL resolves to a private/internal address, which is not allowed."
+                "A URL do webhook resolve para um endereço privado/interno, o que não é permitido."
             )
 
 

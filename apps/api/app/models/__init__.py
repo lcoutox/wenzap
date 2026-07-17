@@ -8,6 +8,8 @@ from app.models.agent_playground_session import AgentPlaygroundSession
 from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_test_run import AgentTestRun
 from app.models.agent_test_run_retrieved_chunk import AgentTestRunRetrievedChunk
+from app.models.agent_tool import AgentTool
+from app.models.agent_tool_call import AgentToolCall
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.auth_session import AuthSession
@@ -35,17 +37,17 @@ from app.models.plan_feature import PlanFeature
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
 from app.models.user_auth_credential import UserAuthCredential
+from app.models.whatsapp_review_config import WhatsappReviewConfig
+from app.models.whatsapp_review_contact import WhatsappReviewContact
+from app.models.whatsapp_review_conversation import WhatsappReviewConversation
+from app.models.whatsapp_review_log import WhatsappReviewLog
+from app.models.whatsapp_review_message import WhatsappReviewMessage
+from app.models.whatsapp_review_template import WhatsappReviewTemplate
 from app.models.widget_session import WidgetSession
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.workspace_onboarding_profile import WorkspaceOnboardingProfile
 from app.models.workspace_subscription import WorkspaceSubscription
-from app.models.whatsapp_review_config import WhatsappReviewConfig
-from app.models.whatsapp_review_contact import WhatsappReviewContact
-from app.models.whatsapp_review_conversation import WhatsappReviewConversation
-from app.models.whatsapp_review_message import WhatsappReviewMessage
-from app.models.whatsapp_review_template import WhatsappReviewTemplate
-from app.models.whatsapp_review_log import WhatsappReviewLog
 
 __all__ = [
     "User",
@@ -63,6 +65,8 @@ __all__ = [
     "AgentModelSettings",
     "AgentTestRun",
     "AgentTestRunRetrievedChunk",
+    "AgentTool",
+    "AgentToolCall",
     "AgentPlaygroundSession",
     "AgentPlaygroundMessage",
     "AiModelProvider",

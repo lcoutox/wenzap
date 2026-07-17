@@ -238,13 +238,15 @@ class TestPlaygroundCatalogGuard:
         with patch(
             "app.services.agent_test_service.retrieve_catalog_context"
         ) as mock_retrieve, patch(
-            "app.services.agent_test_service.llm_client.complete"
+            "app.llm.client.complete"
         ) as mock_llm:
             mock_llm.return_value = SimpleNamespace(
                 content="Olá! Como posso ajudar?",
                 input_tokens=10,
                 output_tokens=5,
                 duration_ms=100,
+                stop_reason="end_turn",
+                content_blocks=[{"type": "text", "text": "Olá! Como posso ajudar?"}],
             )
             resp = client_a.post(f"/agents/{agent_id}/test", json={
                 "message": "Quais planos vocês oferecem?"

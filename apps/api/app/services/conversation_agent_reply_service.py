@@ -28,10 +28,10 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.llm import client as llm_client
 from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest
 from app.models.agent import Agent
 from app.models.agent_model_settings import AgentModelSettings
+from app.models.agent_tool_call import AgentToolCall
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.conversation import Conversation
@@ -41,8 +41,15 @@ from app.models.plan import Plan
 from app.models.usage_counter import UsageCounter
 from app.models.workspace_subscription import WorkspaceSubscription
 from app.services.agent_guardrails import detect_prompt_injection
+from app.services.agent_llm_executor import run_agent_turn
+from app.services.agent_tool_service import (
+    build_tool_dispatch,
+    build_tool_schema,
+    get_enabled_tools_for_agent,
+)
 from app.services.context_tier_service import calculate_credits
 from app.services.conversation_context_builder import build_conversation_context
+from app.services.plan_feature_service import plan_allows_feature
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +254,18 @@ def generate_conversation_agent_reply(
         )
 
     # ── 7. Build conversation context ─────────────────────────────────────────
+    # Enabled tools only actually get attached if the workspace's plan still
+    # allows http_tools — a downgraded workspace just loses tool access on its
+    # next reply rather than erroring the whole turn. Reuses plan_code already
+    # resolved for the credit check above instead of a second lookup.
+    tool_dispatch = None
+    tools_schema = None
+    if plan_allows_feature(db, plan_code, "http_tools"):
+        enabled_tools = get_enabled_tools_for_agent(db, workspace_id, agent.id)
+        if enabled_tools:
+            tools_schema = [build_tool_schema(t) for t in enabled_tools]
+            tool_dispatch = build_tool_dispatch(enabled_tools)
+
     try:
         ctx = build_conversation_context(
             db,
@@ -254,6 +273,7 @@ def generate_conversation_agent_reply(
             conversation=conversation,
             agent=agent,
             trigger_message=trigger_message,
+            has_tools=bool(tools_schema),
         )
     except Exception as exc:  # noqa: BLE001
         return _save_run(
@@ -282,37 +302,13 @@ def generate_conversation_agent_reply(
         system=ctx.system_prompt,
         messages=[LLMMessage(role="user", content=user_turn)],
         temperature=float(model_settings.temperature),
+        tools=tools_schema,
     )
 
-    # ── Call LLM with automatic retries ───────────────────────────────────────
-    llm_response = None
-    last_error = None
-    backoff_ms = 500
-    max_retries = 2
-
-    for attempt in range(max_retries + 1):
-        try:
-            llm_response = llm_client.complete(request)
-            break  # Success
-        except LLMProviderError as exc:
-            last_error = exc
-            # Don't retry auth errors (configuration problem)
-            if exc.auth_error:
-                break
-            # Don't retry permanent errors
-            if not exc.transient:
-                break
-            # Transient error — retry if attempts remain
-            if attempt < max_retries:
-                import time
-                time.sleep(backoff_ms / 1000.0)
-                backoff_ms = min(backoff_ms * 2, 5000)
-            else:
-                break
-
-    # Handle LLM errors
-    if llm_response is None and last_error is not None:
-        exc = last_error
+    # ── Call LLM via the shared executor (handles retries + tool-calling loop) ─
+    try:
+        llm_response = run_agent_turn(request, tool_dispatch=tool_dispatch)
+    except LLMProviderError as exc:
         # Notify admin of the error
         from app.services.agent_alert_service import notify_agent_error  # noqa: PLC0415
         notify_agent_error(
@@ -411,6 +407,24 @@ def generate_conversation_agent_reply(
         error_message=ctx.retrieval_error_message,
     )
     db.add(run)
+    db.flush()  # assign run.id before creating tool-call audit rows below
+
+    # Only audit when tools were actually attached this turn — the common
+    # case (no tools enabled) would otherwise insert a redundant empty row
+    # on every single reply.
+    if tools_schema:
+        for call in llm_response.calls:
+            db.add(AgentToolCall(
+                workspace_id=workspace_id,
+                conversation_agent_run_id=run.id,
+                call_index=call.call_index,
+                stop_reason=call.stop_reason,
+                input_tokens=call.input_tokens,
+                output_tokens=call.output_tokens,
+                duration_ms=call.duration_ms,
+                tool_calls=call.tool_calls,
+            ))
+
     db.commit()
     db.refresh(run)
 

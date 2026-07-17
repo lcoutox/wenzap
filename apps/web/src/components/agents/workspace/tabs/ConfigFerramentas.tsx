@@ -11,14 +11,26 @@ import {
   Info,
   Loader2,
   Minus,
+  Pencil,
   Plus,
   Settings2,
   ShoppingBag,
+  Trash2,
   X,
   Zap,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { AgentCatalogScope, AgentKnowledgeBase, CatalogCategory, KnowledgeBase, MemberRole } from "@/lib/api";
+import type {
+  AgentCatalogScope,
+  AgentKnowledgeBase,
+  AgentTool,
+  AgentToolCreateInput,
+  CatalogCategory,
+  HttpToolConfig,
+  KnowledgeBase,
+  MemberRole,
+} from "@/lib/api";
+import { inputCls } from "@/components/agents/workspace/AgentHeader";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -569,6 +581,357 @@ function CatalogConfigModal({
   );
 }
 
+// ── HTTP Tool form modal (create/edit) ──────────────────────────────────────────
+
+const NAME_PATTERN = /^[a-zA-Z0-9_]+$/;
+
+function HttpToolFormModal({
+  open,
+  onClose,
+  agentId,
+  editingTool,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  editingTool: AgentTool | null;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [method, setMethod] = useState<HttpToolConfig["method"]>("GET");
+  const [url, setUrl] = useState("");
+  const [headersText, setHeadersText] = useState("{}");
+  const [timeoutSeconds, setTimeoutSeconds] = useState(8);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editingTool) {
+      setName(editingTool.name);
+      setDescription(editingTool.description);
+      setMethod(editingTool.config.method);
+      setUrl(editingTool.config.url);
+      setHeadersText(JSON.stringify(editingTool.config.headers || {}, null, 2));
+      setTimeoutSeconds(editingTool.config.timeout_seconds);
+    } else {
+      setName("");
+      setDescription("");
+      setMethod("GET");
+      setUrl("");
+      setHeadersText("{}");
+      setTimeoutSeconds(8);
+    }
+    setError(null);
+  }, [open, editingTool]);
+
+  async function handleSave() {
+    setError(null);
+
+    if (!NAME_PATTERN.test(name)) {
+      setError("O nome deve conter apenas letras, números e underline (ex: consultar_cep).");
+      return;
+    }
+    if (!description.trim()) {
+      setError("Descreva quando o agente deve usar essa ferramenta.");
+      return;
+    }
+    if (!url.trim()) {
+      setError("Informe a URL da API.");
+      return;
+    }
+
+    let headers: Record<string, string>;
+    try {
+      headers = headersText.trim() ? JSON.parse(headersText) : {};
+    } catch {
+      setError("Cabeçalhos devem ser um JSON válido, ex: {\"Authorization\": \"Bearer ...\"}.");
+      return;
+    }
+
+    const config: HttpToolConfig = { method, url: url.trim(), headers, timeout_seconds: timeoutSeconds };
+
+    setSaving(true);
+    try {
+      if (editingTool) {
+        await api.agents.httpTools.update(agentId, editingTool.id, {
+          name, description, config,
+        });
+      } else {
+        const payload: AgentToolCreateInput = {
+          tool_type: "http_request", name, description, config,
+        };
+        await api.agents.httpTools.create(agentId, payload);
+      }
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={editingTool ? "Editar ferramenta HTTP" : "Nova ferramenta HTTP"}>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Nome (identificador, sem espaços)
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="consultar_cep"
+            className={inputCls}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Quando o agente deve usar (descrição curta)
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Consulta um CEP e retorna o endereço correspondente."
+            rows={2}
+            className={inputCls}
+          />
+        </div>
+
+        <div className="grid grid-cols-[110px_1fr] gap-2">
+          <div>
+            <label className="block text-xs font-medium text-nb-secondary mb-1.5">Método</label>
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value as HttpToolConfig["method"])}
+              className={inputCls}
+            >
+              {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-nb-secondary mb-1.5">URL</label>
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://api.exemplo.com/cep"
+              className={inputCls}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Cabeçalhos fixos (JSON, opcional)
+          </label>
+          <textarea
+            value={headersText}
+            onChange={(e) => setHeadersText(e.target.value)}
+            rows={3}
+            className={`${inputCls} font-mono text-xs`}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Timeout (segundos)
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={15}
+            value={timeoutSeconds}
+            onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
+            className={inputCls}
+          />
+        </div>
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-nb-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+          >
+            {saving ? "Salvando…" : "Salvar"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── HTTP Tools list modal ─────────────────────────────────────────────────────
+
+function HttpToolsListModal({
+  open,
+  onClose,
+  agentId,
+  role,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  role: MemberRole | null;
+}) {
+  const [tools, setTools] = useState<AgentTool[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState<AgentTool | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const writeAllowed = canWrite(role);
+
+  function refresh() {
+    setLoading(true);
+    setLoadError(null);
+    api.agents.httpTools
+      .list(agentId)
+      .then(setTools)
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar ferramentas."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (open) refresh();
+  }, [open, agentId]);
+
+  async function handleToggle(tool: AgentTool) {
+    setBusy((p) => ({ ...p, [tool.id]: true }));
+    try {
+      const updated = await api.agents.httpTools.update(agentId, tool.id, {
+        is_enabled: !tool.is_enabled,
+      });
+      setTools((prev) => prev.map((t) => (t.id === tool.id ? updated : t)));
+    } catch {
+      // Toggle failure is surfaced by the row staying unchanged — low-stakes enough
+      // to not need a dedicated error banner here.
+    } finally {
+      setBusy((p) => ({ ...p, [tool.id]: false }));
+    }
+  }
+
+  async function handleDelete(tool: AgentTool) {
+    setBusy((p) => ({ ...p, [tool.id]: true }));
+    try {
+      await api.agents.httpTools.delete(agentId, tool.id);
+      setTools((prev) => prev.filter((t) => t.id !== tool.id));
+    } catch {
+      setBusy((p) => ({ ...p, [tool.id]: false }));
+    }
+  }
+
+  if (formOpen) {
+    return (
+      <HttpToolFormModal
+        open={true}
+        onClose={() => { setFormOpen(false); setEditingTool(null); }}
+        agentId={agentId}
+        editingTool={editingTool}
+        onSaved={refresh}
+      />
+    );
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Ferramentas HTTP">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente decide sozinho quando chamar cada ferramenta durante a conversa,
+          com base na descrição que você escrever.
+        </p>
+
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => <div key={i} className="h-16 bg-nb-elevated rounded-xl animate-pulse" />)}
+          </div>
+        ) : loadError ? (
+          <p className="text-sm text-nb-danger">{loadError}</p>
+        ) : tools.length === 0 ? (
+          <div className="flex flex-col items-center py-8 text-center border border-dashed border-nb-border rounded-xl">
+            <Globe className="w-8 h-8 text-nb-muted mb-2" />
+            <p className="text-sm font-medium text-nb-secondary mb-1">Nenhuma ferramenta HTTP ainda.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tools.map((tool) => (
+              <div
+                key={tool.id}
+                className="flex items-start gap-3 p-3.5 bg-nb-panel rounded-xl border border-nb-border"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-nb-text font-mono">{tool.name}</span>
+                    <span className="px-1.5 py-0.5 text-xs font-medium rounded-full bg-nb-elevated border border-nb-border text-nb-muted">
+                      {tool.config.method}
+                    </span>
+                  </div>
+                  <p className="text-xs text-nb-muted mt-0.5 truncate">{tool.description}</p>
+                  <p className="text-xs text-nb-muted mt-0.5 truncate font-mono">{tool.config.url}</p>
+                </div>
+                {writeAllowed && (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {busy[tool.id] ? (
+                      <Loader2 className="w-4 h-4 text-nb-muted animate-spin" />
+                    ) : (
+                      <>
+                        <Toggle checked={tool.is_enabled} onChange={() => handleToggle(tool)} />
+                        <button
+                          type="button"
+                          onClick={() => { setEditingTool(tool); setFormOpen(true); }}
+                          className="p-1.5 rounded-lg hover:bg-nb-elevated text-nb-muted hover:text-nb-secondary transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(tool)}
+                          className="p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {writeAllowed && (
+          <button
+            type="button"
+            onClick={() => { setEditingTool(null); setFormOpen(true); }}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Nova ferramenta HTTP
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Roadmap card ──────────────────────────────────────────────────────────────
 
 function RoadmapCard({
@@ -621,6 +984,29 @@ export function ConfigFerramentas({
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
 
+  // HTTP Tools state (for active tools display)
+  const [httpToolsList, setHttpToolsList] = useState<AgentTool[]>([]);
+  const [httpToolsLoading, setHttpToolsLoading] = useState(true);
+  const [httpToolsModalOpen, setHttpToolsModalOpen] = useState(false);
+
+  useEffect(() => {
+    api.agents.httpTools
+      .list(agentId)
+      .then(setHttpToolsList)
+      .catch(() => setHttpToolsList([]))
+      .finally(() => setHttpToolsLoading(false));
+  }, [agentId]);
+
+  function handleHttpToolsModalClose() {
+    setHttpToolsModalOpen(false);
+    setHttpToolsLoading(true);
+    api.agents.httpTools
+      .list(agentId)
+      .then(setHttpToolsList)
+      .catch(() => setHttpToolsList([]))
+      .finally(() => setHttpToolsLoading(false));
+  }
+
   useEffect(() => {
     api.agents.knowledgeBases
       .list(agentId)
@@ -659,6 +1045,8 @@ export function ConfigFerramentas({
 
   const kbActive = !kbLoading && !kbError && kbList.length > 0;
   const catalogActive = !catalogLoading && catalogScope?.catalog_enabled === true;
+  const enabledHttpTools = httpToolsList.filter((t) => t.is_enabled);
+  const httpToolsActive = !httpToolsLoading && enabledHttpTools.length > 0;
 
   const activeTools: React.ReactNode[] = [];
 
@@ -724,6 +1112,37 @@ export function ConfigFerramentas({
         <button
           type="button"
           onClick={() => setCatalogModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (httpToolsActive) {
+    activeTools.push(
+      <div key="http-tools" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <Globe className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Ferramentas HTTP</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5">
+            {enabledHttpTools.length === 1
+              ? "1 ferramenta configurada"
+              : `${enabledHttpTools.length} ferramentas configuradas`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setHttpToolsModalOpen(true)}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
         >
           <Settings2 className="w-3.5 h-3.5" />
@@ -835,12 +1254,29 @@ export function ConfigFerramentas({
             </button>
           </div>}
 
+          {/* HTTP Tools — só mostra se não está ativo */}
+          {!httpToolsActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <Globe className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Ferramentas HTTP</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Execute chamadas HTTP para APIs externas durante o atendimento — o agente decide
+                sozinho quando usar cada uma.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || httpToolsLoading}
+              onClick={() => setHttpToolsModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar
+            </button>
+          </div>}
+
           {/* Roadmap */}
-          <RoadmapCard
-            icon={Globe}
-            name="HTTP Tools"
-            description="Execute chamadas HTTP para APIs externas durante o atendimento."
-          />
           <RoadmapCard
             icon={Hand}
             name="Solicitar humano"
@@ -871,6 +1307,12 @@ export function ConfigFerramentas({
         onClose={handleCatalogModalClose}
         agentId={agentId}
         readonly={readonly}
+      />
+      <HttpToolsListModal
+        open={httpToolsModalOpen}
+        onClose={handleHttpToolsModalClose}
+        agentId={agentId}
+        role={role}
       />
     </div>
   );
