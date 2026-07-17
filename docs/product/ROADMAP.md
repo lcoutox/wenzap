@@ -166,10 +166,10 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Ativação de base de conhecimento por agente | ✅ Feito | — |
 | Ativação de catálogo por agente | ✅ Feito | — |
 | HTTP Tool (agente chama webhook externo) | ✅ Feito | `docs/agents/agent-tool-calling-prd.md` |
+| Solicitar humano (handoff estruturado, sem gate de plano) | ✅ Feito | `docs/agents/request-human-tool-prd.md` |
 | Criação de card no pipeline (action) | ⬜ Planejado | — |
 | Criação de contato (action) | ⬜ Planejado | — |
 | Envio de e-mail (action) | ⬜ Planejado | — |
-| Transferência para humano (action estruturada) | ⬜ Planejado | — |
 
 ---
 
@@ -246,14 +246,13 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 | 3 | Marcar conversa como resolvida | Inbox | Automação essencial, baixa complexidade |
 | 4 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
 | 5 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
-| 6 | Transferência para humano (action) | Ferramentas | Handoff estruturado, essencial para suporte — agora viável em cima da infra de tool-calling |
-| 7 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
-| 8 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
-| 9 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
-| 10 | Follow-up automático pós-conversa | Automações | Retenção e engagement |
-| 11 | Instagram como canal | Canais | Alta demanda esperada |
-| 12 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
-| 13 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
+| 6 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
+| 7 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
+| 8 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
+| 9 | Follow-up automático pós-conversa | Automações | Retenção e engagement |
+| 10 | Instagram como canal | Canais | Alta demanda esperada |
+| 11 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 12 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
 
 ---
 

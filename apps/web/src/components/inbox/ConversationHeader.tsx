@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { KanbanSquare, Loader2, X } from "lucide-react";
+import { Hand, KanbanSquare, Loader2, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Conversation, ConversationStatus, MemberRole, Pipeline, PipelineStage } from "@/lib/api";
 
@@ -373,6 +373,17 @@ export function ConversationHeader({
           </button>
         ) : null}
       </div>
+
+      {/* Handoff reason row — only for the "IA pausada" limbo state (auto-paused
+          by the "Solicitar humano" tool), distinct from a manual "Assumir" take-over. */}
+      {isAIPaused && !isHumanAssigned && conversation.handoff_reason && (
+        <div className="flex items-center gap-1.5 px-5 pb-2">
+          <Hand className="w-3 h-3 text-nb-muted flex-shrink-0" />
+          <span className="text-[10px] text-nb-muted truncate">
+            {conversation.handoff_reason}
+          </span>
+        </div>
+      )}
 
       {/* Attribution row — shown for web_widget conversations with source data */}
       {conversation.channel_type === "web_widget" && (

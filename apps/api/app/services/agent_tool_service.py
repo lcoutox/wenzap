@@ -4,15 +4,17 @@ row into something the LLM tool-calling loop can actually use:
 
 - build_tool_schema(): AgentTool -> Anthropic tool schema (name/description/input_schema)
 - build_tool_dispatch(): list[AgentTool] -> {name: executor} for agent_llm_executor.run_agent_turn
-- execute_http_tool(): the only tool_type implemented so far (Fase 4 of the
-  tool-calling PRD) — a synchronous, SSRF-safe outbound HTTP call.
+- execute_http_tool(): tool_type="http_request" (Fase 4 of the tool-calling PRD) —
+  a synchronous, SSRF-safe outbound HTTP call.
+- execute_request_human_tool(): tool_type="request_human" (request-human-tool-prd.md) —
+  pauses the AI on the conversation and notifies workspace admins by email.
 
-Only tool_type="http_request" exists today; the CRUD functions and
-build_tool_schema/build_tool_dispatch are written generically so a future
-tool type (Calendar, Drive, etc.) plugs in without reshaping this module.
+The CRUD functions and build_tool_schema/build_tool_dispatch are written
+generically so a future tool type plugs in without reshaping this module.
 """
 
 import json
+import logging
 import re
 import uuid
 from urllib.parse import quote, urlencode
@@ -22,11 +24,24 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.enums import MemberRole, MemberStatus
 from app.models.agent import Agent
 from app.models.agent_tool import AgentTool
-from app.schemas.agent_tool import AgentToolCreate, AgentToolUpdate, HttpToolConfig
+from app.models.conversation import Conversation
+from app.models.user import User
+from app.models.workspace_member import WorkspaceMember
+from app.schemas.agent_tool import (
+    AgentToolConfig,
+    AgentToolCreate,
+    AgentToolUpdate,
+    HttpToolConfig,
+    RequestHumanToolConfig,
+)
 from app.services.agent_llm_executor import ToolExecutor
 from app.services.pipeline_webhook_service import WebhookUrlError, validate_webhook_url
+
+logger = logging.getLogger(__name__)
 
 # HTTP tool calls are synchronous and block the user-facing turn — keep this
 # short. Unlike the Pipeline stage webhook (fire-and-forget, one retry), a
@@ -154,17 +169,42 @@ def build_tool_schema(tool: AgentTool) -> dict:
     """AgentTool -> the dict shape LLMRequest.tools expects (Anthropic tool schema)."""
     if tool.tool_type == "http_request":
         url_params = _URL_PLACEHOLDER_RE.findall(tool.config.get("url", ""))
+        path_descriptions = tool.config.get("path_param_descriptions") or {}
         properties: dict = {
             name: {
                 "type": "string",
-                "description": f"Value for '{name}', used in the request URL.",
+                "description": (
+                    path_descriptions.get(name)
+                    or f"Value for '{name}', used in the request URL."
+                ),
             }
             for name in url_params
         }
-        properties["query_params"] = {
-            "type": "object",
-            "description": "Optional query string parameters to add to the request.",
-        }
+        query_param_specs = tool.config.get("query_params") or []
+        if query_param_specs:
+            # Operator documented specific query params (http-tool-ux-improvements-prd.md) —
+            # give the model a named/described nested schema instead of a blind object.
+            query_properties = {
+                spec["name"]: {
+                    "type": "string",
+                    "description": spec.get("description") or f"Query param '{spec['name']}'.",
+                }
+                for spec in query_param_specs
+            }
+            required_query = [spec["name"] for spec in query_param_specs if spec.get("required")]
+            query_schema: dict = {
+                "type": "object",
+                "description": "Query string parameters for this request.",
+                "properties": query_properties,
+            }
+            if required_query:
+                query_schema["required"] = required_query
+            properties["query_params"] = query_schema
+        else:
+            properties["query_params"] = {
+                "type": "object",
+                "description": "Optional query string parameters to add to the request.",
+            }
         properties["body"] = {
             "type": "object",
             "description": "Optional JSON body (used for POST/PUT/PATCH only).",
@@ -177,22 +217,73 @@ def build_tool_schema(tool: AgentTool) -> dict:
             "description": tool.description,
             "input_schema": input_schema,
         }
+    if tool.tool_type == "request_human":
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": (
+                            "Motivo pelo qual o atendimento está sendo transferido "
+                            "para um humano."
+                        ),
+                    }
+                },
+                "required": ["reason"],
+            },
+        }
     raise ValueError(f"Unknown tool_type: {tool.tool_type!r}")
 
 
-def build_tool_dispatch(tools: list[AgentTool]) -> dict[str, ToolExecutor]:
-    """list[AgentTool] -> {name: executor} for agent_llm_executor.run_agent_turn."""
+def build_tool_dispatch(
+    tools: list[AgentTool],
+    *,
+    db: Session | None = None,
+    workspace_id: uuid.UUID | None = None,
+    conversation: Conversation | None = None,
+) -> dict[str, ToolExecutor]:
+    """
+    list[AgentTool] -> {name: executor} for agent_llm_executor.run_agent_turn.
+
+    *db*/*workspace_id*/*conversation* are only needed by tool_type="request_human"
+    (it mutates the conversation and sends an email — unlike the HTTP tool, which
+    is a pure function of its config+input). Callers that only ever attach
+    "http_request" tools (none today, but future-proof) can omit them.
+    When *conversation* is None (the Playground has no real conversation row),
+    the request_human executor runs in simulation mode — no side effects.
+    """
     dispatch: dict[str, ToolExecutor] = {}
     for tool in tools:
         if tool.tool_type == "http_request":
             config = tool.config  # already validated JSONB, safe to trust shape here
             dispatch[tool.name] = _make_http_executor(config)
+        elif tool.tool_type == "request_human":
+            dispatch[tool.name] = _make_request_human_executor(
+                db=db, workspace_id=workspace_id, conversation=conversation
+            )
     return dispatch
 
 
 def _make_http_executor(config: dict) -> ToolExecutor:
     def executor(input_: dict) -> str:
         return execute_http_tool(config, input_)
+    return executor
+
+
+def _make_request_human_executor(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+) -> ToolExecutor:
+    def executor(input_: dict) -> str:
+        reason = str(input_.get("reason") or "Motivo não informado.")
+        return execute_request_human_tool(
+            db=db, workspace_id=workspace_id, conversation=conversation, reason=reason
+        )
     return executor
 
 
@@ -257,12 +348,147 @@ def execute_http_tool(config: dict, input_: dict) -> str:
     return json.dumps({"status_code": response.status_code, "body": text})
 
 
-def _validate_tool_config(tool_type: str, config: HttpToolConfig) -> None:
+def validate_http_tool_config(config: dict, sample_input: dict) -> dict:
+    """
+    "Validar Configuração" (http-tool-ux-improvements-prd.md) — run execute_http_tool
+    against a *draft* config (no AgentTool row needs to exist yet) and report the
+    result as data instead of letting the caller's exception propagate. Used by the
+    /tools/http/test endpoint so a bad URL/header/timeout shows up in the config
+    modal immediately, not after saving + activating + waiting for a real trigger.
+    """
+    try:
+        raw = execute_http_tool(config, sample_input)
+        parsed = json.loads(raw)
+        return {"ok": True, "status_code": parsed.get("status_code"), "body": parsed.get("body")}
+    except Exception as exc:  # noqa: BLE001 — this is a user-facing "did it work?" check
+        return {"ok": False, "error": str(exc)}
+
+
+# ── Request-human tool execution ────────────────────────────────────────────────
+
+def execute_request_human_tool(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    reason: str,
+) -> str:
+    """
+    Pause the AI on *conversation* and best-effort notify workspace admins.
+
+    Playground mode: when *conversation* is None (no real conversation row —
+    a Playground test session, not an Inbox conversation), this never touches
+    the database or sends an email; it just tells the model what would happen
+    in a real conversation, so testing an agent doesn't spam the team's inbox.
+
+    Idempotent within a turn: the tool-calling loop allows the model to call
+    this more than once before producing a final answer (e.g. it changes its
+    mind about the reason) — only the first call actually pauses the AI and
+    sends the notification; subsequent calls in the same turn are a no-op.
+    """
+    if conversation is None:
+        return (
+            "[Simulação de Playground] Em uma conversa real, isso pausaria a IA "
+            f"e notificaria a equipe por e-mail. Motivo: {reason}"
+        )
+
+    assert db is not None and workspace_id is not None  # always set alongside a real conversation
+
+    if not conversation.ai_enabled:
+        return "O atendimento já havia sido transferido para um humano nesta conversa."
+
+    conversation.ai_enabled = False
+    conversation.handoff_reason = reason[:500]
+    db.flush()
+
+    try:
+        _notify_handoff_requested(
+            db, workspace_id=workspace_id, conversation=conversation, reason=reason
+        )
+    except Exception:
+        logger.exception(
+            "request_human_notify_failed workspace_id=%s conversation_id=%s",
+            workspace_id, conversation.id,
+        )
+
+    return (
+        "Atendimento transferido para um humano com sucesso. A equipe foi notificada. "
+        "Informe o cliente de forma breve e educada que alguém vai continuar o atendimento."
+    )
+
+
+def _notify_handoff_requested(
+    db: Session, *, workspace_id: uuid.UUID, conversation: Conversation, reason: str
+) -> None:
+    """Best-effort email to workspace owners/admins. Never raises to the caller."""
+    from app.services.email_service import get_email_service  # noqa: PLC0415
+    from app.services.email_templates import (  # noqa: PLC0415
+        handoff_requested_email_html,
+        handoff_requested_email_text,
+    )
+
+    recipients = _get_workspace_notify_recipients(db, workspace_id)
+    if not recipients:
+        return
+
+    contact_name = None
+    if conversation.contact_id is not None:
+        from app.models.contact import Contact  # noqa: PLC0415
+        contact_name = db.scalar(
+            select(Contact.name).where(Contact.id == conversation.contact_id)
+        )
+
+    conversation_url = f"{settings.app_url}/dashboard/inbox?conversation={conversation.id}"
+    html = handoff_requested_email_html(
+        contact_name=contact_name, reason=reason, conversation_url=conversation_url
+    )
+    text = handoff_requested_email_text(
+        contact_name=contact_name, reason=reason, conversation_url=conversation_url
+    )
+
+    email_service = get_email_service()
+    for email, _name in recipients:
+        email_service.send(
+            to=email,
+            subject="Um cliente está esperando atendimento humano — Wenzap",
+            html=html,
+            text=text,
+        )
+
+
+def _get_workspace_notify_recipients(
+    db: Session, workspace_id: uuid.UUID
+) -> list[tuple[str, str | None]]:
+    """Active owner/admin members of the workspace — who should hear about a handoff."""
+    rows = db.execute(
+        select(User.email, User.name)
+        .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.role.in_([MemberRole.owner.value, MemberRole.admin.value]),
+            WorkspaceMember.status == MemberStatus.active.value,
+        )
+    ).all()
+    return [(email, name) for email, name in rows]
+
+
+def _validate_tool_config(tool_type: str, config: AgentToolConfig) -> None:
     if tool_type == "http_request":
+        if not isinstance(config, HttpToolConfig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Config inválida para tool_type='http_request'.",
+            )
         try:
             validate_webhook_url(config.url)
         except WebhookUrlError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    elif tool_type == "request_human":
+        if not isinstance(config, RequestHumanToolConfig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Config inválida para tool_type='request_human'.",
+            )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

@@ -54,6 +54,7 @@ def _conv_to_dict(
         "channel_external_id": conv.channel_external_id,
         "status": conv.status,
         "ai_enabled": conv.ai_enabled,
+        "handoff_reason": conv.handoff_reason,
         "last_message_at": conv.last_message_at,
         "created_at": conv.created_at,
         "updated_at": conv.updated_at,
@@ -295,6 +296,7 @@ def return_to_ai(
 
     conv.assigned_user_id = None
     conv.ai_enabled = True
+    conv.handoff_reason = None
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(conv)

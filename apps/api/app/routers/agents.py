@@ -18,7 +18,13 @@ from app.schemas.agent_knowledge_base import (
     AgentKnowledgeBaseUpdate,
 )
 from app.schemas.agent_test import AgentTestRequest, AgentTestResponse
-from app.schemas.agent_tool import AgentToolCreate, AgentToolOut, AgentToolUpdate
+from app.schemas.agent_tool import (
+    AgentToolCreate,
+    AgentToolOut,
+    AgentToolUpdate,
+    HttpToolTestRequest,
+    HttpToolTestResponse,
+)
 from app.schemas.playground import (
     PlaygroundSessionCreate,
     PlaygroundSessionOut,
@@ -296,6 +302,21 @@ def list_agent_http_tools(
     return agent_tool_service.list_agent_tools(db, current_workspace.id, agent_id)
 
 
+def _require_tool_type(data: AgentToolCreate, expected: str) -> None:
+    """
+    Each tool_type has its own create route (its own plan gate, or lack of
+    one) — reject a mismatched tool_type here instead of trusting the client
+    to pick the "correct" endpoint. Without this, POSTing an http_request
+    body to /tools/request-human would create an HTTP tool while skipping
+    _check_http_tools_feature's 402 gate entirely.
+    """
+    if data.tool_type != expected:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"tool_type deve ser '{expected}' neste endpoint.",
+        )
+
+
 @router.post(
     "/{agent_id}/tools/http", response_model=AgentToolOut, status_code=status.HTTP_201_CREATED
 )
@@ -307,8 +328,26 @@ def create_agent_http_tool(
     db: Session = Depends(get_db),
 ) -> AgentToolOut:
     _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _require_tool_type(data, "http_request")
     _check_http_tools_feature(db, current_workspace)
     return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.post("/{agent_id}/tools/http/test", response_model=HttpToolTestResponse)
+def validate_agent_http_tool(
+    agent_id: uuid.UUID,
+    data: HttpToolTestRequest,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> HttpToolTestResponse:
+    """"Validar Configuração" — try a draft HTTP tool config before it's saved."""
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _check_http_tools_feature(db, current_workspace)
+    result = agent_tool_service.validate_http_tool_config(
+        data.config.model_dump(), data.sample_input
+    )
+    return HttpToolTestResponse(**result)
 
 
 @router.patch("/{agent_id}/tools/http/{tool_id}", response_model=AgentToolOut)
@@ -328,6 +367,57 @@ def update_agent_http_tool(
 
 @router.delete("/{agent_id}/tools/http/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent_http_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
+
+
+# Listing reuses GET /{agent_id}/tools/http above — list_agent_tools() already
+# returns every tool_type for the agent, not just http_request ones.
+
+
+@router.post(
+    "/{agent_id}/tools/request-human",
+    response_model=AgentToolOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_request_human_tool(
+    agent_id: uuid.UUID,
+    data: AgentToolCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    # No feature gate — "Solicitar humano" is available on every plan (product
+    # decision 2026-07-17: treated as a basic Inbox capability, same tier as
+    # take-over/return-to-AI, not as premium automation like http_tools).
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _require_tool_type(data, "request_human")
+    return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.patch("/{agent_id}/tools/request-human/{tool_id}", response_model=AgentToolOut)
+def update_agent_request_human_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    data: AgentToolUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.update_agent_tool(
+        db, current_workspace.id, agent_id, tool_id, data
+    )
+
+
+@router.delete("/{agent_id}/tools/request-human/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_agent_request_human_tool(
     agent_id: uuid.UUID,
     tool_id: uuid.UUID,
     current_user: User = Depends(get_current_user),

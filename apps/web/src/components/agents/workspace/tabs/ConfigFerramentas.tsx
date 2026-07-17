@@ -12,9 +12,11 @@ import {
   Loader2,
   Minus,
   Pencil,
+  Play,
   Plus,
   Settings2,
   ShoppingBag,
+  Sparkles,
   Trash2,
   X,
   Zap,
@@ -26,9 +28,13 @@ import type {
   AgentTool,
   AgentToolCreateInput,
   CatalogCategory,
+  HttpAgentTool,
   HttpToolConfig,
+  HttpToolParam,
+  HttpToolTestResult,
   KnowledgeBase,
   MemberRole,
+  RequestHumanAgentTool,
 } from "@/lib/api";
 import { inputCls } from "@/components/agents/workspace/AgentHeader";
 import { PlanGateBadge } from "@/components/plan/PlanGateBadge";
@@ -586,6 +592,156 @@ function CatalogConfigModal({
 // ── HTTP Tool form modal (create/edit) ──────────────────────────────────────────
 
 const NAME_PATTERN = /^[a-zA-Z0-9_]+$/;
+const URL_PLACEHOLDER_RE = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+
+function extractPathVars(url: string): string[] {
+  const found = new Set<string>();
+  for (const m of url.matchAll(URL_PLACEHOLDER_RE)) found.add(m[1]);
+  return Array.from(found);
+}
+
+type HttpToolTemplate = {
+  label: string;
+  name: string;
+  description: string;
+  url: string;
+  pathParamDescriptions: Record<string, string>;
+};
+
+const HTTP_TOOL_TEMPLATES: HttpToolTemplate[] = [
+  {
+    label: "ViaCEP — consultar endereço por CEP",
+    name: "consultar_cep",
+    description: "Consulta um CEP e retorna o endereço correspondente (rua, bairro, cidade, UF).",
+    url: "https://viacep.com.br/ws/{cep}/json/",
+    pathParamDescriptions: { cep: "CEP no formato 00000000 (só números, sem traço)." },
+  },
+  {
+    label: "ReceitaWS — consultar CNPJ",
+    name: "consultar_cnpj",
+    description: "Consulta um CNPJ e retorna dados cadastrais da empresa (razão social, situação, endereço).",
+    url: "https://receitaws.com.br/v1/cnpj/{cnpj}",
+    pathParamDescriptions: { cnpj: "CNPJ só com números, sem pontuação." },
+  },
+];
+
+// ── Headers editor (key/value rows, replaces the old raw-JSON textarea) ────────
+
+function HeadersEditor({
+  rows,
+  onChange,
+}: {
+  rows: { key: string; value: string }[];
+  onChange: (rows: { key: string; value: string }[]) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {rows.map((row, i) => (
+        <div key={i} className="flex gap-2">
+          <input
+            type="text"
+            value={row.key}
+            onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))}
+            placeholder="Authorization"
+            className={`${inputCls} font-mono text-xs`}
+          />
+          <input
+            type="text"
+            value={row.value}
+            onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
+            placeholder="Bearer ..."
+            className={`${inputCls} font-mono text-xs`}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(rows.filter((_, j) => j !== i))}
+            className="flex-shrink-0 p-2 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...rows, { key: "", value: "" }])}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
+      >
+        <Plus className="w-3.5 h-3.5" /> Add Header
+      </button>
+    </div>
+  );
+}
+
+// ── Query params editor (structured — name/descrição/obrigatório/valor de teste) ─
+
+function QueryParamsEditor({
+  params,
+  onChange,
+  testValues,
+  onTestValueChange,
+}: {
+  params: HttpToolParam[];
+  onChange: (params: HttpToolParam[]) => void;
+  testValues: Record<string, string>;
+  onTestValueChange: (name: string, value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {params.map((p, i) => (
+        <div key={i} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={p.name}
+              onChange={(e) => onChange(params.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+              placeholder="formato"
+              className={`${inputCls} font-mono text-xs`}
+            />
+            <label className="flex items-center gap-1.5 flex-shrink-0 text-xs text-nb-muted whitespace-nowrap px-1">
+              <input
+                type="checkbox"
+                checked={p.required}
+                onChange={(e) => onChange(params.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))}
+                className="accent-nb-primary"
+              />
+              Obrigatório
+            </label>
+            <button
+              type="button"
+              onClick={() => onChange(params.filter((_, j) => j !== i))}
+              className="flex-shrink-0 p-2 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <input
+            type="text"
+            value={p.description}
+            onChange={(e) => onChange(params.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
+            placeholder="Descrição pro agente entender pra que serve (ex: json ou xml)"
+            className={`${inputCls} text-xs`}
+          />
+          {p.name.trim() && (
+            <input
+              type="text"
+              value={testValues[p.name] || ""}
+              onChange={(e) => onTestValueChange(p.name, e.target.value)}
+              placeholder="Valor de teste (usado só no botão Validar Configuração)"
+              className={`${inputCls} text-xs`}
+            />
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...params, { name: "", description: "", required: false }])}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
+      >
+        <Plus className="w-3.5 h-3.5" /> Add Parâmetro de Query
+      </button>
+    </div>
+  );
+}
 
 function HttpToolFormModal({
   open,
@@ -597,17 +753,25 @@ function HttpToolFormModal({
   open: boolean;
   onClose: () => void;
   agentId: string;
-  editingTool: AgentTool | null;
+  editingTool: HttpAgentTool | null;
   onSaved: () => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [method, setMethod] = useState<HttpToolConfig["method"]>("GET");
   const [url, setUrl] = useState("");
-  const [headersText, setHeadersText] = useState("{}");
+  const [headerRows, setHeaderRows] = useState<{ key: string; value: string }[]>([]);
+  const [pathDescriptions, setPathDescriptions] = useState<Record<string, string>>({});
+  const [pathTestValues, setPathTestValues] = useState<Record<string, string>>({});
+  const [queryParams, setQueryParams] = useState<HttpToolParam[]>([]);
+  const [queryTestValues, setQueryTestValues] = useState<Record<string, string>>({});
   const [timeoutSeconds, setTimeoutSeconds] = useState(8);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<HttpToolTestResult | null>(null);
+
+  const pathVars = extractPathVars(url);
 
   useEffect(() => {
     if (!open) return;
@@ -616,18 +780,77 @@ function HttpToolFormModal({
       setDescription(editingTool.description);
       setMethod(editingTool.config.method);
       setUrl(editingTool.config.url);
-      setHeadersText(JSON.stringify(editingTool.config.headers || {}, null, 2));
-      setTimeoutSeconds(editingTool.config.timeout_seconds);
+      setHeaderRows(Object.entries(editingTool.config.headers || {}).map(([key, value]) => ({ key, value })));
+      setPathDescriptions(editingTool.config.path_param_descriptions || {});
+      setQueryParams(editingTool.config.query_params || []);
     } else {
       setName("");
       setDescription("");
       setMethod("GET");
       setUrl("");
-      setHeadersText("{}");
-      setTimeoutSeconds(8);
+      setHeaderRows([]);
+      setPathDescriptions({});
+      setQueryParams([]);
+    }
+    setTimeoutSeconds(editingTool?.config.timeout_seconds ?? 8);
+    setPathTestValues({});
+    setQueryTestValues({});
+    setError(null);
+    setTestResult(null);
+  }, [open, editingTool]);
+
+  function applyTemplate(t: HttpToolTemplate) {
+    setName(t.name);
+    setDescription(t.description);
+    setMethod("GET");
+    setUrl(t.url);
+    setPathDescriptions(t.pathParamDescriptions);
+    setQueryParams([]);
+    setHeaderRows([]);
+    setTestResult(null);
+  }
+
+  function buildConfig(): HttpToolConfig {
+    const headers: Record<string, string> = {};
+    headerRows.forEach(({ key, value }) => { if (key.trim()) headers[key.trim()] = value; });
+    return {
+      method,
+      url: url.trim(),
+      headers,
+      timeout_seconds: timeoutSeconds,
+      path_param_descriptions: pathDescriptions,
+      query_params: queryParams.filter((p) => p.name.trim()),
+    };
+  }
+
+  async function handleTest() {
+    setTestResult(null);
+    if (!url.trim()) {
+      setError("Informe a URL antes de validar.");
+      return;
     }
     setError(null);
-  }, [open, editingTool]);
+    setTesting(true);
+    try {
+      const sampleQuery: Record<string, string> = {};
+      queryParams.forEach((p) => {
+        const v = queryTestValues[p.name];
+        if (p.name.trim() && v) sampleQuery[p.name] = v;
+      });
+      const result = await api.agents.httpTools.test(agentId, buildConfig(), {
+        ...pathTestValues,
+        query_params: sampleQuery,
+      });
+      setTestResult(result);
+    } catch (e) {
+      setTestResult({
+        ok: false, status_code: null, body: null,
+        error: e instanceof ApiError ? e.message : "Erro ao validar configuração.",
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   async function handleSave() {
     setError(null);
@@ -645,15 +868,7 @@ function HttpToolFormModal({
       return;
     }
 
-    let headers: Record<string, string>;
-    try {
-      headers = headersText.trim() ? JSON.parse(headersText) : {};
-    } catch {
-      setError("Cabeçalhos devem ser um JSON válido, ex: {\"Authorization\": \"Bearer ...\"}.");
-      return;
-    }
-
-    const config: HttpToolConfig = { method, url: url.trim(), headers, timeout_seconds: timeoutSeconds };
+    const config = buildConfig();
 
     setSaving(true);
     try {
@@ -679,6 +894,26 @@ function HttpToolFormModal({
   return (
     <Modal open={open} onClose={onClose} title={editingTool ? "Editar ferramenta HTTP" : "Nova ferramenta HTTP"}>
       <div className="space-y-4">
+        {!editingTool && (
+          <div>
+            <p className="text-xs font-medium text-nb-secondary mb-1.5 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> Usar um modelo pronto
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {HTTP_TOOL_TEMPLATES.map((t) => (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => applyTemplate(t)}
+                  className="px-2.5 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-medium text-nb-secondary mb-1.5">
             Nome (identificador, sem espaços)
@@ -694,7 +929,7 @@ function HttpToolFormModal({
 
         <div>
           <label className="block text-xs font-medium text-nb-secondary mb-1.5">
-            Quando o agente deve usar (descrição curta)
+            Descrição | Gatilho — quando o agente deve usar
           </label>
           <textarea
             value={description}
@@ -703,6 +938,10 @@ function HttpToolFormModal({
             rows={2}
             className={inputCls}
           />
+          <p className="text-xs text-nb-muted mt-1">
+            A descrição é essencial pra guiar o agente — é ela que ajuda o modelo a decidir quando
+            chamar essa ferramenta.
+          </p>
         </div>
 
         <div className="grid grid-cols-[110px_1fr] gap-2">
@@ -725,26 +964,65 @@ function HttpToolFormModal({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://api.exemplo.com/cep/{cep}"
-              className={inputCls}
+              className={`${inputCls} font-mono text-xs`}
             />
           </div>
         </div>
         <p className="text-xs text-nb-muted -mt-2">
-          Use <code className="font-mono">{"{variavel}"}</code> na URL pra partes dinâmicas — o
-          agente preenche na hora de chamar (ex: <code className="font-mono">{"{cep}"}</code>).
+          Use <code className="font-mono">{"{variavel}"}</code> na URL pra partes dinâmicas — cada
+          uma vira uma linha em "Path" abaixo.
         </p>
 
+        {/* Path — derivado da URL, uma linha por {variavel} detectada */}
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">Path</label>
+          {pathVars.length === 0 ? (
+            <p className="text-xs text-nb-muted">
+              Nenhuma variável detectada — escreva <code className="font-mono">{"{nome}"}</code>{" "}
+              na URL acima pra criar uma.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {pathVars.map((v) => (
+                <div key={v} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+                  <span className="text-xs font-mono font-medium text-nb-text">{`{${v}}`}</span>
+                  <input
+                    type="text"
+                    value={pathDescriptions[v] || ""}
+                    onChange={(e) => setPathDescriptions((p) => ({ ...p, [v]: e.target.value }))}
+                    placeholder={`Descrição pro agente entender o que é "${v}" (opcional)`}
+                    className={`${inputCls} text-xs`}
+                  />
+                  <input
+                    type="text"
+                    value={pathTestValues[v] || ""}
+                    onChange={(e) => setPathTestValues((p) => ({ ...p, [v]: e.target.value }))}
+                    placeholder="Valor de teste (usado só no botão Validar Configuração)"
+                    className={`${inputCls} text-xs`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Query */}
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">Query</label>
+          <QueryParamsEditor
+            params={queryParams}
+            onChange={setQueryParams}
+            testValues={queryTestValues}
+            onTestValueChange={(n, v) => setQueryTestValues((p) => ({ ...p, [n]: v }))}
+          />
+        </div>
+
+        {/* Headers */}
         <div>
           <label className="block text-xs font-medium text-nb-secondary mb-1.5">
-            Cabeçalhos fixos (JSON, opcional) — use pra token/API key da API, ex:{" "}
-            <code className="font-mono">{"{\"Authorization\": \"Bearer ...\"}"}</code>
+            Headers — use pra token/API key da API (ex: Authorization)
           </label>
-          <textarea
-            value={headersText}
-            onChange={(e) => setHeadersText(e.target.value)}
-            rows={3}
-            className={`${inputCls} font-mono text-xs`}
-          />
+          <HeadersEditor rows={headerRows} onChange={setHeaderRows} />
         </div>
 
         <div>
@@ -762,6 +1040,35 @@ function HttpToolFormModal({
         </div>
 
         {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={testing}
+          className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white bg-nb-success rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+          {testing ? "Validando…" : "Validar Configuração"}
+        </button>
+
+        {testResult && (
+          <div className={`p-3 rounded-xl border text-xs space-y-1 ${
+            testResult.ok
+              ? "bg-nb-success/10 border-nb-success/20 text-nb-success"
+              : "bg-nb-danger/10 border-nb-danger/20 text-nb-danger"
+          }`}>
+            {testResult.ok ? (
+              <>
+                <p className="font-medium">Chamada respondeu com status {testResult.status_code}.</p>
+                {testResult.body && (
+                  <p className="font-mono text-nb-muted break-all line-clamp-3">{testResult.body}</p>
+                )}
+              </>
+            ) : (
+              <p className="font-medium">Falhou: {testResult.error}</p>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2 border-t border-nb-border">
           <button
@@ -800,11 +1107,11 @@ function HttpToolsListModal({
   role: MemberRole | null;
   gated: boolean;
 }) {
-  const [tools, setTools] = useState<AgentTool[]>([]);
+  const [tools, setTools] = useState<HttpAgentTool[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [editingTool, setEditingTool] = useState<AgentTool | null>(null);
+  const [editingTool, setEditingTool] = useState<HttpAgentTool | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
 
   const writeAllowed = canWrite(role);
@@ -814,7 +1121,7 @@ function HttpToolsListModal({
     setLoadError(null);
     api.agents.httpTools
       .list(agentId)
-      .then(setTools)
+      .then((all) => setTools(all.filter((t): t is HttpAgentTool => t.tool_type === "http_request")))
       .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar ferramentas."))
       .finally(() => setLoading(false));
   }
@@ -823,13 +1130,13 @@ function HttpToolsListModal({
     if (open) refresh();
   }, [open, agentId]);
 
-  async function handleToggle(tool: AgentTool) {
+  async function handleToggle(tool: HttpAgentTool) {
     setBusy((p) => ({ ...p, [tool.id]: true }));
     try {
       const updated = await api.agents.httpTools.update(agentId, tool.id, {
         is_enabled: !tool.is_enabled,
       });
-      setTools((prev) => prev.map((t) => (t.id === tool.id ? updated : t)));
+      setTools((prev) => prev.map((t) => (t.id === tool.id ? (updated as HttpAgentTool) : t)));
     } catch {
       // Toggle failure is surfaced by the row staying unchanged — low-stakes enough
       // to not need a dedicated error banner here.
@@ -838,7 +1145,7 @@ function HttpToolsListModal({
     }
   }
 
-  async function handleDelete(tool: AgentTool) {
+  async function handleDelete(tool: HttpAgentTool) {
     setBusy((p) => ({ ...p, [tool.id]: true }));
     try {
       await api.agents.httpTools.delete(agentId, tool.id);
@@ -951,6 +1258,138 @@ function HttpToolsListModal({
   );
 }
 
+// ── Request-human config modal ──────────────────────────────────────────────────
+
+const DEFAULT_REQUEST_HUMAN_DESCRIPTION =
+  "Aciona quando o cliente pedir para falar com um atendente, reclamar de forma " +
+  "clara, pedir reembolso/cancelamento, ou perguntar algo que você não consegue " +
+  "responder com segurança.";
+
+function RequestHumanConfigModal({
+  open,
+  onClose,
+  agentId,
+  tool,
+  readonly,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  tool: RequestHumanAgentTool | null;
+  readonly: boolean;
+}) {
+  const [description, setDescription] = useState(DEFAULT_REQUEST_HUMAN_DESCRIPTION);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDescription(tool?.description || DEFAULT_REQUEST_HUMAN_DESCRIPTION);
+    setError(null);
+  }, [open, tool]);
+
+  async function handleSave() {
+    if (!description.trim()) {
+      setError("Descreva quando o agente deve transferir para um humano.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      if (tool) {
+        await api.agents.requestHumanTool.update(agentId, tool.id, {
+          description: description.trim(),
+          is_enabled: true,
+        });
+      } else {
+        const payload: AgentToolCreateInput = {
+          tool_type: "request_human",
+          name: "solicitar_humano",
+          description: description.trim(),
+          config: {},
+        };
+        await api.agents.requestHumanTool.create(agentId, payload);
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!tool) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.agents.requestHumanTool.update(agentId, tool.id, { is_enabled: false });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Solicitar humano">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente decide sozinho quando transferir o atendimento para um humano, com base na
+          descrição abaixo. A conversa fica com a IA pausada até alguém assumir, e a equipe
+          recebe um e-mail avisando.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Quando o agente deve transferir
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            disabled={readonly}
+            className={inputCls}
+          />
+        </div>
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-between gap-2 pt-2 border-t border-nb-border">
+          {tool?.is_enabled ? (
+            <button
+              type="button"
+              onClick={handleDisable}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-nb-danger border border-nb-danger/20 rounded-xl hover:bg-nb-danger/10 transition-colors disabled:opacity-50"
+            >
+              Desativar
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando…" : tool ? "Salvar" : "Ativar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Roadmap card ──────────────────────────────────────────────────────────────
 
 function RoadmapCard({
@@ -1006,27 +1445,34 @@ export function ConfigFerramentas({
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
 
-  // HTTP Tools state (for active tools display)
+  // Agent Tools state — one list call covers every tool_type (http_request,
+  // request_human); the sections below derive their own slice from it.
   const [httpToolsList, setHttpToolsList] = useState<AgentTool[]>([]);
   const [httpToolsLoading, setHttpToolsLoading] = useState(true);
   const [httpToolsModalOpen, setHttpToolsModalOpen] = useState(false);
+  const [requestHumanModalOpen, setRequestHumanModalOpen] = useState(false);
 
-  useEffect(() => {
-    api.agents.httpTools
+  function refreshAgentTools() {
+    setHttpToolsLoading(true);
+    return api.agents.httpTools
       .list(agentId)
       .then(setHttpToolsList)
       .catch(() => setHttpToolsList([]))
       .finally(() => setHttpToolsLoading(false));
+  }
+
+  useEffect(() => {
+    refreshAgentTools();
   }, [agentId]);
 
   function handleHttpToolsModalClose() {
     setHttpToolsModalOpen(false);
-    setHttpToolsLoading(true);
-    api.agents.httpTools
-      .list(agentId)
-      .then(setHttpToolsList)
-      .catch(() => setHttpToolsList([]))
-      .finally(() => setHttpToolsLoading(false));
+    refreshAgentTools();
+  }
+
+  function handleRequestHumanModalClose() {
+    setRequestHumanModalOpen(false);
+    refreshAgentTools();
   }
 
   useEffect(() => {
@@ -1067,8 +1513,15 @@ export function ConfigFerramentas({
 
   const kbActive = !kbLoading && !kbError && kbList.length > 0;
   const catalogActive = !catalogLoading && catalogScope?.catalog_enabled === true;
-  const enabledHttpTools = httpToolsList.filter((t) => t.is_enabled);
+  const enabledHttpTools = httpToolsList.filter(
+    (t): t is HttpAgentTool => t.tool_type === "http_request" && t.is_enabled
+  );
   const httpToolsActive = !httpToolsLoading && enabledHttpTools.length > 0;
+
+  const requestHumanTool = httpToolsList.find(
+    (t): t is RequestHumanAgentTool => t.tool_type === "request_human"
+  );
+  const requestHumanActive = !httpToolsLoading && requestHumanTool?.is_enabled === true;
 
   const activeTools: React.ReactNode[] = [];
 
@@ -1165,6 +1618,35 @@ export function ConfigFerramentas({
         <button
           type="button"
           onClick={() => setHttpToolsModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (requestHumanActive) {
+    activeTools.push(
+      <div key="request-human" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <Hand className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Solicitar humano</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5 line-clamp-1">
+            {requestHumanTool?.description}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setRequestHumanModalOpen(true)}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
         >
           <Settings2 className="w-3.5 h-3.5" />
@@ -1306,12 +1788,29 @@ export function ConfigFerramentas({
             )}
           </div>}
 
+          {/* Solicitar humano — só mostra se não está ativo */}
+          {!requestHumanActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <Hand className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Solicitar humano</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Permite que o agente transfira o atendimento para um operador humano quando
+                decidir que é necessário — disponível em todos os planos.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || httpToolsLoading}
+              onClick={() => setRequestHumanModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar
+            </button>
+          </div>}
+
           {/* Roadmap */}
-          <RoadmapCard
-            icon={Hand}
-            name="Solicitar humano"
-            description="Permite que o agente transfira o atendimento para um operador humano."
-          />
           <RoadmapCard
             icon={Zap}
             name="Follow-up"
@@ -1344,6 +1843,13 @@ export function ConfigFerramentas({
         agentId={agentId}
         role={role}
         gated={httpToolsGated}
+      />
+      <RequestHumanConfigModal
+        open={requestHumanModalOpen}
+        onClose={handleRequestHumanModalClose}
+        agentId={agentId}
+        tool={requestHumanTool ?? null}
+        readonly={readonly}
       />
     </div>
   );

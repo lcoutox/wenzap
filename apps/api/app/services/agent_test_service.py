@@ -223,13 +223,21 @@ def run_agent_test(
 
     agent_instructions = build_agent_instructions_block(prompt_settings)
 
+    # Same tool_type filtering as the Inbox reply path (conversation_agent_reply_service.py):
+    # http_request is plan-gated, request_human is not. No `conversation` here
+    # (the Playground has no real conversation row) — build_tool_dispatch's
+    # request_human executor runs in simulation mode when conversation is None.
     tool_dispatch = None
     tools_schema = None
-    if plan_allows_feature(db, plan_code, "http_tools"):
-        enabled_tools = get_enabled_tools_for_agent(db, workspace_id, agent_id)
-        if enabled_tools:
-            tools_schema = [build_tool_schema(t) for t in enabled_tools]
-            tool_dispatch = build_tool_dispatch(enabled_tools)
+    enabled_tools = get_enabled_tools_for_agent(db, workspace_id, agent_id)
+    if enabled_tools:
+        http_tools_allowed = plan_allows_feature(db, plan_code, "http_tools")
+        usable_tools = [
+            t for t in enabled_tools if t.tool_type != "http_request" or http_tools_allowed
+        ]
+        if usable_tools:
+            tools_schema = [build_tool_schema(t) for t in usable_tools]
+            tool_dispatch = build_tool_dispatch(usable_tools)
 
     system = build_system_prompt(
         agent_name=agent.name,

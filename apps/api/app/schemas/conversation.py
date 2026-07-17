@@ -70,6 +70,7 @@ class ConversationOut(BaseModel):
     channel_external_id: str | None
     status: str
     ai_enabled: bool
+    handoff_reason: str | None = None
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime

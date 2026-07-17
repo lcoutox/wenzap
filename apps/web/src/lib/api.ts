@@ -484,6 +484,10 @@ export type Conversation = {
   channel_external_id: string | null;
   status: ConversationStatus;
   ai_enabled: boolean;
+  // Reason captured from the model when the "request_human" tool paused the AI.
+  // Null for every other path that disables ai_enabled (e.g. a human manually
+  // clicking "Assumir"), and cleared again once the conversation returns to AI.
+  handoff_reason: string | null;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
@@ -696,41 +700,78 @@ export type AgentCatalogScopeUpdate = {
   category_ids: string[];
 };
 
+export type HttpToolParam = {
+  name: string;
+  description: string;
+  required: boolean;
+};
+
 export type HttpToolConfig = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   url: string;
   headers: Record<string, string>;
   timeout_seconds: number;
+  // Optional structured metadata (http-tool-ux-improvements-prd.md) — both
+  // default to empty on the backend, so older tools work without them.
+  path_param_descriptions?: Record<string, string>;
+  query_params?: HttpToolParam[];
 };
 
-export type AgentTool = {
+export type HttpToolTestResult = {
+  ok: boolean;
+  status_code: number | null;
+  body: string | null;
+  error: string | null;
+};
+
+// No configurable fields — matches the market convention (Chatvolt's Request
+// Human Tool) of a pure enable/disable toggle; behavior is driven entirely by
+// the tool's name/description, same as every other AgentTool row.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export type RequestHumanToolConfig = {};
+
+type AgentToolBase = {
   id: string;
   workspace_id: string;
   agent_id: string;
-  tool_type: "http_request";
   name: string;
   description: string;
   is_enabled: boolean;
-  config: HttpToolConfig;
   sort_order: number;
   created_at: string;
   updated_at: string;
 };
 
-export type AgentToolCreateInput = {
-  tool_type: "http_request";
-  name: string;
-  description: string;
-  is_enabled?: boolean;
-  config: HttpToolConfig;
-  sort_order?: number;
-};
+export type AgentTool =
+  | (AgentToolBase & { tool_type: "http_request"; config: HttpToolConfig })
+  | (AgentToolBase & { tool_type: "request_human"; config: RequestHumanToolConfig });
+
+export type HttpAgentTool = Extract<AgentTool, { tool_type: "http_request" }>;
+export type RequestHumanAgentTool = Extract<AgentTool, { tool_type: "request_human" }>;
+
+export type AgentToolCreateInput =
+  | {
+      tool_type: "http_request";
+      name: string;
+      description: string;
+      is_enabled?: boolean;
+      config: HttpToolConfig;
+      sort_order?: number;
+    }
+  | {
+      tool_type: "request_human";
+      name: string;
+      description: string;
+      is_enabled?: boolean;
+      config?: RequestHumanToolConfig;
+      sort_order?: number;
+    };
 
 export type AgentToolUpdateInput = Partial<{
   name: string;
   description: string;
   is_enabled: boolean;
-  config: HttpToolConfig;
+  config: HttpToolConfig | RequestHumanToolConfig;
   sort_order: number;
 }>;
 
@@ -1698,6 +1739,29 @@ export const api = {
         }),
       delete: (agentId: string, toolId: string) =>
         cookieFetch<void>(`/agents/${agentId}/tools/http/${toolId}`, { method: "DELETE" }),
+      test: (agentId: string, config: HttpToolConfig, sampleInput: Record<string, unknown>) =>
+        cookieFetch<HttpToolTestResult>(`/agents/${agentId}/tools/http/test`, {
+          method: "POST",
+          body: JSON.stringify({ config, sample_input: sampleInput }),
+        }),
+    },
+    // Listing reuses httpTools.list — it already returns every tool_type for
+    // the agent (http_request and request_human), not just HTTP ones.
+    requestHumanTool: {
+      create: (agentId: string, data: AgentToolCreateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/request-human`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (agentId: string, toolId: string, data: AgentToolUpdateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/request-human/${toolId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (agentId: string, toolId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/tools/request-human/${toolId}`, {
+          method: "DELETE",
+        }),
     },
   },
   pipelines: {

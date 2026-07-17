@@ -20,6 +20,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.services.conversation_agent_reply_service import generate_conversation_agent_reply
+from app.services.email_service import FakeEmailService, override_email_service, reset_email_service
 
 _PUBLIC_DNS_PATCH = patch(
     "socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]
@@ -194,3 +195,101 @@ def test_conversation_reply_drives_full_tool_calling_loop(
     assert tool_call_rows[0].tool_calls[0]["tool_name"] == "consultar_cep"
     assert tool_call_rows[0].tool_calls[0]["status"] == "success"
     assert tool_call_rows[1].tool_calls == []  # final round-trip made no tool call
+
+
+# ── request_human tool — full conversation reply loop, ungated by plan ─────────
+
+
+def _request_human_tool_payload() -> dict:
+    return {
+        "tool_type": "request_human",
+        "name": "solicitar_humano",
+        "description": "Aciona quando o cliente pedir reembolso.",
+        "config": {},
+    }
+
+
+def _request_human_tool_use_response() -> LLMResponse:
+    return LLMResponse(
+        content="",
+        input_tokens=18,
+        output_tokens=6,
+        duration_ms=100,
+        stop_reason="tool_use",
+        content_blocks=[{
+            "type": "tool_use", "id": "toolu_2", "name": "solicitar_humano",
+            "input": {"reason": "Cliente pede reembolso por produto com defeito."},
+        }],
+    )
+
+
+def _handoff_final_response() -> LLMResponse:
+    return LLMResponse(
+        content="Vou te conectar com nossa equipe, só um momento.",
+        input_tokens=10,
+        output_tokens=9,
+        duration_ms=90,
+        stop_reason="end_turn",
+        content_blocks=[{
+            "type": "text", "text": "Vou te conectar com nossa equipe, só um momento.",
+        }],
+    )
+
+
+@pytest.fixture()
+def fake_email() -> FakeEmailService:
+    svc = FakeEmailService()
+    override_email_service(svc)
+    yield svc
+    reset_email_service()
+
+
+def test_conversation_reply_request_human_pauses_ai_on_starter_plan(
+    db, client_a, subscription_a, executable_ai_model, workspace_a, user_a, fake_email
+):
+    """subscription_a defaults to starter — request_human must still work, unlike http_tools."""
+    agent = client_a.post("/agents", json=_agent_payload(executable_ai_model.id)).json()
+    client_a.post(f"/agents/{agent['id']}/tools/request-human", json=_request_human_tool_payload())
+    client_a.patch(f"/agents/{agent['id']}/status", json={"status": "active"})
+
+    contact = Contact(workspace_id=workspace_a.id, name="Cliente", phone="+5511988887777")
+    db.add(contact)
+    db.flush()
+
+    conv = Conversation(
+        workspace_id=workspace_a.id,
+        contact_id=contact.id,
+        agent_id=uuid.UUID(agent["id"]),
+        channel_type="internal",
+        status="open",
+        ai_enabled=True,
+    )
+    db.add(conv)
+    db.flush()
+
+    trigger = ConversationMessage(
+        workspace_id=workspace_a.id,
+        conversation_id=conv.id,
+        direction="inbound",
+        sender_type="customer",
+        content="Quero reembolso, chegou com defeito.",
+        content_type="text",
+    )
+    db.add(trigger)
+    db.commit()
+    db.refresh(conv)
+    db.refresh(trigger)
+
+    with patch(
+        "app.llm.client.complete",
+        side_effect=[_request_human_tool_use_response(), _handoff_final_response()],
+    ):
+        run = generate_conversation_agent_reply(db, workspace_a.id, conv, trigger)
+
+    assert run is not None
+    assert run.status == "success"
+
+    db.refresh(conv)
+    assert conv.ai_enabled is False
+    assert conv.handoff_reason == "Cliente pede reembolso por produto com defeito."
+    assert len(fake_email.sent) == 1

@@ -254,17 +254,25 @@ def generate_conversation_agent_reply(
         )
 
     # ── 7. Build conversation context ─────────────────────────────────────────
-    # Enabled tools only actually get attached if the workspace's plan still
-    # allows http_tools — a downgraded workspace just loses tool access on its
-    # next reply rather than erroring the whole turn. Reuses plan_code already
-    # resolved for the credit check above instead of a second lookup.
+    # http_request tools only actually get attached if the workspace's plan
+    # still allows http_tools — a downgraded workspace just loses that tool on
+    # its next reply rather than erroring the whole turn. request_human has no
+    # plan gate (available on every plan), so it's never filtered out here.
+    # Reuses plan_code already resolved for the credit check above instead of
+    # a second lookup.
     tool_dispatch = None
     tools_schema = None
-    if plan_allows_feature(db, plan_code, "http_tools"):
-        enabled_tools = get_enabled_tools_for_agent(db, workspace_id, agent.id)
-        if enabled_tools:
-            tools_schema = [build_tool_schema(t) for t in enabled_tools]
-            tool_dispatch = build_tool_dispatch(enabled_tools)
+    enabled_tools = get_enabled_tools_for_agent(db, workspace_id, agent.id)
+    if enabled_tools:
+        http_tools_allowed = plan_allows_feature(db, plan_code, "http_tools")
+        usable_tools = [
+            t for t in enabled_tools if t.tool_type != "http_request" or http_tools_allowed
+        ]
+        if usable_tools:
+            tools_schema = [build_tool_schema(t) for t in usable_tools]
+            tool_dispatch = build_tool_dispatch(
+                usable_tools, db=db, workspace_id=workspace_id, conversation=conversation
+            )
 
     try:
         ctx = build_conversation_context(

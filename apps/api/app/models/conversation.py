@@ -52,6 +52,11 @@ class Conversation(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     # When False, the AI agent will not auto-reply (human has taken over).
     ai_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Reason captured from the model when the "request_human" tool paused the AI
+    # (agent_tool_service.execute_request_human_tool). Cleared on return_to_ai() —
+    # stale once the conversation is back with the AI. NULL for every other path
+    # that disables ai_enabled (e.g. a human manually clicking "Assumir").
+    handoff_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Updated by the message service each time a message is created.
     last_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
