@@ -28,6 +28,7 @@ export function StepSuccess({
   modelDisplayName,
   connectedKbNames,
   kbWarning,
+  needsPromptSetup = false,
 }: {
   agentId: string;
   agentName: string;
@@ -36,6 +37,8 @@ export function StepSuccess({
   connectedKbNames: string[];
   kbWarning: boolean;
   agentType?: unknown;
+  /** True for agents created "from scratch" — no prompt yet, quick-test would just fail. */
+  needsPromptSetup?: boolean;
 }) {
   const router = useRouter();
 
@@ -85,10 +88,24 @@ export function StepSuccess({
         <div>
           <h2 className="text-lg font-semibold text-nb-text">Agente criado com sucesso</h2>
           <p className="text-sm text-nb-muted mt-0.5">
-            Seu agente já está configurado. Faça um teste rápido antes de continuar.
+            {needsPromptSetup
+              ? "Falta um passo: escreva o prompt do agente antes de testar ou ativar."
+              : "Seu agente já está configurado. Faça um teste rápido antes de continuar."}
           </p>
         </div>
       </div>
+
+      {/* Prompt setup warning (agents created "from scratch") */}
+      {needsPromptSetup && (
+        <div className="flex items-start gap-2.5 p-3.5 bg-nb-warning/10 border border-nb-warning/20 rounded-xl">
+          <AlertCircle className="w-4 h-4 text-nb-warning flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-nb-warning">
+            Você escolheu começar do zero, então o agente ainda não tem instruções — o teste
+            rápido e a ativação só funcionam depois de preencher o prompt em
+            Configurações → Instruções.
+          </p>
+        </div>
+      )}
 
       {/* KB warning */}
       {kbWarning && (
@@ -114,7 +131,8 @@ export function StepSuccess({
         )}
       </div>
 
-      {/* Quick test */}
+      {/* Quick test — skipped for agents with no prompt yet, it would just fail */}
+      {!needsPromptSetup && (
       <div className="space-y-3">
         <p className="text-sm font-medium text-nb-secondary">Teste seu agente</p>
 
@@ -180,15 +198,22 @@ export function StepSuccess({
           <p className="text-sm text-nb-danger">{testError}</p>
         )}
       </div>
+      )}
 
       {/* Final actions */}
       <div className="flex flex-wrap items-center gap-3 pt-2">
         <button
           type="button"
-          onClick={() => router.push(`/dashboard/agents/${agentId}`)}
+          onClick={() =>
+            router.push(
+              needsPromptSetup
+                ? `/dashboard/agents/${agentId}?tab=settings&configTab=instrucoes`
+                : `/dashboard/agents/${agentId}`
+            )
+          }
           className="px-5 py-2 bg-nb-primary text-white text-sm font-medium rounded-xl hover:bg-nb-primary-strong transition-colors"
         >
-          Abrir agente
+          {needsPromptSetup ? "Configurar prompt" : "Abrir agente"}
         </button>
         <button
           type="button"

@@ -179,6 +179,7 @@ export default function NewAgentPage() {
             connectedKbNames={connectedKbNames}
             kbWarning={kbWarning}
             agentType={null}
+            needsPromptSetup={state.templateId === "blank"}
           />
         </div>
       </div>

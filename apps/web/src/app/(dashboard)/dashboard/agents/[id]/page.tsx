@@ -81,6 +81,14 @@ function parseWorkspaceTab(value: string | null): WorkspaceTab | null {
   return null;
 }
 
+const VALID_CONFIG_TABS: ConfigTab[] = ["geral", "apresentacao", "instrucoes", "conhecimento", "modelo", "avancado", "pipeline"];
+
+function parseConfigTab(value: string | null): ConfigTab | null {
+  if (!value) return null;
+  if ((VALID_CONFIG_TABS as string[]).includes(value)) return value as ConfigTab;
+  return null;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AgentWorkspacePage() {
@@ -120,7 +128,9 @@ export default function AgentWorkspacePage() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
     () => parseWorkspaceTab(searchParams.get("tab")) ?? "chat"
   );
-  const [configTab,    setConfigTab]    = useState<ConfigTab>("geral");
+  const [configTab,    setConfigTab]    = useState<ConfigTab>(
+    () => parseConfigTab(searchParams.get("configTab")) ?? "geral"
+  );
   const [saving,       setSaving]       = useState(false);
   const [saveError,    setSaveError]    = useState<string | null>(null);
   const [saveSuccess,  setSaveSuccess]  = useState(false);
@@ -239,7 +249,14 @@ export default function AgentWorkspacePage() {
       const updated = await api.agents.updateStatus(id, newStatus);
       setAgent(updated);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Erro ao mudar status.");
+      const message = e instanceof Error ? e.message : "Erro ao mudar status.";
+      // Activation blocked by missing prompt/behavior config — take the user
+      // straight to where it's fixed instead of leaving them stuck on Chat.
+      if (message.startsWith("Configure o prompt avançado") || message.startsWith("Configure o comportamento")) {
+        handleTabChange("settings");
+        setConfigTab("instrucoes");
+      }
+      setActionError(message);
     }
   }
 

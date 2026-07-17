@@ -52,7 +52,7 @@ export default function AdvancedCreatePage() {
         instructions_mode: "advanced",
       });
 
-      router.push(`/dashboard/agents/${agent.id}`);
+      router.push(`/dashboard/agents/${agent.id}?tab=settings&configTab=instrucoes`);
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Erro ao criar agente.");
     } finally {

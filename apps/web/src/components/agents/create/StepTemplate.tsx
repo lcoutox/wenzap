@@ -48,6 +48,11 @@ export function StepTemplate({
                   {t.label}
                 </p>
                 <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">{t.tagline}</p>
+                {isBlank && (
+                  <p className="text-xs text-nb-warning mt-1 leading-relaxed">
+                    {t.description} Você precisa escrever o prompt manualmente antes de ativar.
+                  </p>
+                )}
               </div>
             </button>
           );
