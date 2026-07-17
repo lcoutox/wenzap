@@ -40,7 +40,7 @@ function WenzapIcon({ size = 28 }: { size?: number }) {
 
 const nav = [
   { href: "/dashboard",               label: "Visão geral",  icon: LayoutDashboard },
-  { href: "/dashboard/admin/meta-review", label: "Inbox",    icon: MessageSquare },
+  { href: "/dashboard/inbox",         label: "Inbox",         icon: MessageSquare },
   { href: "/dashboard/agents",        label: "Agentes",      icon: Bot },
   { href: "/dashboard/knowledge-bases", label: "Conhecimento", icon: BookOpen },
   { href: "/dashboard/catalog",        label: "Catálogo",     icon: Package  },
@@ -203,7 +203,7 @@ export function Sidebar({
       <nav className="flex-1 py-3 space-y-0.5 px-2 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
-          const showBadge = href === "/dashboard/admin/meta-review" && unreadAlertsCount > 0;
+          const showBadge = href === "/dashboard/inbox" && unreadAlertsCount > 0;
           return (
             <Link
               key={href}
