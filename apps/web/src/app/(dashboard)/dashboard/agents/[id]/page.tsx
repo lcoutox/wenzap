@@ -353,6 +353,7 @@ export default function AgentWorkspacePage() {
               agentId={id}
               readonly={readonly}
               role={role}
+              planCode={planCode}
             />
           </div>
         )}

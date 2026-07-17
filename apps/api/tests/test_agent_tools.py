@@ -177,6 +177,31 @@ def test_build_tool_schema_unknown_type_raises():
         build_tool_schema(_FakeTool(tool_type="something_else"))
 
 
+def test_build_tool_schema_url_placeholders_become_required_properties():
+    tool = _FakeTool(config={
+        "method": "GET", "url": "https://api.example.com/cep/{cep}",
+        "headers": {}, "timeout_seconds": 8,
+    })
+    schema = build_tool_schema(tool)
+    assert "cep" in schema["input_schema"]["properties"]
+    assert schema["input_schema"]["properties"]["cep"]["type"] == "string"
+    assert schema["input_schema"]["required"] == ["cep"]
+
+
+def test_build_tool_schema_multiple_url_placeholders():
+    tool = _FakeTool(config={
+        "method": "GET", "url": "https://api.example.com/{resource}/{id}",
+        "headers": {}, "timeout_seconds": 8,
+    })
+    schema = build_tool_schema(tool)
+    assert set(schema["input_schema"]["required"]) == {"resource", "id"}
+
+
+def test_build_tool_schema_no_placeholders_has_no_required():
+    schema = build_tool_schema(_FakeTool())  # _SAMPLE_CONFIG has no {placeholder}
+    assert "required" not in schema["input_schema"]
+
+
 def test_build_tool_dispatch_maps_name_to_executor():
     dispatch = build_tool_dispatch([_FakeTool()])
     assert "consultar_cep" in dispatch
@@ -192,6 +217,56 @@ def test_execute_http_tool_success(mock_request):
     assert '"status_code": 200' in result
     call_url = mock_request.call_args.args[1]
     assert "cep=01001000" in call_url
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_substitutes_url_placeholder(mock_request):
+    mock_request.return_value = httpx.Response(200, text='{"logradouro": "Praça da Sé"}')
+    config = {**_SAMPLE_CONFIG, "url": "https://api.example.com/cep/{cep}"}
+    with _PUBLIC_DNS_PATCH:
+        execute_http_tool(config, {"cep": "01001000"})
+
+    call_url = mock_request.call_args.args[1]
+    assert call_url == "https://api.example.com/cep/01001000"
+
+
+def test_execute_http_tool_missing_url_placeholder_raises():
+    config = {**_SAMPLE_CONFIG, "url": "https://api.example.com/cep/{cep}"}
+    with pytest.raises(ValueError, match="cep"):
+        execute_http_tool(config, {})
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_url_placeholder_cannot_escape_path(mock_request):
+    # A model-controlled value trying to break out of the path (path traversal,
+    # or a "//evil.com" host-injection attempt) must come back fully encoded —
+    # the request must still go to api.example.com, never anywhere else.
+    mock_request.return_value = httpx.Response(200, text="ok")
+    config = {**_SAMPLE_CONFIG, "url": "https://api.example.com/items/{id}"}
+    with _PUBLIC_DNS_PATCH:
+        execute_http_tool(config, {"id": "../../etc/passwd"})
+
+    call_url = mock_request.call_args.args[1]
+    assert call_url.startswith("https://api.example.com/items/")
+    # The "/" separators are percent-encoded (%2F), so the payload is one opaque
+    # path segment — it can never be interpreted as ../.. traversal by anything
+    # parsing the URL, even though the literal dots themselves aren't escaped
+    # (unreserved characters per RFC 3986 — quote() never encodes them).
+    assert "/etc/passwd" not in call_url
+    assert call_url.count("/") == 4  # scheme's //, host/, /items/, nothing beyond
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_url_placeholder_cannot_inject_host(mock_request):
+    mock_request.return_value = httpx.Response(200, text="ok")
+    config = {**_SAMPLE_CONFIG, "url": "https://api.example.com/items/{id}"}
+    with _PUBLIC_DNS_PATCH:
+        execute_http_tool(config, {"id": "x/../../@evil.com/"})
+
+    call_url = mock_request.call_args.args[1]
+    assert call_url.startswith("https://api.example.com/items/")
+    assert "evil.com" in call_url  # present, but only as an encoded path segment...
+    assert "://evil.com" not in call_url  # ...never as a scheme+host
 
 
 @patch("app.services.agent_tool_service.httpx.request")

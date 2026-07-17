@@ -13,8 +13,9 @@ tool type (Calendar, Drive, etc.) plugs in without reshaping this module.
 """
 
 import json
+import re
 import uuid
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import HTTPException, status
@@ -33,6 +34,12 @@ from app.services.pipeline_webhook_service import WebhookUrlError, validate_webh
 # is no retry: fail fast and let the model react (Fase 5 of the PRD is where
 # the tool-result guardrail/UX around that lives).
 _MAX_RESPONSE_CHARS = 4000
+
+# Matches {cep}, {order_id}, etc. in a configured URL — the operator writes
+# these in the URL field, the model fills them in at call time. Deliberately
+# restricted to identifier-like names (no `{}` with slashes/dots/etc.) so
+# extraction can't be confused by anything else that happens to contain braces.
+_URL_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -146,22 +153,29 @@ def get_enabled_tools_for_agent(
 def build_tool_schema(tool: AgentTool) -> dict:
     """AgentTool -> the dict shape LLMRequest.tools expects (Anthropic tool schema)."""
     if tool.tool_type == "http_request":
+        url_params = _URL_PLACEHOLDER_RE.findall(tool.config.get("url", ""))
+        properties: dict = {
+            name: {
+                "type": "string",
+                "description": f"Value for '{name}', used in the request URL.",
+            }
+            for name in url_params
+        }
+        properties["query_params"] = {
+            "type": "object",
+            "description": "Optional query string parameters to add to the request.",
+        }
+        properties["body"] = {
+            "type": "object",
+            "description": "Optional JSON body (used for POST/PUT/PATCH only).",
+        }
+        input_schema: dict = {"type": "object", "properties": properties}
+        if url_params:
+            input_schema["required"] = url_params
         return {
             "name": tool.name,
             "description": tool.description,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query_params": {
-                        "type": "object",
-                        "description": "Optional query string parameters to add to the request.",
-                    },
-                    "body": {
-                        "type": "object",
-                        "description": "Optional JSON body (used for POST/PUT/PATCH only).",
-                    },
-                },
-            },
+            "input_schema": input_schema,
         }
     raise ValueError(f"Unknown tool_type: {tool.tool_type!r}")
 
@@ -184,19 +198,42 @@ def _make_http_executor(config: dict) -> ToolExecutor:
 
 # ── HTTP tool execution ──────────────────────────────────────────────────────────
 
+def _substitute_url_placeholders(url_template: str, input_: dict) -> str:
+    """
+    Fill {name} placeholders in *url_template* with values from *input_*.
+
+    Every substituted value is percent-encoded with safe="" — meaning even a
+    "/", "?", "#", or "://" supplied by the model becomes a literal encoded
+    path segment, never a way to escape the configured path or point the
+    request at a different host. The host/scheme come only from the operator-
+    configured template and are never influenced by model input.
+    """
+    def replacer(match: re.Match) -> str:
+        name = match.group(1)
+        value = input_.get(name)
+        if value is None:
+            raise ValueError(f"Missing required URL parameter: '{name}'")
+        return quote(str(value), safe="")
+
+    return _URL_PLACEHOLDER_RE.sub(replacer, url_template)
+
+
 def execute_http_tool(config: dict, input_: dict) -> str:
     """
     Synchronously call the configured endpoint. *config* is the tool's fixed
-    setup (method/url/headers/timeout); *input_* is whatever the model
-    decided to send this call (query_params/body).
+    setup (method/url template/headers/timeout); *input_* is whatever the
+    model decided to send this call (URL placeholder values/query_params/body).
 
     Raises on any failure — agent_llm_executor.run_agent_turn already catches
     exceptions from a tool executor and reports them to the model as a tool
     error, so this function does not need its own try/except-and-swallow.
     """
-    validate_webhook_url(config["url"])  # re-validate at call time (DNS rebinding)
+    url = _substitute_url_placeholders(config["url"], input_)
+    # Re-validate the URL *after* substitution — defense in depth alongside
+    # the percent-encoding above, and consistent with re-validating at send
+    # time everywhere else in this codebase (DNS rebinding protection).
+    validate_webhook_url(url)
 
-    url = config["url"]
     query_params = input_.get("query_params") or {}
     if query_params:
         separator = "&" if "?" in url else "?"

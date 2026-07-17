@@ -78,6 +78,7 @@ Criar um executor único (proposta: `app/services/agent_llm_executor.py`) que:
 - Execução: reaproveita `validate_webhook_url()` para proteção SSRF (mesma validação, incluindo a re-checagem no momento do disparo contra DNS rebinding). Diferente do webhook do Pipeline (fire-and-forget, thread solta): aqui a chamada é **síncrona** — o resultado precisa voltar pro modelo antes da resposta final, então bloqueia o turno. Timeout mais curto que o do webhook (8s), sem retry automático ou no máximo 1 retry rápido — o usuário está esperando resposta.
 - Gate: `workspace_allows_feature(db, workspace_id, "http_tools")` — feature key já seedada (Scale+), só falta o call-site.
 - UI: trocar o `RoadmapCard` "HTTP Tools" (`ConfigFerramentas.tsx`, hoje "Em breve") por card funcional com toggle + modal de configuração (method/URL/headers/body), reaproveitando o padrão visual e de estado de `KbConfigModal`/`CatalogConfigModal` — não é tela nova, é o mesmo componente com conteúdo novo.
+- **Templating de URL** (adicionado após feedback de teste manual em produção): a URL configurada aceita `{variavel}` no path (ex: `https://api.exemplo.com/cep/{cep}`) — cada placeholder vira um parâmetro obrigatório no `input_schema` da tool, preenchido pelo modelo a cada chamada. Todo valor substituído passa por `urllib.parse.quote(value, safe="")` antes de entrar na URL — mesmo um valor tentando path traversal (`../..`) ou injeção de host (`//evil.com`) vira um segmento de path opaco, nunca escapa da URL configurada pelo operador. A URL final (já substituída) passa de novo por `validate_webhook_url()` antes do disparo, defesa em profundidade além do encoding. Cabeçalhos fixos (com token/API key) e `query_params` dinâmicos já existiam desde o v1 — só o templating de path faltava.
 
 ## Fase 5 ✅ — Guardrails mínimos para tool-calling
 
@@ -129,8 +130,10 @@ Um agente em plano Scale+ consegue ativar a tool HTTP pela aba Ferramentas, o mo
 
 **Frontend:**
 - `apps/web/src/lib/api.ts` — tipos `AgentTool`/`HttpToolConfig`/inputs + `api.agents.httpTools.*`.
-- `apps/web/src/components/agents/workspace/tabs/ConfigFerramentas.tsx` — card "Ferramentas HTTP" (ativo/disponível, mesmo padrão visual de KB/Catálogo) + modal de lista + modal de formulário (criar/editar), substituindo o `RoadmapCard` "Em breve".
+- `apps/web/src/components/agents/workspace/tabs/ConfigFerramentas.tsx` — card "Ferramentas HTTP" (ativo/disponível, mesmo padrão visual de KB/Catálogo) + modal de lista + modal de formulário (criar/editar), substituindo o `RoadmapCard` "Em breve". Card e modal mostram `PlanGateBadge` + texto de upgrade em vez do botão "Adicionar" quando o plano não permite (mesmo padrão já usado pro gate de WhatsApp em `ImplantarTab.tsx`) — descoberto como gap de UX no primeiro teste manual real: sem isso, o usuário só descobria o bloqueio depois de preencher o formulário inteiro.
 
-**Verificação:** 2061 testes de backend passando (13 pré-existentes sem relação, já documentados em `negocios/wenzap/decisoes.md` no NexBrain), build de produção do frontend limpo (typecheck + lint). UI não testada visualmente em navegador (sem ferramenta de browser disponível na sessão de implementação) — recomenda-se um teste manual antes de considerar 100% validado.
+**Achado durante o primeiro teste manual real (2026-07-17):** faltava templating de URL (`{cep}` no path) — ver nota na Fase 4 acima. Implementado com percent-encoding (`urllib.parse.quote(..., safe="")`) em todo valor substituído, testado explicitamente contra path traversal e host-injection.
+
+**Verificação:** 2068 testes de backend passando (8 pré-existentes sem relação, já documentados em `negocios/wenzap/decisoes.md` no NexBrain), build de produção do frontend limpo (typecheck + lint). UI testada parcialmente em produção pelo Lucas (achou o gap do plan-gate e a falta de templating de URL, ambos corrigidos); ainda vale um passe completo depois destas correções.
 
 **Backlog explicitamente fora deste PRD** (ver "Não-objetivos"): migrar KB/Catálogo pra tool-calling de verdade; integrações nativas (Calendar, Drive); multi-provider tool-calling; confirmação humana antes de ação irreversível.

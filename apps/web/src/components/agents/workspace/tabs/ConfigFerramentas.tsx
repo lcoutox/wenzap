@@ -31,6 +31,8 @@ import type {
   MemberRole,
 } from "@/lib/api";
 import { inputCls } from "@/components/agents/workspace/AgentHeader";
+import { PlanGateBadge } from "@/components/plan/PlanGateBadge";
+import { minPlanLabel, planAllowsFeature } from "@/lib/plan";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -722,15 +724,20 @@ function HttpToolFormModal({
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://api.exemplo.com/cep"
+              placeholder="https://api.exemplo.com/cep/{cep}"
               className={inputCls}
             />
           </div>
         </div>
+        <p className="text-xs text-nb-muted -mt-2">
+          Use <code className="font-mono">{"{variavel}"}</code> na URL pra partes dinâmicas — o
+          agente preenche na hora de chamar (ex: <code className="font-mono">{"{cep}"}</code>).
+        </p>
 
         <div>
           <label className="block text-xs font-medium text-nb-secondary mb-1.5">
-            Cabeçalhos fixos (JSON, opcional)
+            Cabeçalhos fixos (JSON, opcional) — use pra token/API key da API, ex:{" "}
+            <code className="font-mono">{"{\"Authorization\": \"Bearer ...\"}"}</code>
           </label>
           <textarea
             value={headersText}
@@ -785,11 +792,13 @@ function HttpToolsListModal({
   onClose,
   agentId,
   role,
+  gated,
 }: {
   open: boolean;
   onClose: () => void;
   agentId: string;
   role: MemberRole | null;
+  gated: boolean;
 }) {
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [loading, setLoading] = useState(true);
@@ -859,6 +868,16 @@ function HttpToolsListModal({
           com base na descrição que você escrever.
         </p>
 
+        {gated && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-nb-warning/10 border border-nb-warning/20">
+            <Info className="w-4 h-4 text-nb-warning flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-nb-warning">
+              Ferramentas HTTP não estão disponíveis no seu plano atual. Ferramentas já
+              configuradas continuam aqui, mas não serão usadas pelo agente até o upgrade.
+            </p>
+          </div>
+        )}
+
         {loading ? (
           <div className="space-y-2">
             {[1, 2].map((i) => <div key={i} className="h-16 bg-nb-elevated rounded-xl animate-pulse" />)}
@@ -917,7 +936,7 @@ function HttpToolsListModal({
           </div>
         )}
 
-        {writeAllowed && (
+        {writeAllowed && !gated && (
           <button
             type="button"
             onClick={() => { setEditingTool(null); setFormOpen(true); }}
@@ -968,11 +987,14 @@ export function ConfigFerramentas({
   agentId,
   readonly,
   role,
+  planCode,
 }: {
   agentId: string;
   readonly: boolean;
   role: MemberRole | null;
+  planCode: string | null;
 }) {
+  const httpToolsGated = planCode !== null && !planAllowsFeature(planCode, "http_tools");
   // KB state (for active tools display)
   const [kbList, setKbList] = useState<AgentKnowledgeBase[]>([]);
   const [kbLoading, setKbLoading] = useState(true);
@@ -1260,20 +1282,28 @@ export function ConfigFerramentas({
               <Globe className="w-4 h-4 text-nb-muted" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-nb-text">Ferramentas HTTP</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-nb-text">Ferramentas HTTP</h3>
+                {httpToolsGated && (
+                  <PlanGateBadge label={minPlanLabel("http_tools")} variant="premium" size="xs" />
+                )}
+              </div>
               <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
-                Execute chamadas HTTP para APIs externas durante o atendimento — o agente decide
-                sozinho quando usar cada uma.
+                {httpToolsGated
+                  ? "Disponível nos planos superiores. Faça upgrade para dar ao agente a capacidade de chamar APIs externas."
+                  : "Execute chamadas HTTP para APIs externas durante o atendimento — o agente decide sozinho quando usar cada uma."}
               </p>
             </div>
-            <button
-              type="button"
-              disabled={readonly || httpToolsLoading}
-              onClick={() => setHttpToolsModalOpen(true)}
-              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-3.5 h-3.5" /> Adicionar
-            </button>
+            {!httpToolsGated && (
+              <button
+                type="button"
+                disabled={readonly || httpToolsLoading}
+                onClick={() => setHttpToolsModalOpen(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar
+              </button>
+            )}
           </div>}
 
           {/* Roadmap */}
@@ -1313,6 +1343,7 @@ export function ConfigFerramentas({
         onClose={handleHttpToolsModalClose}
         agentId={agentId}
         role={role}
+        gated={httpToolsGated}
       />
     </div>
   );
