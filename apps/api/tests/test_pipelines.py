@@ -16,8 +16,8 @@ from app.models.conversation import Conversation
 from app.models.pipeline import Pipeline
 from app.models.pipeline_entry import PipelineEntry
 from app.models.pipeline_stage import PipelineStage
+from app.services.pipeline_service import ensure_conversation_pipeline_entry
 from tests.conftest import _make_client, _make_user, _make_workspace
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -388,8 +388,14 @@ def test_update_agent_pipeline_settings_stage_wrong_pipeline_rejected(
 
 
 def test_new_conversation_creates_pipeline_entry_automatically(
-    db, client_a, growth_subscription_a, workspace_a,
+    db, workspace_a,
 ):
+    # ensure_conversation_pipeline_entry() is called by every real inbound-creation
+    # path (WhatsApp, web widget) right after inserting the Conversation row — there
+    # is no longer a generic POST /conversations to exercise this through (removed:
+    # operators don't create conversations by hand). Drive it the same way those
+    # real callers do: seed a Conversation directly, then call the function.
+    contact = _make_contact(db, workspace_a.id, name="Auto Entry Contact")
     agent = _make_agent(db, workspace_a.id)
     p = _make_pipeline(db, workspace_a.id)
     s = _make_stage(db, workspace_a.id, p.id)
@@ -397,20 +403,12 @@ def test_new_conversation_creates_pipeline_entry_automatically(
     agent.default_pipeline_stage_id = s.id
     db.commit()
 
-    resp = client_a.post(
-        "/conversations",
-        json={
-            "contact_name": "Auto Entry Contact",
-            "agent_id": str(agent.id),
-            "channel_type": "internal",
-            "ai_enabled": False,
-        },
-    )
-    assert resp.status_code == 201
-    conv_id = uuid.UUID(resp.json()["id"])
+    conv = _make_conversation(db, workspace_a.id, contact.id, agent_id=agent.id)
+    ensure_conversation_pipeline_entry(db, conv)
+    db.commit()
 
     entry = db.scalar(
-        select(PipelineEntry).where(PipelineEntry.conversation_id == conv_id)
+        select(PipelineEntry).where(PipelineEntry.conversation_id == conv.id)
     )
     assert entry is not None
     assert entry.pipeline_id == p.id
@@ -419,24 +417,17 @@ def test_new_conversation_creates_pipeline_entry_automatically(
 
 
 def test_agent_without_pipeline_no_entry_created(
-    db, client_a, growth_subscription_a, workspace_a,
+    db, workspace_a,
 ):
+    contact = _make_contact(db, workspace_a.id, name="No Pipeline Contact")
     agent = _make_agent(db, workspace_a.id)
 
-    resp = client_a.post(
-        "/conversations",
-        json={
-            "contact_name": "No Pipeline Contact",
-            "agent_id": str(agent.id),
-            "channel_type": "internal",
-            "ai_enabled": False,
-        },
-    )
-    assert resp.status_code == 201
-    conv_id = uuid.UUID(resp.json()["id"])
+    conv = _make_conversation(db, workspace_a.id, contact.id, agent_id=agent.id)
+    ensure_conversation_pipeline_entry(db, conv)
+    db.commit()
 
     entry = db.scalar(
-        select(PipelineEntry).where(PipelineEntry.conversation_id == conv_id)
+        select(PipelineEntry).where(PipelineEntry.conversation_id == conv.id)
     )
     assert entry is None
 

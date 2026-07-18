@@ -63,8 +63,12 @@ logging.getLogger("anthropic").setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from app.services.conversation_follow_up_scheduler import (  # noqa: PLC0415
+        start_background_sweep as start_follow_up_sweep,
+    )
     from app.services.pipeline_stay_limit_scheduler import start_background_sweep  # noqa: PLC0415
     start_background_sweep()
+    start_follow_up_sweep()
     yield
 
 

@@ -39,16 +39,12 @@ export function ConversationList({
   selectedId,
   onSelect,
   refreshKey = 0,
-  canCreate = false,
-  onNewConversation,
   filterContact = null,
   onClearContactFilter,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
   refreshKey?: number;
-  canCreate?: boolean;
-  onNewConversation?: () => void;
   filterContact?: Contact | null;
   onClearContactFilter?: () => void;
 }) {
@@ -103,15 +99,6 @@ export function ConversationList({
     <aside className="w-72 flex-shrink-0 border-r border-nb-border flex flex-col bg-nb-surface min-h-0">
       <div className="flex items-center justify-between px-4 py-3 border-b border-nb-border flex-shrink-0">
         <h1 className="text-sm font-semibold text-nb-text">Inbox</h1>
-        {canCreate && (
-          <button
-            type="button"
-            onClick={onNewConversation}
-            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-nb-primary-bg text-nb-primary-strong hover:bg-nb-primary/20 transition-colors"
-          >
-            + Nova conversa
-          </button>
-        )}
       </div>
 
       {filterContact && (

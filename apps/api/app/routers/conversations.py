@@ -10,7 +10,7 @@ from app.enums import MemberRole
 from app.models.conversation_message import ConversationMessage
 from app.models.user import User
 from app.models.workspace import Workspace
-from app.schemas.conversation import ConversationCreate, ConversationOut, ConversationUpdate
+from app.schemas.conversation import ConversationOut, ConversationUpdate
 from app.schemas.conversation_message import ConversationMessageCreate, ConversationMessageOut
 from app.services import conversation_message_service, conversation_service
 from app.services.workspace_service import get_current_member_role
@@ -55,17 +55,6 @@ def list_conversations(
         skip=skip,
         limit=limit,
     )
-
-
-@router.post("", response_model=ConversationOut, status_code=status.HTTP_201_CREATED)
-def create_conversation(
-    data: ConversationCreate,
-    current_user: User = Depends(get_current_user),
-    current_workspace: Workspace = Depends(get_current_workspace),
-    db: Session = Depends(get_db),
-) -> ConversationOut:
-    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
-    return conversation_service.create_conversation(db, current_workspace.id, data)
 
 
 @router.get("/{conversation_id}", response_model=ConversationOut)

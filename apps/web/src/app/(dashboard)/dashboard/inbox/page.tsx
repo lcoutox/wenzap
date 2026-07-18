@@ -3,16 +3,9 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import type { Contact, Conversation, MemberRole } from "@/lib/api";
+import type { Contact } from "@/lib/api";
 import { ConversationList } from "@/components/inbox/ConversationList";
 import { ConversationThread } from "@/components/inbox/ConversationThread";
-import { NewConversationModal } from "@/components/inbox/NewConversationModal";
-
-// ── RBAC ──────────────────────────────────────────────────────────────────────
-
-function canWrite(role: MemberRole | null) {
-  return role === "owner" || role === "admin" || role === "member";
-}
 
 // ── Empty panel ───────────────────────────────────────────────────────────────
 
@@ -50,14 +43,8 @@ function InboxContent() {
   const selectedId = searchParams.get("conv");
   const contactIdParam = searchParams.get("contactId");
 
-  const [userRole, setUserRole] = useState<MemberRole | null>(null);
   const [listRefreshKey, setListRefreshKey] = useState(0);
-  const [showModal, setShowModal] = useState(false);
   const [filterContact, setFilterContact] = useState<Contact | null>(null);
-
-  useEffect(() => {
-    api.me().then((me) => setUserRole(me.role)).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!contactIdParam) { setFilterContact(null); return; }
@@ -77,15 +64,6 @@ function InboxContent() {
     setListRefreshKey((k) => k + 1);
   }, []);
 
-  const handleConversationCreated = useCallback(
-    (conv: Conversation) => {
-      setShowModal(false);
-      handleListRefresh();
-      selectConversation(conv.id);
-    },
-    [handleListRefresh, selectConversation],
-  );
-
   return (
     // -m-6 cancels DashboardShell's p-6; height fills viewport below header (h-14 = 3.5rem)
     <div className="-m-6 flex overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
@@ -93,8 +71,6 @@ function InboxContent() {
         selectedId={selectedId}
         onSelect={selectConversation}
         refreshKey={listRefreshKey}
-        canCreate={canWrite(userRole)}
-        onNewConversation={() => setShowModal(true)}
         filterContact={filterContact}
         onClearContactFilter={() => {
           const params = new URLSearchParams(searchParams.toString());
@@ -114,13 +90,6 @@ function InboxContent() {
           <EmptyPanel />
         )}
       </main>
-
-      {showModal && (
-        <NewConversationModal
-          onClose={() => setShowModal(false)}
-          onCreated={handleConversationCreated}
-        />
-      )}
     </div>
   );
 }

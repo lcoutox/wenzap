@@ -181,7 +181,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Automação por tag de conversa | ⬜ Planejado | — |
 | Automação por etapa de pipeline | ⬜ Planejado | — |
 | Agendamento de mensagem | ⬜ Planejado | — |
-| Follow-up automático pós-conversa | ⬜ Planejado | — |
+| Follow-up automático pós-conversa | ✅ Feito | `docs/agents/follow-up-tool-prd.md` |
 
 ---
 
@@ -249,10 +249,10 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 | 6 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
 | 7 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
 | 8 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
-| 9 | Follow-up automático pós-conversa | Automações | Retenção e engagement |
-| 10 | Instagram como canal | Canais | Alta demanda esperada |
-| 11 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
-| 12 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
+~~9. Follow-up automático pós-conversa~~ ✅ **Feito (2026-07-18)** — degraus configuráveis, ver [follow-up-tool-prd.md](../agents/follow-up-tool-prd.md).
+| 9 | Instagram como canal | Canais | Alta demanda esperada |
+| 10 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 11 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
 
 ---
 

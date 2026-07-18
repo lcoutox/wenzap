@@ -177,6 +177,10 @@ def create_message(
     # Update conversation timestamps.
     now = datetime.now(timezone.utc)
     conv.last_message_at = msg.created_at or now
+    if data.sender_type == "customer":
+        # Anchor for conversation_follow_up_scheduler.py — see Conversation model
+        # docstring for why this must be separate from last_message_at.
+        conv.last_customer_message_at = msg.created_at or now
     conv.updated_at = now
 
     # Commit the customer message before triggering auto-reply so that it is

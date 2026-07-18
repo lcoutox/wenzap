@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.agent import AgentCreate, AgentOut, AgentStatusUpdate, AgentUpdate
 from app.schemas.agent_catalog_scope import AgentCatalogScopeOut, AgentCatalogScopeUpdate
+from app.schemas.agent_follow_up import AgentFollowUpSettingsOut, AgentFollowUpSettingsUpdate
 from app.schemas.agent_knowledge_base import (
     AgentKnowledgeBaseCreate,
     AgentKnowledgeBaseOut,
@@ -33,6 +34,7 @@ from app.schemas.playground import (
 from app.services import (
     agent_avatar_service,
     agent_catalog_scope_service,
+    agent_follow_up_service,
     agent_knowledge_base_service,
     agent_service,
     agent_test_service,
@@ -528,4 +530,49 @@ def update_agent_catalog_scope(
     _require_role(_WRITE_ROLES, db, current_workspace, current_user)
     return agent_catalog_scope_service.update_catalog_scope(
         db, agent_id=agent_id, workspace_id=current_workspace.id, data=data
+    )
+
+
+# ── Follow-up endpoints ─────────────────────────────────────────────────────────
+
+def _check_follow_up_feature(db: Session, workspace: Workspace) -> None:
+    if not workspace_allows_feature(db, workspace.id, "follow_up"):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                "Follow-up automático não está disponível no seu plano atual. "
+                "Faça upgrade para acessar este recurso."
+            ),
+        )
+
+
+@router.get("/{agent_id}/follow-up", response_model=AgentFollowUpSettingsOut)
+def get_agent_follow_up_settings(
+    agent_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentFollowUpSettingsOut:
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    return agent_follow_up_service.get_follow_up_settings(
+        db, workspace_id=current_workspace.id, agent_id=agent_id
+    )
+
+
+@router.put("/{agent_id}/follow-up", response_model=AgentFollowUpSettingsOut)
+def update_agent_follow_up_settings(
+    agent_id: uuid.UUID,
+    data: AgentFollowUpSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentFollowUpSettingsOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    # Only gate turning it ON / keeping it configured on — a downgraded
+    # workspace must always be able to switch it off or edit while off,
+    # same "never lock the operator out of disabling" rule as http_tools.
+    if data.is_enabled:
+        _check_follow_up_feature(db, current_workspace)
+    return agent_follow_up_service.update_follow_up_settings(
+        db, workspace_id=current_workspace.id, agent_id=agent_id, data=data
     )

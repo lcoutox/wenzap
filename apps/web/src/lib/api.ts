@@ -502,15 +502,6 @@ export type Conversation = {
   last_seen_page_title: string | null;
 };
 
-export type ConversationCreateInput = {
-  contact_id?: string;
-  contact_name?: string;
-  agent_id?: string;
-  channel_type?: ChannelType;
-  channel_external_id?: string;
-  ai_enabled?: boolean;
-};
-
 export type ConversationUpdateInput = {
   status?: ConversationStatus;
   agent_id?: string | null;
@@ -774,6 +765,24 @@ export type AgentToolUpdateInput = Partial<{
   config: HttpToolConfig | RequestHumanToolConfig;
   sort_order: number;
 }>;
+
+export type AgentFollowUpStep = {
+  step_order: number;
+  delay_hours: number;
+};
+
+export type AgentFollowUpSettings = {
+  is_enabled: boolean;
+  custom_instructions: string | null;
+  steps: AgentFollowUpStep[];
+};
+
+export type AgentFollowUpSettingsUpdateInput = {
+  is_enabled: boolean;
+  custom_instructions: string | null;
+  // Order in the array IS the step order — no step_order field to manage.
+  steps: { delay_hours: number }[];
+};
 
 export type CatalogItemCreateInput = {
   name: string;
@@ -1403,11 +1412,6 @@ export const api = {
     },
     get: (conversationId: string) =>
       cookieFetch<Conversation>(`/conversations/${conversationId}`),
-    create: (data: ConversationCreateInput) =>
-      cookieFetch<Conversation>("/conversations", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
     update: (conversationId: string, data: ConversationUpdateInput) =>
       cookieFetch<Conversation>(`/conversations/${conversationId}`, {
         method: "PATCH",
@@ -1761,6 +1765,15 @@ export const api = {
       delete: (agentId: string, toolId: string) =>
         cookieFetch<void>(`/agents/${agentId}/tools/request-human/${toolId}`, {
           method: "DELETE",
+        }),
+    },
+    followUp: {
+      get: (agentId: string) =>
+        cookieFetch<AgentFollowUpSettings>(`/agents/${agentId}/follow-up`),
+      update: (agentId: string, data: AgentFollowUpSettingsUpdateInput) =>
+        cookieFetch<AgentFollowUpSettings>(`/agents/${agentId}/follow-up`, {
+          method: "PUT",
+          body: JSON.stringify(data),
         }),
     },
   },

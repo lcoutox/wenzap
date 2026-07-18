@@ -280,6 +280,7 @@ def _create_message_idempotent(
     db.add(message)
 
     conversation.last_message_at = now
+    conversation.last_customer_message_at = now
     conversation.updated_at = now
     db.flush()
 

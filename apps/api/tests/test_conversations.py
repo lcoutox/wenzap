@@ -1,9 +1,13 @@
 """
 Tests for Phase 5.1.3 — Conversations API.
 
+POST /conversations (manual creation) was removed — operators don't create
+conversations by hand, only inbound channels (WhatsApp, web widget) do, via
+conversation_service.create_conversation() called directly by their own
+services, never through this router. Fixtures here use _seed_conversation()
+(direct DB insert) instead.
+
 Covers:
-  1. ConversationCreate (contact_id / contact_name / agent_id / channel_type validation)
-  2. Inline contact creation via contact_name
   3. Listing (default excludes archived, status filter, skip/limit, tenant isolation)
   4. GET (existing, cross-tenant 404, not found 404)
   5. PATCH (status, ai_enabled, agent_id, assigned_user_id, null-clears, cross-tenant 404)
@@ -69,162 +73,6 @@ def _make_member(db: Session, workspace: Workspace, role: MemberRole) -> User:
     ))
     db.flush()
     return user
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 1. CREATE — contact_id
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def test_create_conversation_with_contact_id(
-    db: Session, client_a, workspace_a: Workspace
-):
-    contact = _seed_contact(db, workspace_a)
-    db.commit()
-
-    r = client_a.post("/conversations", json={"contact_id": str(contact.id)})
-    assert r.status_code == 201
-    body = r.json()
-    assert body["contact_id"] == str(contact.id)
-    assert body["status"] == "open"
-    assert body["channel_type"] == "internal"
-    assert body["ai_enabled"] is True
-    assert body["workspace_id"] == str(workspace_a.id)
-    assert body["last_message_at"] is None
-
-
-def test_create_conversation_with_agent_id(
-    db: Session, client_a, workspace_a: Workspace
-):
-    contact = _seed_contact(db, workspace_a)
-    agent = _seed_agent(db, workspace_a)
-    db.commit()
-
-    r = client_a.post(
-        "/conversations",
-        json={"contact_id": str(contact.id), "agent_id": str(agent.id)},
-    )
-    assert r.status_code == 201
-    assert r.json()["agent_id"] == str(agent.id)
-
-
-def test_create_conversation_channel_type(
-    db: Session, client_a, workspace_a: Workspace
-):
-    contact = _seed_contact(db, workspace_a)
-    db.commit()
-
-    r = client_a.post(
-        "/conversations",
-        json={"contact_id": str(contact.id), "channel_type": "web_widget"},
-    )
-    assert r.status_code == 201
-    assert r.json()["channel_type"] == "web_widget"
-
-
-def test_create_conversation_invalid_channel_type(
-    db: Session, client_a, workspace_a: Workspace
-):
-    contact = _seed_contact(db, workspace_a)
-    db.commit()
-
-    r = client_a.post(
-        "/conversations",
-        json={"contact_id": str(contact.id), "channel_type": "telegram"},
-    )
-    assert r.status_code == 422
-
-
-def test_create_conversation_no_contact_422(db: Session, client_a):
-    r = client_a.post("/conversations", json={})
-    assert r.status_code == 422
-
-
-def test_create_conversation_both_contact_fields_422(
-    db: Session, client_a, workspace_a: Workspace
-):
-    contact = _seed_contact(db, workspace_a)
-    db.commit()
-
-    r = client_a.post(
-        "/conversations",
-        json={"contact_id": str(contact.id), "contact_name": "Extra"},
-    )
-    assert r.status_code == 422
-
-
-def test_create_conversation_contact_other_workspace_404(
-    db: Session, client_a, workspace_b: Workspace
-):
-    contact = _seed_contact(db, workspace_b, name="WS-B Contact")
-    db.commit()
-
-    r = client_a.post("/conversations", json={"contact_id": str(contact.id)})
-    assert r.status_code == 404
-
-
-def test_create_conversation_agent_other_workspace_404(
-    db: Session, client_a, workspace_a: Workspace, workspace_b: Workspace
-):
-    contact = _seed_contact(db, workspace_a)
-    agent = _seed_agent(db, workspace_b)
-    db.commit()
-
-    r = client_a.post(
-        "/conversations",
-        json={"contact_id": str(contact.id), "agent_id": str(agent.id)},
-    )
-    assert r.status_code == 404
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 2. CREATE — inline contact via contact_name
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def test_create_conversation_with_contact_name_creates_contact(
-    db: Session, client_a, workspace_a: Workspace
-):
-    r = client_a.post("/conversations", json={"contact_name": "Ana Souza"})
-    assert r.status_code == 201
-    body = r.json()
-    # A contact_id must be returned (the inline-created contact).
-    assert body["contact_id"] is not None
-
-    # The contact must exist in the DB scoped to workspace_a.
-    contact = db.scalar(
-        __import__("sqlalchemy", fromlist=["select"]).select(Contact).where(
-            Contact.id == uuid.UUID(body["contact_id"]),
-            Contact.workspace_id == workspace_a.id,
-        )
-    )
-    assert contact is not None
-    assert contact.name == "Ana Souza"
-
-
-def test_create_conversation_contact_name_stripped(
-    db: Session, client_a, workspace_a: Workspace
-):
-    # Leading/trailing spaces in contact_name must be stripped before saving.
-    r = client_a.post("/conversations", json={"contact_name": "  Ana Souza  "})
-    assert r.status_code == 201
-    contact_id = r.json()["contact_id"]
-    from sqlalchemy import select as _select
-    contact = db.scalar(
-        _select(Contact).where(Contact.id == uuid.UUID(contact_id))
-    )
-    assert contact is not None
-    assert contact.name == "Ana Souza"
-
-
-def test_create_conversation_contact_name_blank_422(db: Session, client_a):
-    r = client_a.post("/conversations", json={"contact_name": "   "})
-    assert r.status_code == 422
-
-
-def test_create_conversation_contact_name_empty_422(db: Session, client_a):
-    r = client_a.post("/conversations", json={"contact_name": ""})
-    assert r.status_code == 422
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -553,18 +401,6 @@ def test_viewer_can_get_conversation(
     assert r.status_code == 200
 
 
-def test_viewer_cannot_create_conversation(
-    db: Session, workspace_a: Workspace, user_a: User
-):
-    viewer = _make_member(db, workspace_a, MemberRole.viewer)
-    contact = _seed_contact(db, workspace_a)
-    db.commit()
-
-    with _make_client(db, viewer, workspace_a) as client:
-        r = client.post("/conversations", json={"contact_id": str(contact.id)})
-    assert r.status_code == 403
-
-
 def test_viewer_cannot_update_conversation(
     db: Session, workspace_a: Workspace, user_a: User
 ):
@@ -576,19 +412,6 @@ def test_viewer_cannot_update_conversation(
     with _make_client(db, viewer, workspace_a) as client:
         r = client.patch(f"/conversations/{conv.id}", json={"status": "resolved"})
     assert r.status_code == 403
-
-
-@pytest.mark.parametrize("role", [MemberRole.member, MemberRole.admin, MemberRole.owner])
-def test_write_roles_can_create_conversation(
-    db: Session, workspace_a: Workspace, user_a: User, role: MemberRole
-):
-    user = _make_member(db, workspace_a, role)
-    contact = _seed_contact(db, workspace_a)
-    db.commit()
-
-    with _make_client(db, user, workspace_a) as client:
-        r = client.post("/conversations", json={"contact_id": str(contact.id)})
-    assert r.status_code == 201
 
 
 @pytest.mark.parametrize("role", [MemberRole.member, MemberRole.admin, MemberRole.owner])
@@ -690,25 +513,6 @@ def test_get_conversation_includes_contact_name(
     r = client_a.get(f"/conversations/{conv.id}")
     assert r.status_code == 200
     assert r.json()["contact_name"] == "Pedro Alves"
-
-
-def test_create_with_contact_id_response_includes_contact_name(
-    db: Session, client_a, workspace_a: Workspace
-):
-    contact = _seed_contact(db, workspace_a, name="Carla Dias")
-    db.commit()
-
-    r = client_a.post("/conversations", json={"contact_id": str(contact.id)})
-    assert r.status_code == 201
-    assert r.json()["contact_name"] == "Carla Dias"
-
-
-def test_create_with_contact_name_response_includes_contact_name(
-    db: Session, client_a, workspace_a: Workspace
-):
-    r = client_a.post("/conversations", json={"contact_name": "Inline User"})
-    assert r.status_code == 201
-    assert r.json()["contact_name"] == "Inline User"
 
 
 def test_conversation_without_contact_returns_null_contact_name(

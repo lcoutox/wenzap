@@ -10,11 +10,7 @@ from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.workspace_member import WorkspaceMember
-from app.schemas.contact import ContactCreate
-from app.schemas.conversation import ConversationCreate, ConversationUpdate
-from app.services.contact_service import create_contact
-from app.services.pipeline_service import ensure_conversation_pipeline_entry
-from app.services.plan_service import count_new_conversation
+from app.schemas.conversation import ConversationUpdate
 
 _MAX_LIMIT = 100
 
@@ -103,18 +99,6 @@ def list_conversations(
     ]
 
 
-def _require_contact(db: Session, workspace_id: uuid.UUID, contact_id: uuid.UUID) -> Contact:
-    contact = db.scalar(
-        select(Contact).where(
-            Contact.id == contact_id,
-            Contact.workspace_id == workspace_id,
-        )
-    )
-    if not contact:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contato não encontrado.")
-    return contact
-
-
 def _require_agent(db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
     agent = db.scalar(
         select(Agent).where(
@@ -142,50 +126,6 @@ def _require_active_member(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="assigned_user_id não é um membro ativo deste workspace.",
         )
-
-
-def create_conversation(
-    db: Session,
-    workspace_id: uuid.UUID,
-    data: ConversationCreate,
-) -> dict:
-    if data.contact_id is not None:
-        contact = _require_contact(db, workspace_id, data.contact_id)
-        contact_id = data.contact_id
-        contact_name: str | None = contact.name
-    else:
-        # Inline contact creation from contact_name (strip to avoid leading/trailing spaces).
-        inline = create_contact(
-            db,
-            workspace_id,
-            ContactCreate(name=data.contact_name.strip()),  # type: ignore[union-attr]
-        )
-        contact_id = inline.id
-        contact_name = inline.name
-
-    agent_id: uuid.UUID | None = None
-    if data.agent_id is not None:
-        _require_agent(db, workspace_id, data.agent_id)
-        agent_id = data.agent_id
-
-    count_new_conversation(db, workspace_id)
-
-    conv = Conversation(
-        workspace_id=workspace_id,
-        contact_id=contact_id,
-        agent_id=agent_id,
-        channel_type=data.channel_type,
-        channel_external_id=data.channel_external_id,
-        status="open",
-        ai_enabled=data.ai_enabled,
-        last_message_at=None,
-    )
-    db.add(conv)
-    db.flush()
-    ensure_conversation_pipeline_entry(db, conv)
-    db.commit()
-    db.refresh(conv)
-    return _conv_to_dict(conv, contact_name)
 
 
 def get_conversation_or_404(

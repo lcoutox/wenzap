@@ -24,6 +24,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import type {
   AgentCatalogScope,
+  AgentFollowUpSettings,
   AgentKnowledgeBase,
   AgentTool,
   AgentToolCreateInput,
@@ -1390,6 +1391,189 @@ function RequestHumanConfigModal({
   );
 }
 
+// ── Follow-up config modal ──────────────────────────────────────────────────────
+
+function FollowUpStepsEditor({
+  steps,
+  onChange,
+  readonly,
+}: {
+  steps: number[];
+  onChange: (steps: number[]) => void;
+  readonly: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {steps.map((hours, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="text-xs text-nb-muted w-20 flex-shrink-0">
+            Follow-up #{i + 1}
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            value={hours}
+            disabled={readonly}
+            onChange={(e) =>
+              onChange(steps.map((h, j) => (j === i ? Number(e.target.value) : h)))
+            }
+            className={`${inputCls} w-24`}
+          />
+          <span className="text-xs text-nb-muted">horas de silêncio</span>
+          {!readonly && (
+            <button
+              type="button"
+              onClick={() => onChange(steps.filter((_, j) => j !== i))}
+              className="ml-auto p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      ))}
+      {!readonly && steps.length < 5 && (
+        <button
+          type="button"
+          onClick={() => onChange([...steps, (steps[steps.length - 1] ?? 0) + 6])}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add degrau
+        </button>
+      )}
+    </div>
+  );
+}
+
+function FollowUpConfigModal({
+  open,
+  onClose,
+  agentId,
+  settings,
+  readonly,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  settings: AgentFollowUpSettings | null;
+  readonly: boolean;
+  onSaved: (updated: AgentFollowUpSettings) => void;
+}) {
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [steps, setSteps] = useState<number[]>([6, 24, 72]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setCustomInstructions(settings?.custom_instructions || "");
+    setSteps(
+      settings && settings.steps.length > 0
+        ? settings.steps.map((s) => s.delay_hours)
+        : [6, 24, 72]
+    );
+    setError(null);
+  }, [open, settings]);
+
+  async function handleSave(nextEnabled: boolean) {
+    setError(null);
+    if (nextEnabled) {
+      const sorted = [...steps].sort((a, b) => a - b);
+      if (steps.some((h, i) => h !== sorted[i]) || new Set(steps).size !== steps.length) {
+        setError("Os prazos dos degraus devem ser crescentes e sem repetição (ex: 6, 24, 72).");
+        return;
+      }
+      if (steps.length === 0) {
+        setError("Configure ao menos um degrau para ativar.");
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      const updated = await api.agents.followUp.update(agentId, {
+        is_enabled: nextEnabled,
+        custom_instructions: customInstructions.trim() || null,
+        steps: steps.map((delay_hours) => ({ delay_hours })),
+      });
+      onSaved(updated);
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar follow-up.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Follow-up automático">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          Quando o cliente para de responder, o agente manda mensagens de reengajamento nos
+          prazos configurados abaixo. Para de mandar sozinho assim que o cliente responder.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Degraus (prazos crescentes desde a última mensagem do cliente)
+          </label>
+          <FollowUpStepsEditor steps={steps} onChange={setSteps} readonly={readonly} />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Instrução de tom (opcional)
+          </label>
+          <textarea
+            value={customInstructions}
+            onChange={(e) => setCustomInstructions(e.target.value)}
+            placeholder="Ex: Pergunte se ainda tem dúvida sobre o preço, sem ser insistente."
+            rows={3}
+            disabled={readonly}
+            className={inputCls}
+          />
+          <p className="text-xs text-nb-muted mt-1">
+            A IA já sabe qual degrau é e há quanto tempo o cliente está em silêncio — esse campo
+            é só pra guiar o tom quando você quiser.
+          </p>
+        </div>
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-between gap-2 pt-2 border-t border-nb-border">
+          {settings?.is_enabled ? (
+            <button
+              type="button"
+              onClick={() => handleSave(false)}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-nb-danger border border-nb-danger/20 rounded-xl hover:bg-nb-danger/10 transition-colors disabled:opacity-50"
+            >
+              Desativar
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando…" : settings?.is_enabled ? "Salvar" : "Ativar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Roadmap card ──────────────────────────────────────────────────────────────
 
 function RoadmapCard({
@@ -1434,6 +1618,7 @@ export function ConfigFerramentas({
   planCode: string | null;
 }) {
   const httpToolsGated = planCode !== null && !planAllowsFeature(planCode, "http_tools");
+  const followUpGated = planCode !== null && !planAllowsFeature(planCode, "follow_up");
   // KB state (for active tools display)
   const [kbList, setKbList] = useState<AgentKnowledgeBase[]>([]);
   const [kbLoading, setKbLoading] = useState(true);
@@ -1451,6 +1636,19 @@ export function ConfigFerramentas({
   const [httpToolsLoading, setHttpToolsLoading] = useState(true);
   const [httpToolsModalOpen, setHttpToolsModalOpen] = useState(false);
   const [requestHumanModalOpen, setRequestHumanModalOpen] = useState(false);
+
+  // Follow-up state
+  const [followUpSettings, setFollowUpSettings] = useState<AgentFollowUpSettings | null>(null);
+  const [followUpLoading, setFollowUpLoading] = useState(true);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
+
+  useEffect(() => {
+    api.agents.followUp
+      .get(agentId)
+      .then(setFollowUpSettings)
+      .catch(() => setFollowUpSettings(null))
+      .finally(() => setFollowUpLoading(false));
+  }, [agentId]);
 
   function refreshAgentTools() {
     setHttpToolsLoading(true);
@@ -1522,6 +1720,8 @@ export function ConfigFerramentas({
     (t): t is RequestHumanAgentTool => t.tool_type === "request_human"
   );
   const requestHumanActive = !httpToolsLoading && requestHumanTool?.is_enabled === true;
+
+  const followUpActive = !followUpLoading && followUpSettings?.is_enabled === true;
 
   const activeTools: React.ReactNode[] = [];
 
@@ -1647,6 +1847,36 @@ export function ConfigFerramentas({
         <button
           type="button"
           onClick={() => setRequestHumanModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (followUpActive) {
+    const stepsLabel = followUpSettings
+      ? followUpSettings.steps.map((s) => `${s.delay_hours}h`).join(" → ")
+      : "";
+    activeTools.push(
+      <div key="follow-up" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <Zap className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Follow-up</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5">{stepsLabel}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setFollowUpModalOpen(true)}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
         >
           <Settings2 className="w-3.5 h-3.5" />
@@ -1810,12 +2040,37 @@ export function ConfigFerramentas({
             </button>
           </div>}
 
+          {/* Follow-up — só mostra se não está ativo */}
+          {!followUpActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <Zap className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-nb-text">Follow-up</h3>
+                {followUpGated && (
+                  <PlanGateBadge label={minPlanLabel("follow_up")} variant="premium" size="xs" />
+                )}
+              </div>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                {followUpGated
+                  ? "Disponível nos planos superiores. Faça upgrade para reengajar clientes automaticamente após silêncio."
+                  : "Envie mensagens de acompanhamento automáticas quando o cliente parar de responder."}
+              </p>
+            </div>
+            {!followUpGated && (
+              <button
+                type="button"
+                disabled={readonly || followUpLoading}
+                onClick={() => setFollowUpModalOpen(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar
+              </button>
+            )}
+          </div>}
+
           {/* Roadmap */}
-          <RoadmapCard
-            icon={Zap}
-            name="Follow-up"
-            description="Envie mensagens de acompanhamento automáticas após o atendimento."
-          />
           <RoadmapCard
             icon={Check}
             name="Marcar como resolvido"
@@ -1850,6 +2105,14 @@ export function ConfigFerramentas({
         agentId={agentId}
         tool={requestHumanTool ?? null}
         readonly={readonly}
+      />
+      <FollowUpConfigModal
+        open={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        agentId={agentId}
+        settings={followUpSettings}
+        readonly={readonly}
+        onSaved={setFollowUpSettings}
       />
     </div>
   );

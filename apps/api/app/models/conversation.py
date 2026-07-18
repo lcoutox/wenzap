@@ -61,6 +61,15 @@ class Conversation(Base):
     last_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Updated ONLY when the new message is from the customer (sender_type="customer").
+    # This is the anchor conversation_follow_up_scheduler.py measures silence from —
+    # last_message_at alone can't be used for that, since our own follow-up sends
+    # update it too, which would keep pushing the "how long has the customer been
+    # quiet" clock forward every time we send one. NULL for conversations that
+    # existed before this column was added, until their next customer message.
+    last_customer_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
