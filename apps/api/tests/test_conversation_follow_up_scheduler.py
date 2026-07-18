@@ -82,14 +82,19 @@ def _make_conversation(
     return conv
 
 
-def _enable_follow_up(db, workspace_id, agent_id, steps_hours: list[int], custom_instructions=None):
+def _enable_follow_up(
+    db, workspace_id, agent_id, steps_hours: list[int], custom_instructions=None,
+    step_instructions: list[str | None] | None = None,
+):
     db.add(AgentFollowUpSettings(
         workspace_id=workspace_id, agent_id=agent_id, is_enabled=True,
         custom_instructions=custom_instructions,
     ))
-    for i, hours in enumerate(steps_hours):
+    step_instructions = step_instructions or [None] * len(steps_hours)
+    for i, (hours, instr) in enumerate(zip(steps_hours, step_instructions)):
         db.add(AgentFollowUpStep(
             workspace_id=workspace_id, agent_id=agent_id, step_order=i, delay_hours=hours,
+            custom_instructions=instr,
         ))
     db.commit()
 
@@ -280,3 +285,26 @@ def test_claim_uniqueness_prevents_duplicate_send_for_same_period(
 
     assert sent == 0
     mock_complete.assert_not_called()
+
+
+def test_sweep_combines_general_and_step_instructions_in_prompt(
+    db, workspace_a, scale_subscription_a
+):
+    model = _make_model(db, workspace_a.id)
+    agent = _make_agent(db, workspace_a.id, model)
+    _enable_follow_up(
+        db, workspace_a.id, agent.id, [6],
+        custom_instructions="Seja sempre gentil.",
+        step_instructions=["Ofereça um cupom de 10% de desconto."],
+    )
+    _make_conversation(
+        db, workspace_a.id, agent.id, last_customer_message_at=_NOW - timedelta(hours=7)
+    )
+
+    with patch("app.llm.client.complete", return_value=_final_response()) as mock_complete:
+        sent = run_sweep_once(db)
+
+    assert sent == 1
+    prompt_text = mock_complete.call_args.args[0].messages[0].content
+    assert "Seja sempre gentil." in prompt_text
+    assert "Ofereça um cupom de 10% de desconto." in prompt_text

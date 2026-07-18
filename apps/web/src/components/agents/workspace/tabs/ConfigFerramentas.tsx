@@ -1393,49 +1393,74 @@ function RequestHumanConfigModal({
 
 // ── Follow-up config modal ──────────────────────────────────────────────────────
 
+type FollowUpStepDraft = {
+  delay_hours: number;
+  // "" means no per-step instruction — falls back to the general one (or none).
+  custom_instructions: string;
+};
+
 function FollowUpStepsEditor({
   steps,
   onChange,
   readonly,
 }: {
-  steps: number[];
-  onChange: (steps: number[]) => void;
+  steps: FollowUpStepDraft[];
+  onChange: (steps: FollowUpStepDraft[]) => void;
   readonly: boolean;
 }) {
   return (
-    <div className="space-y-2">
-      {steps.map((hours, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="text-xs text-nb-muted w-20 flex-shrink-0">
-            Follow-up #{i + 1}
-          </span>
+    <div className="space-y-3">
+      {steps.map((step, i) => (
+        <div key={i} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-nb-muted w-20 flex-shrink-0">
+              Follow-up #{i + 1}
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={step.delay_hours}
+              disabled={readonly}
+              onChange={(e) =>
+                onChange(steps.map((s, j) => (
+                  j === i ? { ...s, delay_hours: Number(e.target.value) } : s
+                )))
+              }
+              className={`${inputCls} w-24`}
+            />
+            <span className="text-xs text-nb-muted">horas de silêncio</span>
+            {!readonly && (
+              <button
+                type="button"
+                onClick={() => onChange(steps.filter((_, j) => j !== i))}
+                className="ml-auto p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <input
-            type="number"
-            min={1}
-            max={500}
-            value={hours}
+            type="text"
+            value={step.custom_instructions}
             disabled={readonly}
             onChange={(e) =>
-              onChange(steps.map((h, j) => (j === i ? Number(e.target.value) : h)))
+              onChange(steps.map((s, j) => (
+                j === i ? { ...s, custom_instructions: e.target.value } : s
+              )))
             }
-            className={`${inputCls} w-24`}
+            placeholder="Instrução específica deste degrau (opcional — sem ela, usa só a geral abaixo)"
+            className={`${inputCls} text-xs`}
           />
-          <span className="text-xs text-nb-muted">horas de silêncio</span>
-          {!readonly && (
-            <button
-              type="button"
-              onClick={() => onChange(steps.filter((_, j) => j !== i))}
-              className="ml-auto p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       ))}
       {!readonly && steps.length < 5 && (
         <button
           type="button"
-          onClick={() => onChange([...steps, (steps[steps.length - 1] ?? 0) + 6])}
+          onClick={() => onChange([
+            ...steps,
+            { delay_hours: (steps[steps.length - 1]?.delay_hours ?? 0) + 6, custom_instructions: "" },
+          ])}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
         >
           <Plus className="w-3.5 h-3.5" /> Add degrau
@@ -1461,7 +1486,11 @@ function FollowUpConfigModal({
   onSaved: (updated: AgentFollowUpSettings) => void;
 }) {
   const [customInstructions, setCustomInstructions] = useState("");
-  const [steps, setSteps] = useState<number[]>([6, 24, 72]);
+  const [steps, setSteps] = useState<FollowUpStepDraft[]>([
+    { delay_hours: 6, custom_instructions: "" },
+    { delay_hours: 24, custom_instructions: "" },
+    { delay_hours: 72, custom_instructions: "" },
+  ]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1470,17 +1499,25 @@ function FollowUpConfigModal({
     setCustomInstructions(settings?.custom_instructions || "");
     setSteps(
       settings && settings.steps.length > 0
-        ? settings.steps.map((s) => s.delay_hours)
-        : [6, 24, 72]
+        ? settings.steps.map((s) => ({
+            delay_hours: s.delay_hours,
+            custom_instructions: s.custom_instructions || "",
+          }))
+        : [
+            { delay_hours: 6, custom_instructions: "" },
+            { delay_hours: 24, custom_instructions: "" },
+            { delay_hours: 72, custom_instructions: "" },
+          ]
     );
     setError(null);
   }, [open, settings]);
 
   async function handleSave(nextEnabled: boolean) {
     setError(null);
+    const hours = steps.map((s) => s.delay_hours);
     if (nextEnabled) {
-      const sorted = [...steps].sort((a, b) => a - b);
-      if (steps.some((h, i) => h !== sorted[i]) || new Set(steps).size !== steps.length) {
+      const sorted = [...hours].sort((a, b) => a - b);
+      if (hours.some((h, i) => h !== sorted[i]) || new Set(hours).size !== hours.length) {
         setError("Os prazos dos degraus devem ser crescentes e sem repetição (ex: 6, 24, 72).");
         return;
       }
@@ -1494,7 +1531,10 @@ function FollowUpConfigModal({
       const updated = await api.agents.followUp.update(agentId, {
         is_enabled: nextEnabled,
         custom_instructions: customInstructions.trim() || null,
-        steps: steps.map((delay_hours) => ({ delay_hours })),
+        steps: steps.map((s) => ({
+          delay_hours: s.delay_hours,
+          custom_instructions: s.custom_instructions.trim() || null,
+        })),
       });
       onSaved(updated);
       onClose();
@@ -1522,19 +1562,19 @@ function FollowUpConfigModal({
 
         <div>
           <label className="block text-xs font-medium text-nb-secondary mb-1.5">
-            Instrução de tom (opcional)
+            Instrução geral de tom (opcional, vale para todos os degraus)
           </label>
           <textarea
             value={customInstructions}
             onChange={(e) => setCustomInstructions(e.target.value)}
-            placeholder="Ex: Pergunte se ainda tem dúvida sobre o preço, sem ser insistente."
+            placeholder="Ex: Nunca seja insistente, sempre deixe a porta aberta pro cliente voltar."
             rows={3}
             disabled={readonly}
             className={inputCls}
           />
           <p className="text-xs text-nb-muted mt-1">
             A IA já sabe qual degrau é e há quanto tempo o cliente está em silêncio — esse campo
-            é só pra guiar o tom quando você quiser.
+            e o de cada degrau acima são só pra guiar o tom/conteúdo quando você quiser.
           </p>
         </div>
 

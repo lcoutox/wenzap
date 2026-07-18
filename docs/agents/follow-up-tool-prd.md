@@ -4,7 +4,8 @@
 "Em breve" nesta leva (depois de HTTP Tool e Solicitar Humano), mas **arquiteturalmente
 diferente dos dois**: não é uma tool que o modelo decide chamar no meio de um turno, é uma
 varredura em background que decide iniciar um turno novo quando não há nenhuma mensagem
-disparando isso. 2117 testes de backend passando (22 novos), build de frontend limpo. Ver
+disparando isso. 2101 testes de backend passando (28 novos, incluindo o adendo de instrução por
+degrau), build de frontend limpo. Ver
 "Estado da implementação" no fim.
 
 ## Contexto
@@ -66,13 +67,12 @@ conversas antigas no deploy.
 ### Configuração — dois satélites novos, mesmo padrão do módulo
 
 - **`agent_follow_up_settings`** (1:1 por agente): `is_enabled`, `custom_instructions` (opcional,
-  um campo só, compartilhado entre todos os degraus — o prompt já informa ao modelo qual
-  follow-up é e quanto tempo passou, então ele varia o tom sozinho sem precisar de um campo por
-  degrau).
-- **`agent_follow_up_steps`** (1:N, ordenado): `step_order` + `delay_hours`. Editado como lista
-  na UI (adicionar/remover degrau); salvo como replace completo da lista a cada PUT (mesma
-  simplicidade do "reorder stages" do Pipeline). Validação: horas estritamente crescentes entre
-  degraus, 1 a 5 degraus, 1–500h por degrau.
+  instrução **geral**, aplicada a todos os degraus — o prompt já informa ao modelo qual follow-up
+  é e quanto tempo passou, então ele varia o tom sozinho mesmo sem nenhuma instrução específica).
+- **`agent_follow_up_steps`** (1:N, ordenado): `step_order` + `delay_hours` + `custom_instructions`
+  (opcional, ver adendo abaixo). Editado como lista na UI (adicionar/remover degrau); salvo como
+  replace completo da lista a cada PUT (mesma simplicidade do "reorder stages" do Pipeline).
+  Validação: horas estritamente crescentes entre degraus, 1 a 5 degraus, 1–500h por degrau.
 - Endpoint dedicado `GET`/`PUT /agents/{agent_id}/follow-up`, no padrão do
   `AgentCatalogScope` (não embutido no `PATCH /agents/{id}` geral como
   model/prompt settings).
@@ -120,10 +120,29 @@ Créditos: cobrados pela **mesma tabela de créditos por modelo** já usada nas 
 (`calculate_credits`), não um valor fixo tipo o "2 créditos" do Chatvolt — mais justo, escala
 com o modelo escolhido pelo agente.
 
+## Adendo (2026-07-18) — instrução opcional por degrau
+
+Pergunta do Lucas depois do primeiro deploy: dá pra dar uma instrução diferente pra cada degrau,
+não só uma geral pra todos? Faz sentido pra sequências onde os degraus não são só "o mesmo
+lembrete com tom mais forte", mas mudam de estratégia mesmo — ex: degrau 1 é um "oi, ainda aí?",
+degrau 3 já oferece um cupom de desconto específico. O campo único de `custom_instructions` (na
+Fase 1) não cobre bem esse caso.
+
+**Design**: novo campo opcional `custom_instructions` direto em `agent_follow_up_steps` (uma
+coluna, sem tabela nova). Continua opcional — se o operador deixar em branco, o degrau usa só a
+instrução geral (ou nenhuma), mantendo a simplicidade de configuração de hoje pra quem não
+precisa de controle fino. Quando preenchido, as duas instruções (geral + do degrau) são
+combinadas no prompt do follow-up, rotuladas separadamente, pra deixar claro pro modelo qual é
+orientação de tom permanente e qual é específica daquele degrau — não uma substitui a outra.
+
+Sem mudança na trava de concorrência (`conversation_follow_ups`), no gate de plano, nem no
+sweep — só o texto passado pra `_build_follow_up_instruction` muda.
+
 ## Migrations necessárias
 
-Uma migration (`069`): `conversations.last_customer_message_at` (nullable) +
+Migration `069`: `conversations.last_customer_message_at` (nullable) +
 `agent_follow_up_settings` + `agent_follow_up_steps` + `conversation_follow_ups`.
+Migration `070` (adendo): `agent_follow_up_steps.custom_instructions` (nullable).
 
 ## Feature flag / gating
 
@@ -190,7 +209,26 @@ com o bug latente — vale um follow-up dedicado depois.
 - `apps/web/src/lib/api.ts` — `AgentFollowUpSettings`/`AgentFollowUpStep` types,
   `api.agents.followUp.get/update`.
 
-**Verificação:** 2117 testes de backend passando (mesmos 8 pré-existentes sem relação de
+**Verificação:** 2095 testes de backend passando na entrega principal (mesmos 8 pré-existentes sem relação de
 sempre), `tsc --noEmit` limpo, `next build` limpo. **Não testado visualmente em navegador nem em
 produção** — sem ferramenta de automação de browser na sessão, e o sweep em si só é observável
 esperando horas reais passarem; roteiro de teste manual documentado no NexBrain.
+
+## Estado da implementação do adendo (2026-07-18)
+
+- `alembic/versions/070_agent_follow_up_step_instructions.py` — coluna
+  `agent_follow_up_steps.custom_instructions` (nullable, sem mudança nas outras tabelas).
+- `app/models/agent_follow_up_step.py` / `app/schemas/agent_follow_up.py` — campo novo em
+  `AgentFollowUpStepInput`/`Out`.
+- `app/services/conversation_follow_up_service.py` — `_build_follow_up_instruction` agora recebe
+  `general_instructions`/`step_instructions` separados, combina os dois no prompt (rotulados,
+  nenhum substitui o outro).
+- `app/services/conversation_follow_up_scheduler.py` — passa `next_step.custom_instructions`
+  pra `generate_and_send_follow_up`.
+- Testes novos: `tests/test_conversation_follow_up_service.py` (4 casos — nenhuma/geral/degrau/
+  ambas as instruções), mais 1 teste de persistência em `test_agent_follow_up_settings.py` e 1
+  ponta a ponta em `test_conversation_follow_up_scheduler.py` confirmando que as duas instruções
+  chegam combinadas no prompt real enviado ao LLM. 2101 testes de backend passando no total (28
+  novos desde o `v0.3.9`), `tsc`/`next build` limpos.
+- Frontend: editor de degraus (`FollowUpStepsEditor`) ganhou um campo de texto por linha,
+  opcional; campo geral existente renomeado pra deixar claro que vale pra todos os degraus.

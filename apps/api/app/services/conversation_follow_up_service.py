@@ -58,7 +58,8 @@ def generate_and_send_follow_up(
     step_number: int,
     total_steps: int,
     hours_silent: float,
-    custom_instructions: str | None,
+    general_instructions: str | None,
+    step_instructions: str | None,
     claim: ConversationFollowUp,
 ) -> bool:
     """
@@ -111,7 +112,8 @@ def generate_and_send_follow_up(
         hours_silent=hours_silent,
         step_number=step_number,
         total_steps=total_steps,
-        custom_instructions=custom_instructions,
+        general_instructions=general_instructions,
+        step_instructions=step_instructions,
     )
     user_turn = f"{history}\n\n{instruction}" if history else instruction
 
@@ -177,8 +179,17 @@ def generate_and_send_follow_up(
 # ── Prompt construction helpers ─────────────────────────────────────────────────
 
 def _build_follow_up_instruction(
-    *, hours_silent: float, step_number: int, total_steps: int, custom_instructions: str | None
+    *,
+    hours_silent: float,
+    step_number: int,
+    total_steps: int,
+    general_instructions: str | None,
+    step_instructions: str | None,
 ) -> str:
+    """general_instructions applies to every step (tone guidance);
+    step_instructions is specific to THIS step (e.g. "offer a 10% discount
+    code") — both are surfaced, labeled separately, neither overrides the
+    other. Either or both may be None."""
     hours = round(hours_silent)
     base = (
         f"O cliente está em silêncio há aproximadamente {hours} horas. Esta é a mensagem de "
@@ -186,8 +197,13 @@ def _build_follow_up_instruction(
         "para este agente. Escreva uma mensagem curta, natural e não invasiva para tentar "
         "reengajar o cliente, sem soar como cobrança e sem se repetir do que já foi dito."
     )
-    if custom_instructions:
-        base += f"\n\nInstrução adicional do operador: {custom_instructions}"
+    if general_instructions:
+        base += (
+            "\n\nInstrução geral do operador (vale para todos os follow-ups): "
+            f"{general_instructions}"
+        )
+    if step_instructions:
+        base += f"\n\nInstrução específica deste follow-up #{step_number}: {step_instructions}"
     return base
 
 

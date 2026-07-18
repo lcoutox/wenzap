@@ -8,6 +8,7 @@ _MAX_DELAY_HOURS = 500
 class AgentFollowUpStepOut(BaseModel):
     step_order: int
     delay_hours: int
+    custom_instructions: str | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -15,9 +16,14 @@ class AgentFollowUpStepOut(BaseModel):
 class AgentFollowUpStepInput(BaseModel):
     """step_order is NOT accepted here — it's assigned from list position on
     save (0-indexed), so the operator only ever thinks in terms of "the Nth
-    step", never a number they have to keep in sync themselves."""
+    step", never a number they have to keep in sync themselves.
+
+    custom_instructions is optional and specific to this step — combined
+    with (not replacing) AgentFollowUpSettingsUpdate.custom_instructions,
+    which applies to every step."""
 
     delay_hours: int = Field(ge=_MIN_DELAY_HOURS, le=_MAX_DELAY_HOURS)
+    custom_instructions: str | None = Field(default=None, max_length=1000)
 
 
 class AgentFollowUpSettingsOut(BaseModel):

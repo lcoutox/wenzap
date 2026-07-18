@@ -769,6 +769,9 @@ export type AgentToolUpdateInput = Partial<{
 export type AgentFollowUpStep = {
   step_order: number;
   delay_hours: number;
+  // Optional, specific to this step — combined with (not replacing) the
+  // agent-level custom_instructions below.
+  custom_instructions: string | null;
 };
 
 export type AgentFollowUpSettings = {
@@ -781,7 +784,7 @@ export type AgentFollowUpSettingsUpdateInput = {
   is_enabled: boolean;
   custom_instructions: string | null;
   // Order in the array IS the step order — no step_order field to manage.
-  steps: { delay_hours: number }[];
+  steps: { delay_hours: number; custom_instructions?: string | null }[];
 };
 
 export type CatalogItemCreateInput = {

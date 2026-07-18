@@ -70,9 +70,9 @@ def test_enable_follow_up_succeeds_on_scale_plan(client_a, scale_subscription_a,
     body = r.json()
     assert body["is_enabled"] is True
     assert body["steps"] == [
-        {"step_order": 0, "delay_hours": 6},
-        {"step_order": 1, "delay_hours": 24},
-        {"step_order": 2, "delay_hours": 72},
+        {"step_order": 0, "delay_hours": 6, "custom_instructions": None},
+        {"step_order": 1, "delay_hours": 24, "custom_instructions": None},
+        {"step_order": 2, "delay_hours": 72, "custom_instructions": None},
     ]
 
 
@@ -119,7 +119,28 @@ def test_update_replaces_step_list_fully(client_a, scale_subscription_a, ai_mode
         json=_enable_payload(steps=[{"delay_hours": 12}]),
     )
     assert r.status_code == 200
-    assert r.json()["steps"] == [{"step_order": 0, "delay_hours": 12}]
+    assert r.json()["steps"] == [
+        {"step_order": 0, "delay_hours": 12, "custom_instructions": None}
+    ]
+
+
+def test_step_custom_instructions_persisted(client_a, scale_subscription_a, ai_model):
+    agent_id = _create_agent(client_a, ai_model)
+    r = client_a.put(
+        f"/agents/{agent_id}/follow-up",
+        json=_enable_payload(steps=[
+            {"delay_hours": 6, "custom_instructions": None},
+            {"delay_hours": 24, "custom_instructions": "Ofereça um cupom de 10% de desconto."},
+        ]),
+    )
+    assert r.status_code == 200
+    steps = r.json()["steps"]
+    assert steps[0]["custom_instructions"] is None
+    assert steps[1]["custom_instructions"] == "Ofereça um cupom de 10% de desconto."
+
+    # GET reflects the same persisted values.
+    r2 = client_a.get(f"/agents/{agent_id}/follow-up")
+    assert r2.json()["steps"][1]["custom_instructions"] == "Ofereça um cupom de 10% de desconto."
 
 
 def test_follow_up_settings_isolated_per_agent(client_a, scale_subscription_a, ai_model):

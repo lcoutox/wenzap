@@ -55,6 +55,7 @@ def update_follow_up_settings(
             agent_id=agent_id,
             step_order=order,
             delay_hours=step.delay_hours,
+            custom_instructions=step.custom_instructions,
         ))
 
     db.commit()

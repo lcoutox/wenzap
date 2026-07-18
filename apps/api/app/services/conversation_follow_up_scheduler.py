@@ -165,7 +165,8 @@ def _maybe_send_follow_up(
         step_number=next_index + 1,
         total_steps=len(steps),
         hours_silent=elapsed_hours,
-        custom_instructions=settings.custom_instructions,
+        general_instructions=settings.custom_instructions,
+        step_instructions=next_step.custom_instructions,
         claim=claim,
     )
     if not sent:
