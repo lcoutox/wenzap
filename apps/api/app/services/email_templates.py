@@ -309,3 +309,146 @@ Ver conversa no Inbox:
 Wenzap — Plataforma de Agentes de IA para Empresas
 https://app.wenzap.com.br
 """
+
+
+def operator_assigned_email_html(
+    *, contact_name: str | None, reason: str, conversation_url: str
+) -> str:
+    who = contact_name or "Um cliente"
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Conversa atribuída a você</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0B0F14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">  <!-- noqa: E501 -->
+
+  <!-- Preheader (hidden) -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
+    O agente de IA atribuiu uma conversa com {who} a você.
+    &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+
+  <!-- Outer wrapper -->
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+         style="background-color:#0B0F14;padding:40px 16px;">
+    <tr>
+      <td align="center">
+
+        <!-- Card -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+               style="max-width:580px;background-color:#ffffff;border-radius:20px;overflow:hidden;
+                      box-shadow:0 8px 40px rgba(0,0,0,0.5);">
+
+          <!-- Top accent bar -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#00E09A 0%,#20e7b2 100%);
+                        height:5px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:36px 40px 24px;border-bottom:1px solid #F3F0FF;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="vertical-align:middle;">
+                    <div style="display:inline-block;width:36px;height:36px;
+                                background:linear-gradient(135deg,#00E09A,#20e7b2);
+                                border-radius:10px;text-align:center;line-height:36px;
+                                font-size:20px;font-weight:900;color:#ffffff;
+                                font-family:-apple-system,sans-serif;
+                                vertical-align:middle;">W</div>
+                  </td>
+                  <td style="padding-left:12px;vertical-align:middle;">
+                    <span style="font-size:18px;font-weight:700;color:#0F0A1E;
+                                  letter-spacing:-0.3px;">Wenzap</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px 28px;">
+              <h1 style="margin:0 0 16px;font-size:24px;font-weight:700;
+                          color:#0F0A1E;line-height:1.3;letter-spacing:-0.4px;">
+                Uma conversa foi atribuída a você
+              </h1>
+              <p style="margin:0 0 24px;font-size:15px;color:#4B5563;line-height:1.65;">
+                O agente de IA decidiu que a conversa com {who} precisa de você especificamente
+                — as respostas automáticas foram pausadas nesta conversa.
+              </p>
+
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td style="background-color:#DCFDF0;border-radius:10px;
+                              padding:14px 18px;border-left:3px solid #00E09A;">
+                    <p style="margin:0;font-size:13px;color:#4B5563;line-height:1.5;">
+                      <strong>Motivo:</strong> {reason}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td align="center" style="padding-top:28px;padding-bottom:8px;">
+                    <a href="{conversation_url}"
+                       style="display:inline-block;padding:14px 36px;
+                              background:linear-gradient(135deg,#00E09A 0%,#20e7b2 100%);
+                              color:#ffffff;text-decoration:none;border-radius:12px;
+                              font-size:15px;font-weight:600;letter-spacing:0.1px;
+                              mso-padding-alt:0;line-height:1;">
+                      Ver conversa no Inbox
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 40px 32px;border-top:1px solid #F3F0FF;">
+              <p style="margin:0;font-size:12px;color:#9CA3AF;line-height:1.6;text-align:center;">
+                Wenzap &mdash; Plataforma de Agentes de IA para Empresas<br />
+                Você está recebendo este e-mail porque foi designado como responsável por um
+                agente no
+                <a href="https://app.wenzap.com.br"
+                   style="color:#00E09A;text-decoration:none;">app.wenzap.com.br</a>.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- /Card -->
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>"""
+
+
+def operator_assigned_email_text(
+    *, contact_name: str | None, reason: str, conversation_url: str
+) -> str:
+    who = contact_name or "Um cliente"
+    return f"""Uma conversa foi atribuída a você
+===================================
+
+O agente de IA decidiu que a conversa com {who} precisa de você especificamente
+— as respostas automáticas foram pausadas nesta conversa.
+
+Motivo: {reason}
+
+Ver conversa no Inbox:
+{conversation_url}
+
+--
+Wenzap — Plataforma de Agentes de IA para Empresas
+https://app.wenzap.com.br
+"""

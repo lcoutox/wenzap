@@ -117,7 +117,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Assumir conversa (human handoff) | ✅ Feito | — |
 | Marcar conversa como resolvida (manual + automática pelo agente) | ✅ Feito | `docs/agents/mark-resolved-tool-prd.md` |
 | Filtros e busca no inbox | ⬜ Planejado | — |
-| Atribuição de conversa a operador | ⬜ Planejado | — |
+| Atribuição de conversa a operador | ✅ Feito | `docs/agents/agent-tools-batch-2-prd.md` |
 | Tags em conversas | ⬜ Planejado | — |
 | Notas internas em conversas | ⬜ Planejado | — |
 | Resumo automático da conversa (AI) | ⬜ Planejado | — |
@@ -169,7 +169,9 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Solicitar humano (handoff estruturado, sem gate de plano) | ✅ Feito | `docs/agents/request-human-tool-prd.md` |
 | Follow-up automático (reengajamento por silêncio) | ✅ Feito | `docs/agents/follow-up-tool-prd.md` |
 | Marcar como resolvido (sem gate de plano) | ✅ Feito | `docs/agents/mark-resolved-tool-prd.md` |
-| Criação de card no pipeline (action) | ⬜ Planejado | — |
+| Captura de dado estruturado do contato (action) | ✅ Feito | `docs/agents/agent-tools-batch-2-prd.md` |
+| Mover/criar card no pipeline (action, gate `pipelines`) | ✅ Feito | `docs/agents/agent-tools-batch-2-prd.md` |
+| Atribuir a operador específico (action, sem gate de plano) | ✅ Feito | `docs/agents/agent-tools-batch-2-prd.md` |
 | Criação de contato (action) | ⬜ Planejado | — |
 | Envio de e-mail (action) | ⬜ Planejado | — |
 
@@ -246,16 +248,16 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 | 1 | Fonte via URL (scraping) | Base de Conhecimento | Reduz fricção no onboarding |
 | 2 | Filtros e busca no inbox | Inbox | Necessário assim que volume crescer |
 | 3 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
-| 4 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
-| 5 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
-| 6 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
-| 7 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
-| 8 | Instagram como canal | Canais | Alta demanda esperada |
-| 9 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
-| 10 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
+| 4 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
+| 5 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
+| 6 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
+| 7 | Instagram como canal | Canais | Alta demanda esperada |
+| 8 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 9 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
 
 ~~Marcar conversa como resolvida~~ ✅ **Feito (2026-07-18)** — automático pelo agente via tool "Marcar como resolvido", ver [mark-resolved-tool-prd.md](../agents/mark-resolved-tool-prd.md).
 ~~Follow-up automático pós-conversa~~ ✅ **Feito (2026-07-18)** — degraus configuráveis, ver [follow-up-tool-prd.md](../agents/follow-up-tool-prd.md).
+~~Atribuição de conversa a operador~~ ✅ **Feito (2026-07-18)** — automático pelo agente via tool "Atribuir a um operador", parte do lote 2 de tools (junto com captura de dado e ação de pipeline), ver [agent-tools-batch-2-prd.md](../agents/agent-tools-batch-2-prd.md).
 
 ---
 

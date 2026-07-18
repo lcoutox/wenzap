@@ -95,11 +95,73 @@ class MarkResolvedToolConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-AgentToolConfig = HttpToolConfig | RequestHumanToolConfig | MarkResolvedToolConfig
+class ContactDataField(BaseModel):
+    """One piece of customer data the operator wants the agent to try to
+    capture (agent-tools-batch-2-prd.md) — `key` doubles as the
+    ContactVariable.key it's stored under AND the model-facing input_schema
+    property name, so it's identifier-constrained like HttpToolParam.name."""
+
+    key: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str = Field(default="", max_length=300)
+
+
+class CaptureContactDataToolConfig(BaseModel):
+    """
+    Config for tool_type="capture_contact_data". At least one field is
+    required — an empty capture tool has nothing to do, so (unlike the
+    Follow-up satellite, which always exists in a valid "disabled, no
+    steps yet" state) this config simply can't be constructed empty.
+    """
+
+    fields: list[ContactDataField] = Field(min_length=1, max_length=5)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PipelineActionToolConfig(BaseModel):
+    """
+    Config for tool_type="pipeline_action" — a fixed target stage the
+    operator picks; the model only ever decides *when* to trigger it (its
+    input_schema has zero properties, see agent_tool_service.build_tool_schema).
+    Wanting the agent to choose between different destinations means
+    creating multiple tool instances, each with its own trigger description
+    — same trick already used for multiple HTTP tools on one agent.
+    """
+
+    pipeline_id: uuid.UUID
+    stage_id: uuid.UUID
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AssignOperatorToolConfig(BaseModel):
+    """
+    Config for tool_type="assign_operator" — a fixed target team member the
+    operator picks; same "one instance per destination" pattern as
+    PipelineActionToolConfig. `user_id` is validated as an active workspace
+    member at save time (agent_tool_service._validate_tool_config).
+    """
+
+    user_id: uuid.UUID
+
+    model_config = ConfigDict(extra="forbid")
+
+
+AgentToolConfig = (
+    HttpToolConfig
+    | RequestHumanToolConfig
+    | MarkResolvedToolConfig
+    | CaptureContactDataToolConfig
+    | PipelineActionToolConfig
+    | AssignOperatorToolConfig
+)
 
 
 class AgentToolCreate(BaseModel):
-    tool_type: Literal["http_request", "request_human", "mark_resolved"]
+    tool_type: Literal[
+        "http_request", "request_human", "mark_resolved",
+        "capture_contact_data", "pipeline_action", "assign_operator",
+    ]
     name: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_]+$")
     description: str = Field(min_length=1, max_length=500)
     is_enabled: bool = True

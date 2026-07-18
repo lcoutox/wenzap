@@ -10,6 +10,14 @@ row into something the LLM tool-calling loop can actually use:
   pauses the AI on the conversation and notifies workspace admins by email.
 - execute_mark_resolved_tool(): tool_type="mark_resolved" (mark-resolved-tool-prd.md) —
   sets the conversation to status="resolved" with a summary.
+- execute_capture_contact_data_tool(): tool_type="capture_contact_data"
+  (agent-tools-batch-2-prd.md) — upserts ContactVariable rows.
+- execute_pipeline_action_tool(): tool_type="pipeline_action"
+  (agent-tools-batch-2-prd.md) — creates/moves the conversation's PipelineEntry
+  to an operator-fixed target stage.
+- execute_assign_operator_tool(): tool_type="assign_operator"
+  (agent-tools-batch-2-prd.md) — assigns the conversation to an operator-fixed
+  team member and notifies them by email.
 
 The CRUD functions and build_tool_schema/build_tool_dispatch are written
 generically so a future tool type plugs in without reshaping this module.
@@ -31,14 +39,20 @@ from app.enums import MemberRole, MemberStatus
 from app.models.agent import Agent
 from app.models.agent_tool import AgentTool
 from app.models.conversation import Conversation
+from app.models.pipeline import Pipeline
+from app.models.pipeline_entry import PipelineEntry
+from app.models.pipeline_stage import PipelineStage
 from app.models.user import User
 from app.models.workspace_member import WorkspaceMember
 from app.schemas.agent_tool import (
     AgentToolConfig,
     AgentToolCreate,
     AgentToolUpdate,
+    AssignOperatorToolConfig,
+    CaptureContactDataToolConfig,
     HttpToolConfig,
     MarkResolvedToolConfig,
+    PipelineActionToolConfig,
     RequestHumanToolConfig,
 )
 from app.services.agent_llm_executor import ToolExecutor
@@ -77,7 +91,7 @@ def create_agent_tool(
     db: Session, workspace_id: uuid.UUID, agent_id: uuid.UUID, data: AgentToolCreate
 ) -> AgentTool:
     _get_agent_or_404(db, workspace_id, agent_id)
-    _validate_tool_config(data.tool_type, data.config)
+    _validate_tool_config(db, workspace_id, data.tool_type, data.config)
 
     existing = db.scalar(
         select(AgentTool).where(AgentTool.agent_id == agent_id, AgentTool.name == data.name)
@@ -95,7 +109,10 @@ def create_agent_tool(
         name=data.name,
         description=data.description,
         is_enabled=data.is_enabled,
-        config=data.config.model_dump(),
+        # mode="json" matters: PipelineActionToolConfig/AssignOperatorToolConfig
+        # have UUID fields, and a bare model_dump() leaves raw UUID objects that
+        # the JSONB column's JSON serializer can't encode.
+        config=data.config.model_dump(mode="json"),
         sort_order=data.sort_order,
     )
     db.add(tool)
@@ -115,8 +132,8 @@ def update_agent_tool(
     tool = _get_tool_or_404(db, workspace_id, agent_id, tool_id)
 
     if data.config is not None:
-        _validate_tool_config(tool.tool_type, data.config)
-        tool.config = data.config.model_dump()
+        _validate_tool_config(db, workspace_id, tool.tool_type, data.config)
+        tool.config = data.config.model_dump(mode="json")
     if data.name is not None and data.name != tool.name:
         existing = db.scalar(
             select(AgentTool).where(
@@ -255,6 +272,48 @@ def build_tool_schema(tool: AgentTool) -> dict:
                 "required": ["resolution_summary"],
             },
         }
+    if tool.tool_type == "capture_contact_data":
+        # Every field is optional — the model captures whatever it's confident
+        # about, whenever it appears in the conversation; no field is required
+        # on any single call (agent-tools-batch-2-prd.md).
+        fields = tool.config.get("fields") or []
+        properties = {
+            f["key"]: {
+                "type": "string",
+                "description": f.get("description") or f"Value for '{f['key']}'.",
+            }
+            for f in fields
+        }
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": {"type": "object", "properties": properties},
+        }
+    if tool.tool_type == "pipeline_action":
+        # Pure toggle — the target pipeline/stage is fixed by the operator in
+        # config, the model only ever decides *when* to call it, zero input.
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": {"type": "object", "properties": {}},
+        }
+    if tool.tool_type == "assign_operator":
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": (
+                            "Motivo pelo qual o atendimento está sendo atribuído a esse operador."
+                        ),
+                    }
+                },
+                "required": ["reason"],
+            },
+        }
     raise ValueError(f"Unknown tool_type: {tool.tool_type!r}")
 
 
@@ -287,6 +346,22 @@ def build_tool_dispatch(
         elif tool.tool_type == "mark_resolved":
             dispatch[tool.name] = _make_mark_resolved_executor(
                 db=db, workspace_id=workspace_id, conversation=conversation
+            )
+        elif tool.tool_type == "capture_contact_data":
+            dispatch[tool.name] = _make_capture_contact_data_executor(
+                db=db, workspace_id=workspace_id, conversation=conversation
+            )
+        elif tool.tool_type == "pipeline_action":
+            config = tool.config
+            dispatch[tool.name] = _make_pipeline_action_executor(
+                db=db, workspace_id=workspace_id, conversation=conversation,
+                pipeline_id=config.get("pipeline_id"), stage_id=config.get("stage_id"),
+            )
+        elif tool.tool_type == "assign_operator":
+            config = tool.config
+            dispatch[tool.name] = _make_assign_operator_executor(
+                db=db, workspace_id=workspace_id, conversation=conversation,
+                user_id=config.get("user_id"),
             )
     return dispatch
 
@@ -322,6 +397,53 @@ def _make_mark_resolved_executor(
         return execute_mark_resolved_tool(
             db=db, workspace_id=workspace_id, conversation=conversation,
             resolution_summary=summary,
+        )
+    return executor
+
+
+def _make_capture_contact_data_executor(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+) -> ToolExecutor:
+    def executor(input_: dict) -> str:
+        captured = {k: str(v) for k, v in input_.items() if v is not None and str(v).strip()}
+        return execute_capture_contact_data_tool(
+            db=db, workspace_id=workspace_id, conversation=conversation, captured_fields=captured,
+        )
+    return executor
+
+
+def _make_pipeline_action_executor(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    pipeline_id: str | None,
+    stage_id: str | None,
+) -> ToolExecutor:
+    def executor(_input: dict) -> str:
+        return execute_pipeline_action_tool(
+            db=db, workspace_id=workspace_id, conversation=conversation,
+            pipeline_id=uuid.UUID(pipeline_id) if pipeline_id else None,
+            stage_id=uuid.UUID(stage_id) if stage_id else None,
+        )
+    return executor
+
+
+def _make_assign_operator_executor(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    user_id: str | None,
+) -> ToolExecutor:
+    def executor(input_: dict) -> str:
+        reason = str(input_.get("reason") or "Motivo não informado.")
+        return execute_assign_operator_tool(
+            db=db, workspace_id=workspace_id, conversation=conversation,
+            user_id=uuid.UUID(user_id) if user_id else None, reason=reason,
         )
     return executor
 
@@ -555,7 +677,196 @@ def execute_mark_resolved_tool(
     return "Conversa marcada como resolvida com sucesso."
 
 
-def _validate_tool_config(tool_type: str, config: AgentToolConfig) -> None:
+# ── Capture-contact-data tool execution ─────────────────────────────────────────
+
+def execute_capture_contact_data_tool(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    captured_fields: dict[str, str],
+) -> str:
+    """
+    Upsert one ContactVariable row per captured field (agent-tools-batch-2-prd.md).
+
+    Not idempotency-guarded like the other tools — upserting is safe to call
+    repeatedly as more data trickles in across the conversation (each call
+    only ever touches the keys it actually captured this turn).
+    """
+    if conversation is None:
+        keys = ", ".join(captured_fields) or "nenhum"
+        return f"[Simulação de Playground] Em uma conversa real, isso salvaria: {keys}."
+
+    assert db is not None and workspace_id is not None
+
+    if not captured_fields:
+        return "Nenhum dado novo para salvar."
+
+    if conversation.contact_id is None:
+        return "Não há um contato associado a esta conversa — nada foi salvo."
+
+    from app.services.contact_service import upsert_contact_variable  # noqa: PLC0415
+
+    for key, value in captured_fields.items():
+        upsert_contact_variable(
+            db, workspace_id, conversation.contact_id, key, value[:2000], source="ai"
+        )
+
+    return f"Dados salvos no contato: {', '.join(captured_fields)}."
+
+
+# ── Pipeline-action tool execution ──────────────────────────────────────────────
+
+def execute_pipeline_action_tool(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    pipeline_id: uuid.UUID | None,
+    stage_id: uuid.UUID | None,
+) -> str:
+    """
+    Move (or create) the conversation's PipelineEntry to the operator-fixed
+    target stage (agent-tools-batch-2-prd.md). Reuses pipeline_service's
+    create_entry/move_entry unchanged — find-or-create by (pipeline_id,
+    conversation_id), same lookup ensure_conversation_pipeline_entry() uses.
+    """
+    if conversation is None:
+        return (
+            "[Simulação de Playground] Em uma conversa real, isso moveria o card "
+            "desta conversa no pipeline configurado."
+        )
+
+    assert db is not None and workspace_id is not None and pipeline_id and stage_id
+
+    from app.schemas.pipeline import PipelineEntryCreate, PipelineEntryMove  # noqa: PLC0415
+    from app.services import pipeline_service  # noqa: PLC0415
+
+    existing = db.scalar(
+        select(PipelineEntry).where(
+            PipelineEntry.pipeline_id == pipeline_id,
+            PipelineEntry.conversation_id == conversation.id,
+        )
+    )
+    if existing is not None:
+        if existing.stage_id == stage_id:
+            return "O card já estava nessa etapa do pipeline."
+        pipeline_service.move_entry(
+            db, workspace_id, pipeline_id, existing.id, PipelineEntryMove(stage_id=stage_id)
+        )
+    else:
+        pipeline_service.create_entry(
+            db, workspace_id, pipeline_id,
+            PipelineEntryCreate(conversation_id=conversation.id, stage_id=stage_id),
+        )
+
+    return "Card do pipeline atualizado com sucesso."
+
+
+# ── Assign-operator tool execution ──────────────────────────────────────────────
+
+def execute_assign_operator_tool(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    user_id: uuid.UUID | None,
+    reason: str,
+) -> str:
+    """
+    Assign *conversation* to the operator-fixed *user_id*, same end state as
+    a human manually clicking "Assumir" (assigned_user_id + ai_enabled=False),
+    plus a captured reason and a best-effort email to that ONE operator
+    (unlike request_human, which broadcasts to every owner/admin — here we
+    already know exactly who should look).
+
+    Idempotent: if the conversation already has any assignee, does nothing
+    (whoever is already on it takes priority over a second tool call).
+    """
+    if conversation is None:
+        return (
+            "[Simulação de Playground] Em uma conversa real, isso atribuiria a conversa "
+            f"ao operador configurado. Motivo: {reason}"
+        )
+
+    assert db is not None and workspace_id is not None and user_id is not None
+
+    if conversation.assigned_user_id is not None:
+        return "A conversa já está atribuída a um operador."
+
+    member = db.scalar(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+            WorkspaceMember.status == MemberStatus.active.value,
+        )
+    )
+    if member is None:
+        return "O operador configurado não está mais disponível neste workspace."
+
+    conversation.assigned_user_id = user_id
+    conversation.ai_enabled = False
+    conversation.assignment_reason = reason[:500]
+    db.flush()
+
+    try:
+        _notify_operator_assigned(
+            db, workspace_id=workspace_id, conversation=conversation,
+            user_id=user_id, reason=reason,
+        )
+    except Exception:
+        logger.exception(
+            "assign_operator_notify_failed workspace_id=%s conversation_id=%s",
+            workspace_id, conversation.id,
+        )
+
+    return (
+        "Atendimento atribuído ao operador com sucesso. Ele foi notificado por e-mail. "
+        "Informe o cliente de forma breve e educada que alguém vai continuar o atendimento."
+    )
+
+
+def _notify_operator_assigned(
+    db: Session, *, workspace_id: uuid.UUID, conversation: Conversation,
+    user_id: uuid.UUID, reason: str,
+) -> None:
+    """Best-effort email to the ONE assigned operator. Never raises to the caller."""
+    from app.services.email_service import get_email_service  # noqa: PLC0415
+    from app.services.email_templates import (  # noqa: PLC0415
+        operator_assigned_email_html,
+        operator_assigned_email_text,
+    )
+
+    recipient = db.scalar(select(User.email).where(User.id == user_id))
+    if not recipient:
+        return
+
+    contact_name = None
+    if conversation.contact_id is not None:
+        from app.models.contact import Contact  # noqa: PLC0415
+        contact_name = db.scalar(
+            select(Contact.name).where(Contact.id == conversation.contact_id)
+        )
+
+    conversation_url = f"{settings.app_url}/dashboard/inbox?conversation={conversation.id}"
+    html = operator_assigned_email_html(
+        contact_name=contact_name, reason=reason, conversation_url=conversation_url
+    )
+    text = operator_assigned_email_text(
+        contact_name=contact_name, reason=reason, conversation_url=conversation_url
+    )
+
+    get_email_service().send(
+        to=recipient,
+        subject="Uma conversa foi atribuída a você — Wenzap",
+        html=html,
+        text=text,
+    )
+
+
+def _validate_tool_config(
+    db: Session, workspace_id: uuid.UUID, tool_type: str, config: AgentToolConfig
+) -> None:
     if tool_type == "http_request":
         if not isinstance(config, HttpToolConfig):
             raise HTTPException(
@@ -571,6 +882,63 @@ def _validate_tool_config(tool_type: str, config: AgentToolConfig) -> None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Config inválida para tool_type='{tool_type}'.",
+            )
+    elif tool_type == "capture_contact_data":
+        if not isinstance(config, CaptureContactDataToolConfig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Config inválida para tool_type='capture_contact_data'.",
+            )
+        keys = [f.key for f in config.fields]
+        if len(keys) != len(set(keys)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="As chaves dos campos devem ser únicas.",
+            )
+    elif tool_type == "pipeline_action":
+        if not isinstance(config, PipelineActionToolConfig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Config inválida para tool_type='pipeline_action'.",
+            )
+        pipeline = db.scalar(
+            select(Pipeline).where(
+                Pipeline.id == config.pipeline_id, Pipeline.workspace_id == workspace_id
+            )
+        )
+        if pipeline is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Pipeline não encontrado."
+            )
+        stage = db.scalar(
+            select(PipelineStage).where(
+                PipelineStage.id == config.stage_id,
+                PipelineStage.pipeline_id == config.pipeline_id,
+                PipelineStage.workspace_id == workspace_id,
+            )
+        )
+        if stage is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Etapa não encontrada neste pipeline.",
+            )
+    elif tool_type == "assign_operator":
+        if not isinstance(config, AssignOperatorToolConfig):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Config inválida para tool_type='assign_operator'.",
+            )
+        member = db.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == config.user_id,
+                WorkspaceMember.status == MemberStatus.active.value,
+            )
+        )
+        if member is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="O usuário selecionado não é um membro ativo deste workspace.",
             )
 
 

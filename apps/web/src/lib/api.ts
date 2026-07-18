@@ -493,6 +493,11 @@ export type Conversation = {
   // conversation moves away from "resolved" (manually or auto-reopened by
   // a new customer message).
   resolution_summary: string | null;
+  // Reason captured from the model when the "assign_operator" tool assigned
+  // this conversation to a specific team member. Null while unassigned or
+  // manually assigned via "Assumir"; cleared again when the conversation
+  // returns to AI.
+  assignment_reason: string | null;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
@@ -730,6 +735,32 @@ export type RequestHumanToolConfig = {};
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type MarkResolvedToolConfig = {};
 
+// One piece of customer data the operator wants the agent to try to capture
+// (agent-tools-batch-2-prd.md). `key` doubles as the ContactVariable.key it's
+// stored under.
+export type ContactDataField = {
+  key: string;
+  description: string;
+};
+
+export type CaptureContactDataToolConfig = {
+  fields: ContactDataField[];
+};
+
+// Fixed target stage the operator picks — the model only ever decides *when*
+// to trigger it. Wanting the agent to choose between destinations means
+// creating multiple tool instances, one per destination.
+export type PipelineActionToolConfig = {
+  pipeline_id: string;
+  stage_id: string;
+};
+
+// Fixed target team member the operator picks — same "one instance per
+// destination" pattern as PipelineActionToolConfig.
+export type AssignOperatorToolConfig = {
+  user_id: string;
+};
+
 type AgentToolBase = {
   id: string;
   workspace_id: string;
@@ -745,11 +776,17 @@ type AgentToolBase = {
 export type AgentTool =
   | (AgentToolBase & { tool_type: "http_request"; config: HttpToolConfig })
   | (AgentToolBase & { tool_type: "request_human"; config: RequestHumanToolConfig })
-  | (AgentToolBase & { tool_type: "mark_resolved"; config: MarkResolvedToolConfig });
+  | (AgentToolBase & { tool_type: "mark_resolved"; config: MarkResolvedToolConfig })
+  | (AgentToolBase & { tool_type: "capture_contact_data"; config: CaptureContactDataToolConfig })
+  | (AgentToolBase & { tool_type: "pipeline_action"; config: PipelineActionToolConfig })
+  | (AgentToolBase & { tool_type: "assign_operator"; config: AssignOperatorToolConfig });
 
 export type HttpAgentTool = Extract<AgentTool, { tool_type: "http_request" }>;
 export type RequestHumanAgentTool = Extract<AgentTool, { tool_type: "request_human" }>;
 export type MarkResolvedAgentTool = Extract<AgentTool, { tool_type: "mark_resolved" }>;
+export type CaptureContactDataAgentTool = Extract<AgentTool, { tool_type: "capture_contact_data" }>;
+export type PipelineActionAgentTool = Extract<AgentTool, { tool_type: "pipeline_action" }>;
+export type AssignOperatorAgentTool = Extract<AgentTool, { tool_type: "assign_operator" }>;
 
 export type AgentToolCreateInput =
   | {
@@ -775,13 +812,43 @@ export type AgentToolCreateInput =
       is_enabled?: boolean;
       config?: MarkResolvedToolConfig;
       sort_order?: number;
+    }
+  | {
+      tool_type: "capture_contact_data";
+      name: string;
+      description: string;
+      is_enabled?: boolean;
+      config: CaptureContactDataToolConfig;
+      sort_order?: number;
+    }
+  | {
+      tool_type: "pipeline_action";
+      name: string;
+      description: string;
+      is_enabled?: boolean;
+      config: PipelineActionToolConfig;
+      sort_order?: number;
+    }
+  | {
+      tool_type: "assign_operator";
+      name: string;
+      description: string;
+      is_enabled?: boolean;
+      config: AssignOperatorToolConfig;
+      sort_order?: number;
     };
 
 export type AgentToolUpdateInput = Partial<{
   name: string;
   description: string;
   is_enabled: boolean;
-  config: HttpToolConfig | RequestHumanToolConfig | MarkResolvedToolConfig;
+  config:
+    | HttpToolConfig
+    | RequestHumanToolConfig
+    | MarkResolvedToolConfig
+    | CaptureContactDataToolConfig
+    | PipelineActionToolConfig
+    | AssignOperatorToolConfig;
   sort_order: number;
 }>;
 
@@ -1802,6 +1869,54 @@ export const api = {
         }),
       delete: (agentId: string, toolId: string) =>
         cookieFetch<void>(`/agents/${agentId}/tools/mark-resolved/${toolId}`, {
+          method: "DELETE",
+        }),
+    },
+    captureContactDataTool: {
+      create: (agentId: string, data: AgentToolCreateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/capture-contact-data`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (agentId: string, toolId: string, data: AgentToolUpdateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/capture-contact-data/${toolId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (agentId: string, toolId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/tools/capture-contact-data/${toolId}`, {
+          method: "DELETE",
+        }),
+    },
+    pipelineActionTool: {
+      create: (agentId: string, data: AgentToolCreateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/pipeline-action`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (agentId: string, toolId: string, data: AgentToolUpdateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/pipeline-action/${toolId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (agentId: string, toolId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/tools/pipeline-action/${toolId}`, {
+          method: "DELETE",
+        }),
+    },
+    assignOperatorTool: {
+      create: (agentId: string, data: AgentToolCreateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/assign-operator`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (agentId: string, toolId: string, data: AgentToolUpdateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/assign-operator/${toolId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (agentId: string, toolId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/tools/assign-operator/${toolId}`, {
           method: "DELETE",
         }),
     },

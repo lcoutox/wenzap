@@ -476,6 +476,163 @@ def delete_agent_mark_resolved_tool(
     agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
 
 
+@router.post(
+    "/{agent_id}/tools/capture-contact-data",
+    response_model=AgentToolOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_capture_contact_data_tool(
+    agent_id: uuid.UUID,
+    data: AgentToolCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    # No feature gate — same product decision as "Solicitar humano"/"Marcar como
+    # resolvido": basic Inbox/CRM capability, not premium automation (agent-tools-batch-2-prd.md).
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _require_tool_type(data, "capture_contact_data")
+    return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.patch("/{agent_id}/tools/capture-contact-data/{tool_id}", response_model=AgentToolOut)
+def update_agent_capture_contact_data_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    data: AgentToolUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.update_agent_tool(
+        db, current_workspace.id, agent_id, tool_id, data
+    )
+
+
+@router.delete(
+    "/{agent_id}/tools/capture-contact-data/{tool_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_agent_capture_contact_data_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
+
+
+def _check_pipelines_feature(db: Session, workspace: Workspace) -> None:
+    if not workspace_allows_feature(db, workspace.id, "pipelines"):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                "Pipelines não estão disponíveis no seu plano atual. "
+                "Faça upgrade para acessar este recurso."
+            ),
+        )
+
+
+@router.post(
+    "/{agent_id}/tools/pipeline-action",
+    response_model=AgentToolOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_pipeline_action_tool(
+    agent_id: uuid.UUID,
+    data: AgentToolCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    # Gated on the same "pipelines" feature key as the Pipelines module itself
+    # (Growth+) — a tool that moves cards is meaningless without the module
+    # (agent-tools-batch-2-prd.md).
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _require_tool_type(data, "pipeline_action")
+    _check_pipelines_feature(db, current_workspace)
+    return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.patch("/{agent_id}/tools/pipeline-action/{tool_id}", response_model=AgentToolOut)
+def update_agent_pipeline_action_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    data: AgentToolUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.update_agent_tool(
+        db, current_workspace.id, agent_id, tool_id, data
+    )
+
+
+@router.delete(
+    "/{agent_id}/tools/pipeline-action/{tool_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_agent_pipeline_action_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
+
+
+@router.post(
+    "/{agent_id}/tools/assign-operator",
+    response_model=AgentToolOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_assign_operator_tool(
+    agent_id: uuid.UUID,
+    data: AgentToolCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    # No feature gate — same product decision as "Solicitar humano": basic
+    # Inbox capability (agent-tools-batch-2-prd.md).
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _require_tool_type(data, "assign_operator")
+    return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.patch("/{agent_id}/tools/assign-operator/{tool_id}", response_model=AgentToolOut)
+def update_agent_assign_operator_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    data: AgentToolUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.update_agent_tool(
+        db, current_workspace.id, agent_id, tool_id, data
+    )
+
+
+@router.delete(
+    "/{agent_id}/tools/assign-operator/{tool_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_agent_assign_operator_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
+
+
 # ── Test endpoint ──────────────────────────────────────────────────────────────
 
 @router.post("/{agent_id}/test", response_model=AgentTestResponse)

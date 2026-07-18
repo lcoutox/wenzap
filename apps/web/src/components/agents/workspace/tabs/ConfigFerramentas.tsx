@@ -5,9 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Check,
+  ClipboardList,
   Globe,
   Hand,
   Info,
+  Kanban,
   Loader2,
   Minus,
   Pencil,
@@ -17,6 +19,7 @@ import {
   ShoppingBag,
   Sparkles,
   Trash2,
+  UserCheck,
   X,
   Zap,
 } from "lucide-react";
@@ -27,14 +30,21 @@ import type {
   AgentKnowledgeBase,
   AgentTool,
   AgentToolCreateInput,
+  AssignOperatorAgentTool,
+  CaptureContactDataAgentTool,
   CatalogCategory,
+  ContactDataField,
   HttpAgentTool,
   HttpToolConfig,
   HttpToolParam,
   HttpToolTestResult,
   KnowledgeBase,
   MarkResolvedAgentTool,
+  Member,
   MemberRole,
+  Pipeline,
+  PipelineActionAgentTool,
+  PipelineStage,
   RequestHumanAgentTool,
 } from "@/lib/api";
 import { inputCls } from "@/components/agents/workspace/AgentHeader";
@@ -1523,6 +1533,598 @@ function MarkResolvedConfigModal({
   );
 }
 
+// ── Capture-contact-data config modal ───────────────────────────────────────────
+
+const DEFAULT_CAPTURE_CONTACT_DATA_DESCRIPTION =
+  "Aciona sempre que o cliente informar espontaneamente um dos dados configurados " +
+  "abaixo durante a conversa.";
+
+function ContactFieldsEditor({
+  fields,
+  onChange,
+  readonly,
+}: {
+  fields: ContactDataField[];
+  onChange: (fields: ContactDataField[]) => void;
+  readonly: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      {fields.map((field, i) => (
+        <div key={i} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={field.key}
+              disabled={readonly}
+              onChange={(e) =>
+                onChange(fields.map((f, j) => (
+                  j === i ? { ...f, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, "_") } : f
+                )))
+              }
+              placeholder="chave_do_dado (ex: email)"
+              className={`${inputCls} font-mono text-xs`}
+            />
+            {!readonly && (
+              <button
+                type="button"
+                onClick={() => onChange(fields.filter((_, j) => j !== i))}
+                className="flex-shrink-0 p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <input
+            type="text"
+            value={field.description}
+            disabled={readonly}
+            onChange={(e) =>
+              onChange(fields.map((f, j) => (
+                j === i ? { ...f, description: e.target.value } : f
+              )))
+            }
+            placeholder="O que é esse dado, pro agente reconhecer (opcional)"
+            className={`${inputCls} text-xs`}
+          />
+        </div>
+      ))}
+      {!readonly && fields.length < 5 && (
+        <button
+          type="button"
+          onClick={() => onChange([...fields, { key: "", description: "" }])}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add dado
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CaptureContactDataConfigModal({
+  open,
+  onClose,
+  agentId,
+  tool,
+  readonly,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  tool: CaptureContactDataAgentTool | null;
+  readonly: boolean;
+}) {
+  const [description, setDescription] = useState(DEFAULT_CAPTURE_CONTACT_DATA_DESCRIPTION);
+  const [fields, setFields] = useState<ContactDataField[]>([{ key: "", description: "" }]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDescription(tool?.description || DEFAULT_CAPTURE_CONTACT_DATA_DESCRIPTION);
+    setFields(tool?.config.fields.length ? tool.config.fields : [{ key: "", description: "" }]);
+    setError(null);
+  }, [open, tool]);
+
+  async function handleSave() {
+    if (!description.trim()) {
+      setError("Descreva quando o agente deve capturar dados do cliente.");
+      return;
+    }
+    const cleanFields = fields
+      .map((f) => ({ key: f.key.trim(), description: f.description.trim() }))
+      .filter((f) => f.key.length > 0);
+    if (cleanFields.length === 0) {
+      setError("Adicione pelo menos um dado para o agente capturar.");
+      return;
+    }
+    const keys = cleanFields.map((f) => f.key);
+    if (new Set(keys).size !== keys.length) {
+      setError("As chaves dos dados devem ser únicas.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      if (tool) {
+        await api.agents.captureContactDataTool.update(agentId, tool.id, {
+          description: description.trim(),
+          config: { fields: cleanFields },
+          is_enabled: true,
+        });
+      } else {
+        const payload: AgentToolCreateInput = {
+          tool_type: "capture_contact_data",
+          name: "capturar_dados_contato",
+          description: description.trim(),
+          config: { fields: cleanFields },
+        };
+        await api.agents.captureContactDataTool.create(agentId, payload);
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!tool) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.agents.captureContactDataTool.update(agentId, tool.id, { is_enabled: false });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Capturar dados do cliente">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente identifica e salva automaticamente os dados abaixo assim que o cliente os
+          informar na conversa — ficam disponíveis na ficha do contato, na aba Variáveis.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Quando o agente deve capturar
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            disabled={readonly}
+            className={inputCls}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Dados a capturar
+          </label>
+          <ContactFieldsEditor fields={fields} onChange={setFields} readonly={readonly} />
+        </div>
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-between gap-2 pt-2 border-t border-nb-border">
+          {tool?.is_enabled ? (
+            <button
+              type="button"
+              onClick={handleDisable}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-nb-danger border border-nb-danger/20 rounded-xl hover:bg-nb-danger/10 transition-colors disabled:opacity-50"
+            >
+              Desativar
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando…" : tool ? "Salvar" : "Ativar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Pipeline-action config modal ────────────────────────────────────────────────
+
+const DEFAULT_PIPELINE_ACTION_DESCRIPTION =
+  "Aciona quando a conversa avança para esta etapa do funil, com base no que o " +
+  "cliente disse.";
+
+function PipelineActionConfigModal({
+  open,
+  onClose,
+  agentId,
+  tool,
+  readonly,
+  gated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  tool: PipelineActionAgentTool | null;
+  readonly: boolean;
+  gated: boolean;
+}) {
+  const [description, setDescription] = useState(DEFAULT_PIPELINE_ACTION_DESCRIPTION);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [pipelineId, setPipelineId] = useState("");
+  const [stageId, setStageId] = useState("");
+  const [loadingPipelines, setLoadingPipelines] = useState(true);
+  const [loadingStages, setLoadingStages] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDescription(tool?.description || DEFAULT_PIPELINE_ACTION_DESCRIPTION);
+    setPipelineId(tool?.config.pipeline_id || "");
+    setStageId(tool?.config.stage_id || "");
+    setError(null);
+    setLoadingPipelines(true);
+    api.pipelines
+      .list()
+      .then(setPipelines)
+      .catch(() => setPipelines([]))
+      .finally(() => setLoadingPipelines(false));
+  }, [open, tool]);
+
+  useEffect(() => {
+    if (!pipelineId) {
+      setStages([]);
+      return;
+    }
+    setLoadingStages(true);
+    api.pipelines.stages
+      .list(pipelineId)
+      .then(setStages)
+      .catch(() => setStages([]))
+      .finally(() => setLoadingStages(false));
+  }, [pipelineId]);
+
+  async function handleSave() {
+    if (!description.trim()) {
+      setError("Descreva quando o agente deve mover o card.");
+      return;
+    }
+    if (!pipelineId || !stageId) {
+      setError("Selecione o pipeline e a etapa de destino.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      if (tool) {
+        await api.agents.pipelineActionTool.update(agentId, tool.id, {
+          description: description.trim(),
+          config: { pipeline_id: pipelineId, stage_id: stageId },
+          is_enabled: true,
+        });
+      } else {
+        const payload: AgentToolCreateInput = {
+          tool_type: "pipeline_action",
+          name: "mover_card_pipeline",
+          description: description.trim(),
+          config: { pipeline_id: pipelineId, stage_id: stageId },
+        };
+        await api.agents.pipelineActionTool.create(agentId, payload);
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!tool) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.agents.pipelineActionTool.update(agentId, tool.id, { is_enabled: false });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Mover card no pipeline">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente move o card desta conversa para a etapa escolhida abaixo, com base na
+          descrição. Para o agente escolher entre etapas diferentes, crie uma ferramenta para
+          cada destino.
+        </p>
+
+        {gated ? (
+          <div className="flex items-center gap-2 p-3 bg-nb-elevated rounded-xl border border-nb-border">
+            <PlanGateBadge label={minPlanLabel("pipelines")} variant="premium" size="xs" />
+            <p className="text-xs text-nb-muted">Disponível nos planos superiores.</p>
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+                Quando o agente deve mover o card
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                disabled={readonly}
+                className={inputCls}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+                  Pipeline
+                </label>
+                <select
+                  value={pipelineId}
+                  disabled={readonly || loadingPipelines}
+                  onChange={(e) => {
+                    setPipelineId(e.target.value);
+                    setStageId("");
+                  }}
+                  className={inputCls}
+                >
+                  <option value="">Selecione…</option>
+                  {pipelines.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+                  Etapa de destino
+                </label>
+                <select
+                  value={stageId}
+                  disabled={readonly || !pipelineId || loadingStages}
+                  onChange={(e) => setStageId(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">Selecione…</option>
+                  {stages.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-between gap-2 pt-2 border-t border-nb-border">
+          {tool?.is_enabled ? (
+            <button
+              type="button"
+              onClick={handleDisable}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-nb-danger border border-nb-danger/20 rounded-xl hover:bg-nb-danger/10 transition-colors disabled:opacity-50"
+            >
+              Desativar
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              Cancelar
+            </button>
+            {!gated && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving || readonly}
+                className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+              >
+                {saving ? "Salvando…" : tool ? "Salvar" : "Ativar"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Assign-operator config modal ────────────────────────────────────────────────
+
+const DEFAULT_ASSIGN_OPERATOR_DESCRIPTION =
+  "Aciona quando o cliente precisa falar especificamente com este operador, com " +
+  "base no assunto tratado na conversa.";
+
+function AssignOperatorConfigModal({
+  open,
+  onClose,
+  agentId,
+  tool,
+  readonly,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  tool: AssignOperatorAgentTool | null;
+  readonly: boolean;
+}) {
+  const [description, setDescription] = useState(DEFAULT_ASSIGN_OPERATOR_DESCRIPTION);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [userId, setUserId] = useState("");
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDescription(tool?.description || DEFAULT_ASSIGN_OPERATOR_DESCRIPTION);
+    setUserId(tool?.config.user_id || "");
+    setError(null);
+    setLoadingMembers(true);
+    api.members
+      .list()
+      .then((data) => setMembers(data.filter((m) => m.status === "active")))
+      .catch(() => setMembers([]))
+      .finally(() => setLoadingMembers(false));
+  }, [open, tool]);
+
+  async function handleSave() {
+    if (!description.trim()) {
+      setError("Descreva quando o agente deve atribuir a este operador.");
+      return;
+    }
+    if (!userId) {
+      setError("Selecione o operador responsável.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      if (tool) {
+        await api.agents.assignOperatorTool.update(agentId, tool.id, {
+          description: description.trim(),
+          config: { user_id: userId },
+          is_enabled: true,
+        });
+      } else {
+        const payload: AgentToolCreateInput = {
+          tool_type: "assign_operator",
+          name: "atribuir_operador",
+          description: description.trim(),
+          config: { user_id: userId },
+        };
+        await api.agents.assignOperatorTool.create(agentId, payload);
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!tool) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.agents.assignOperatorTool.update(agentId, tool.id, { is_enabled: false });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Atribuir a um operador">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente atribui o atendimento a este operador específico e pausa as respostas
+          automáticas — a equipe recebe um e-mail avisando. Para o agente escolher entre
+          operadores diferentes, crie uma ferramenta para cada um.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Quando o agente deve atribuir
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            disabled={readonly}
+            className={inputCls}
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Operador responsável
+          </label>
+          <select
+            value={userId}
+            disabled={readonly || loadingMembers}
+            onChange={(e) => setUserId(e.target.value)}
+            className={inputCls}
+          >
+            <option value="">Selecione…</option>
+            {members.map((m) => (
+              <option key={m.user_id} value={m.user_id}>{m.name || m.email}</option>
+            ))}
+          </select>
+        </div>
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-between gap-2 pt-2 border-t border-nb-border">
+          {tool?.is_enabled ? (
+            <button
+              type="button"
+              onClick={handleDisable}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-nb-danger border border-nb-danger/20 rounded-xl hover:bg-nb-danger/10 transition-colors disabled:opacity-50"
+            >
+              Desativar
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando…" : tool ? "Salvar" : "Ativar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Follow-up config modal ──────────────────────────────────────────────────────
 
 type FollowUpStepDraft = {
@@ -1761,6 +2363,7 @@ export function ConfigFerramentas({
 }) {
   const httpToolsGated = planCode !== null && !planAllowsFeature(planCode, "http_tools");
   const followUpGated = planCode !== null && !planAllowsFeature(planCode, "follow_up");
+  const pipelinesGated = planCode !== null && !planAllowsFeature(planCode, "pipelines");
   // KB state (for active tools display)
   const [kbList, setKbList] = useState<AgentKnowledgeBase[]>([]);
   const [kbLoading, setKbLoading] = useState(true);
@@ -1779,6 +2382,9 @@ export function ConfigFerramentas({
   const [httpToolsModalOpen, setHttpToolsModalOpen] = useState(false);
   const [requestHumanModalOpen, setRequestHumanModalOpen] = useState(false);
   const [markResolvedModalOpen, setMarkResolvedModalOpen] = useState(false);
+  const [captureContactDataModalOpen, setCaptureContactDataModalOpen] = useState(false);
+  const [pipelineActionModalOpen, setPipelineActionModalOpen] = useState(false);
+  const [assignOperatorModalOpen, setAssignOperatorModalOpen] = useState(false);
 
   // Follow-up state
   const [followUpSettings, setFollowUpSettings] = useState<AgentFollowUpSettings | null>(null);
@@ -1818,6 +2424,21 @@ export function ConfigFerramentas({
 
   function handleMarkResolvedModalClose() {
     setMarkResolvedModalOpen(false);
+    refreshAgentTools();
+  }
+
+  function handleCaptureContactDataModalClose() {
+    setCaptureContactDataModalOpen(false);
+    refreshAgentTools();
+  }
+
+  function handlePipelineActionModalClose() {
+    setPipelineActionModalOpen(false);
+    refreshAgentTools();
+  }
+
+  function handleAssignOperatorModalClose() {
+    setAssignOperatorModalOpen(false);
     refreshAgentTools();
   }
 
@@ -1873,6 +2494,22 @@ export function ConfigFerramentas({
     (t): t is MarkResolvedAgentTool => t.tool_type === "mark_resolved"
   );
   const markResolvedActive = !httpToolsLoading && markResolvedTool?.is_enabled === true;
+
+  const captureContactDataTool = httpToolsList.find(
+    (t): t is CaptureContactDataAgentTool => t.tool_type === "capture_contact_data"
+  );
+  const captureContactDataActive =
+    !httpToolsLoading && captureContactDataTool?.is_enabled === true;
+
+  const pipelineActionTool = httpToolsList.find(
+    (t): t is PipelineActionAgentTool => t.tool_type === "pipeline_action"
+  );
+  const pipelineActionActive = !httpToolsLoading && pipelineActionTool?.is_enabled === true;
+
+  const assignOperatorTool = httpToolsList.find(
+    (t): t is AssignOperatorAgentTool => t.tool_type === "assign_operator"
+  );
+  const assignOperatorActive = !httpToolsLoading && assignOperatorTool?.is_enabled === true;
 
   const followUpActive = !followUpLoading && followUpSettings?.is_enabled === true;
 
@@ -2029,6 +2666,95 @@ export function ConfigFerramentas({
         <button
           type="button"
           onClick={() => setMarkResolvedModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (captureContactDataActive) {
+    activeTools.push(
+      <div key="capture-contact-data" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <ClipboardList className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Capturar dados do cliente</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5">
+            {captureContactDataTool?.config.fields.length === 1
+              ? "1 dado configurado"
+              : `${captureContactDataTool?.config.fields.length ?? 0} dados configurados`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCaptureContactDataModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (pipelineActionActive) {
+    activeTools.push(
+      <div key="pipeline-action" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <Kanban className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Mover card no pipeline</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5 line-clamp-1">
+            {pipelineActionTool?.description}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPipelineActionModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (assignOperatorActive) {
+    activeTools.push(
+      <div key="assign-operator" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <UserCheck className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Atribuir a um operador</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5 line-clamp-1">
+            {assignOperatorTool?.description}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAssignOperatorModalOpen(true)}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
         >
           <Settings2 className="w-3.5 h-3.5" />
@@ -2273,6 +2999,78 @@ export function ConfigFerramentas({
               <Plus className="w-3.5 h-3.5" /> Adicionar
             </button>
           </div>}
+
+          {/* Capturar dados do cliente — só mostra se não está ativo */}
+          {!captureContactDataActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <ClipboardList className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Capturar dados do cliente</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Salva automaticamente dados como e-mail, empresa ou CPF assim que o cliente os
+                informa na conversa — disponível em todos os planos.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || httpToolsLoading}
+              onClick={() => setCaptureContactDataModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar
+            </button>
+          </div>}
+
+          {/* Mover card no pipeline — só mostra se não está ativo */}
+          {!pipelineActionActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <Kanban className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-nb-text">Mover card no pipeline</h3>
+                {pipelinesGated && (
+                  <PlanGateBadge label={minPlanLabel("pipelines")} variant="premium" size="xs" />
+                )}
+              </div>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                {pipelinesGated
+                  ? "Disponível nos planos superiores. Faça upgrade para dar ao agente a capacidade de mover cards no pipeline."
+                  : "Move o card desta conversa para uma etapa do pipeline quando o agente decidir que é hora."}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || httpToolsLoading}
+              onClick={() => setPipelineActionModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar
+            </button>
+          </div>}
+
+          {/* Atribuir a um operador — só mostra se não está ativo */}
+          {!assignOperatorActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <UserCheck className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Atribuir a um operador</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Atribui o atendimento a um membro específico da equipe e pausa as respostas
+                automáticas — disponível em todos os planos.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || httpToolsLoading}
+              onClick={() => setAssignOperatorModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar
+            </button>
+          </div>}
         </div>
       </div>
 
@@ -2308,6 +3106,28 @@ export function ConfigFerramentas({
         onClose={handleMarkResolvedModalClose}
         agentId={agentId}
         tool={markResolvedTool ?? null}
+        readonly={readonly}
+      />
+      <CaptureContactDataConfigModal
+        open={captureContactDataModalOpen}
+        onClose={handleCaptureContactDataModalClose}
+        agentId={agentId}
+        tool={captureContactDataTool ?? null}
+        readonly={readonly}
+      />
+      <PipelineActionConfigModal
+        open={pipelineActionModalOpen}
+        onClose={handlePipelineActionModalClose}
+        agentId={agentId}
+        tool={pipelineActionTool ?? null}
+        readonly={readonly}
+        gated={pipelinesGated}
+      />
+      <AssignOperatorConfigModal
+        open={assignOperatorModalOpen}
+        onClose={handleAssignOperatorModalClose}
+        agentId={agentId}
+        tool={assignOperatorTool ?? null}
         readonly={readonly}
       />
       <FollowUpConfigModal

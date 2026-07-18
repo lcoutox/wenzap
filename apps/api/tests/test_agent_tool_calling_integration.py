@@ -386,3 +386,91 @@ def test_conversation_reply_mark_resolved_on_starter_plan(
     # manual "Resolvida" dropdown in the Inbox.
     assert conv.ai_enabled is True
     assert conv.assigned_user_id is None
+
+
+# ── assign_operator tool — full conversation reply loop (Batch 2) ──────────────
+
+
+def _assign_operator_tool_use_response() -> LLMResponse:
+    return LLMResponse(
+        content="",
+        input_tokens=17,
+        output_tokens=7,
+        duration_ms=95,
+        stop_reason="tool_use",
+        content_blocks=[{
+            "type": "tool_use", "id": "toolu_4", "name": "atribuir_financeiro",
+            "input": {"reason": "Cliente com dúvida sobre cobrança indevida."},
+        }],
+    )
+
+
+def _assign_operator_final_response() -> LLMResponse:
+    return LLMResponse(
+        content="Vou passar seu caso para o time financeiro, só um momento.",
+        input_tokens=9,
+        output_tokens=11,
+        duration_ms=85,
+        stop_reason="end_turn",
+        content_blocks=[{
+            "type": "text", "text": "Vou passar seu caso para o time financeiro, só um momento.",
+        }],
+    )
+
+
+def test_conversation_reply_assign_operator_on_starter_plan(
+    db, client_a, subscription_a, executable_ai_model, workspace_a, user_a, fake_email
+):
+    """subscription_a defaults to starter — assign_operator must still work, unlike http_tools."""
+    agent = client_a.post("/agents", json=_agent_payload(executable_ai_model.id)).json()
+    tool_payload = {
+        "tool_type": "assign_operator",
+        "name": "atribuir_financeiro",
+        "description": "Atribui ao time financeiro quando o cliente questiona uma cobrança.",
+        "config": {"user_id": str(user_a.id)},
+    }
+    client_a.post(f"/agents/{agent['id']}/tools/assign-operator", json=tool_payload)
+    client_a.patch(f"/agents/{agent['id']}/status", json={"status": "active"})
+
+    contact = Contact(workspace_id=workspace_a.id, name="Cliente", phone="+5511966665555")
+    db.add(contact)
+    db.flush()
+
+    conv = Conversation(
+        workspace_id=workspace_a.id,
+        contact_id=contact.id,
+        agent_id=uuid.UUID(agent["id"]),
+        channel_type="internal",
+        status="open",
+        ai_enabled=True,
+    )
+    db.add(conv)
+    db.flush()
+
+    trigger = ConversationMessage(
+        workspace_id=workspace_a.id,
+        conversation_id=conv.id,
+        direction="inbound",
+        sender_type="customer",
+        content="Fui cobrado duas vezes esse mês, pode verificar?",
+        content_type="text",
+    )
+    db.add(trigger)
+    db.commit()
+    db.refresh(conv)
+    db.refresh(trigger)
+
+    with patch(
+        "app.llm.client.complete",
+        side_effect=[_assign_operator_tool_use_response(), _assign_operator_final_response()],
+    ):
+        run = generate_conversation_agent_reply(db, workspace_a.id, conv, trigger)
+
+    assert run is not None
+    assert run.status == "success"
+
+    db.refresh(conv)
+    assert conv.assigned_user_id == user_a.id
+    assert conv.ai_enabled is False
+    assert conv.assignment_reason == "Cliente com dúvida sobre cobrança indevida."
+    assert len(fake_email.sent) == 1

@@ -310,6 +310,63 @@ def create_variable(
     return var
 
 
+def upsert_contact_variable(
+    db: Session,
+    workspace_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    key: str,
+    value: str,
+    source: str | None = None,
+) -> ContactVariable:
+    """
+    Create or update a variable by (contact_id, key) — unlike create_variable,
+    never raises 409 on a duplicate key, it just updates the existing row's
+    value. Used by agent_tool_service.execute_capture_contact_data_tool
+    (agent-tools-batch-2-prd.md); caller is responsible for confirming
+    contact_id belongs to workspace_id (it already does, via conversation.contact_id).
+
+    Only flushes, doesn't commit — same convention as the other tool
+    executors (execute_request_human_tool etc.), leaving the transaction
+    boundary to the caller (the reply service commits everything together).
+    """
+    existing = db.scalar(
+        select(ContactVariable).where(
+            ContactVariable.contact_id == contact_id,
+            ContactVariable.key == key,
+        )
+    )
+    if existing is not None:
+        existing.value = value
+        if source is not None:
+            existing.source = source
+        existing.updated_at = datetime.now(timezone.utc)
+        db.flush()
+        return existing
+
+    var = ContactVariable(
+        workspace_id=workspace_id, contact_id=contact_id, key=key, value=value, source=source,
+    )
+    db.add(var)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Race: another process created it between our SELECT and INSERT.
+        db.rollback()
+        existing = db.scalar(
+            select(ContactVariable).where(
+                ContactVariable.contact_id == contact_id, ContactVariable.key == key,
+            )
+        )
+        if existing is None:
+            raise
+        existing.value = value
+        if source is not None:
+            existing.source = source
+        db.flush()
+        return existing
+    return var
+
+
 def get_variable_or_404(
     db: Session,
     workspace_id: uuid.UUID,

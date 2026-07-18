@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Hand, KanbanSquare, Loader2, X } from "lucide-react";
+import { Check, Hand, KanbanSquare, Loader2, UserCheck, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Conversation, ConversationStatus, MemberRole, Pipeline, PipelineStage } from "@/lib/api";
 
@@ -381,6 +381,18 @@ export function ConversationHeader({
           <Hand className="w-3 h-3 text-nb-muted flex-shrink-0" />
           <span className="text-[10px] text-nb-muted truncate">
             {conversation.handoff_reason}
+          </span>
+        </div>
+      )}
+
+      {/* Assignment reason row — set by the "Atribuir a um operador" tool. Only
+          while a human is assigned; distinct from the handoff_reason row above,
+          which only ever shows in the pre-assignment "IA pausada" limbo state. */}
+      {isHumanAssigned && conversation.assignment_reason && (
+        <div className="flex items-center gap-1.5 px-5 pb-2">
+          <UserCheck className="w-3 h-3 text-nb-muted flex-shrink-0" />
+          <span className="text-[10px] text-nb-muted truncate">
+            {conversation.assignment_reason}
           </span>
         </div>
       )}

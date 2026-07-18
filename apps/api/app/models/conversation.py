@@ -76,6 +76,13 @@ class Conversation(Base):
     # auto-reopen-on-new-customer-message, or a manual status change in
     # conversation_service.update_conversation().
     resolution_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Reason captured from the model when the "assign_operator" tool set
+    # assigned_user_id. Deliberately NOT the same column as handoff_reason —
+    # that one is only ever displayed while the conversation has no assignee
+    # yet (the "Solicitar humano" limbo state); assign_operator always sets
+    # assigned_user_id, so a shared column would never render there. Cleared
+    # in return_to_ai(), same as handoff_reason.
+    assignment_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
