@@ -239,3 +239,87 @@ def test_max_tool_iterations_constant_is_reasonable():
     # Sanity check the safety cap itself hasn't been accidentally set to something
     # too low (breaks legitimate multi-tool flows) or unbounded (defeats the point).
     assert 1 < MAX_TOOL_ITERATIONS <= 10
+
+
+# ── Empty-final-reply nudge (agent-tools-batch-2 production bug) ───────────────
+
+
+def _empty_final_response(input_tokens=15, output_tokens=3, duration_ms=90) -> LLMResponse:
+    """A turn-ending response with no text — e.g. the model treated a tool
+    call as the whole turn. Still has a content block (just not "text")."""
+    return LLMResponse(
+        content="",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        duration_ms=duration_ms,
+        stop_reason="end_turn",
+        content_blocks=[{"type": "text", "text": ""}],
+    )
+
+
+def test_empty_final_reply_after_tool_call_is_nudged_into_a_real_reply():
+    tool_response = _tool_use_response("mover_card_pipeline", {})
+    empty_response = _empty_final_response()
+    nudge_response = _text_response("Perfeito, já movi seu card! Mais alguma coisa?")
+
+    with patch(_LLM_PATCH, side_effect=[tool_response, empty_response, nudge_response]) as mock:
+        result = run_agent_turn(
+            _request(tools=[{"name": "mover_card_pipeline"}]),
+            tool_dispatch={"mover_card_pipeline": lambda i: "Card atualizado."},
+        )
+
+    assert result.content == "Perfeito, já movi seu card! Mais alguma coisa?"
+    assert result.stop_reason == "end_turn"
+    # tokens from all THREE round-trips (tool call + empty + nudge) must be summed
+    assert result.input_tokens == 20 + 15 + 10
+    assert result.output_tokens == 8 + 3 + 5
+    assert mock.call_count == 3
+    # The nudge call must disable tools (tools=None) — it must always resolve
+    # to plain text, never request yet another tool call.
+    nudge_request = mock.call_args_list[2].args[0]
+    assert nudge_request.tools is None
+
+
+def test_empty_final_reply_without_any_prior_tool_call_is_not_nudged():
+    # No tools were used this turn (`calls` stays empty) — an empty answer
+    # here is just an empty answer, not the "tool call ate the whole turn"
+    # failure mode this guard targets. Must not spend an extra LLM call on it.
+    empty_response = _empty_final_response()
+
+    with patch(_LLM_PATCH, return_value=empty_response) as mock:
+        result = run_agent_turn(_request())
+
+    assert result.content == ""
+    assert mock.call_count == 1
+
+
+def test_nudge_failure_falls_back_to_empty_content_without_crashing():
+    tool_response = _tool_use_response("mover_card_pipeline", {})
+    empty_response = _empty_final_response()
+    nudge_error = LLMProviderError("rate limited", transient=True)
+
+    side_effect = [tool_response, empty_response, nudge_error, nudge_error, nudge_error]
+    with patch(_LLM_PATCH, side_effect=side_effect):
+        with patch("time.sleep"):
+            result = run_agent_turn(
+                _request(tools=[{"name": "mover_card_pipeline"}]),
+                tool_dispatch={"mover_card_pipeline": lambda i: "Card atualizado."},
+            )
+
+    assert result.content == ""
+    assert result.stop_reason == "end_turn"
+
+
+def test_nudge_still_empty_gives_up_without_looping_again():
+    tool_response = _tool_use_response("mover_card_pipeline", {})
+    empty_response = _empty_final_response()
+    still_empty_nudge = _empty_final_response()
+
+    with patch(_LLM_PATCH, side_effect=[tool_response, empty_response, still_empty_nudge]) as mock:
+        result = run_agent_turn(
+            _request(tools=[{"name": "mover_card_pipeline"}]),
+            tool_dispatch={"mover_card_pipeline": lambda i: "Card atualizado."},
+        )
+
+    assert result.content == ""
+    assert mock.call_count == 3  # exactly one nudge attempt, never retried in a loop

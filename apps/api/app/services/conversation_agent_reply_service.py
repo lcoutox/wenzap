@@ -350,6 +350,20 @@ def generate_conversation_agent_reply(
     # ── 9. Persist response message ───────────────────────────────────────────
     now = datetime.now(timezone.utc)
 
+    # Last-resort safety net: run_agent_turn's own nudge (agent_llm_executor.py)
+    # already handles the common case of an empty final reply after a tool
+    # call, so this should essentially never fire. But every WhatsApp
+    # provider rejects an empty text send, so we must not persist/deliver ""
+    # under any circumstance — a generic filler beats a failed delivery.
+    reply_content = llm_response.content
+    if not reply_content.strip():
+        logger.warning(
+            "agent_reply_empty_content_after_nudge conversation_id=%s "
+            "trigger_message_id=%s agent_id=%s",
+            conversation.id, trigger_message.id, agent.id,
+        )
+        reply_content = "Certo!"
+
     # Build metadata_json for audit (catalog retrieval info, safe to store).
     response_metadata: dict = {}
     if ctx.catalog_retrieval_attempted:
@@ -380,7 +394,7 @@ def generate_conversation_agent_reply(
         direction="outbound",
         sender_type="agent",
         agent_id=agent.id,
-        content=llm_response.content,
+        content=reply_content,
         content_type="text",
         metadata_json=response_metadata or None,
     )

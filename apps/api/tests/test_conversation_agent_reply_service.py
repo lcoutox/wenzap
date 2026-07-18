@@ -753,6 +753,30 @@ def test_retrieval_failure_degrades_gracefully(db: Session):
     assert run.response_message_id is not None
 
 
+def test_empty_llm_content_falls_back_to_generic_reply_not_blank(db: Session, caplog):
+    """
+    Last-resort safety net (agent-tools-batch-2-prd.md follow-up bug fix):
+    an empty LLM response must never be persisted/delivered as-is — every
+    WhatsApp provider rejects an empty text send. This case has no tools
+    attached, so agent_llm_executor's own nudge never engages (`calls` stays
+    empty) — this is specifically testing the reply-service's independent
+    fallback, the last line of defense.
+    """
+    ws, agent, *_ = _full_setup(db)
+    conv = _make_conversation(db, ws.id, agent)
+    trigger = _make_trigger(db, ws.id, conv)
+    db.commit()
+
+    with patch(_LLM_PATCH, return_value=_mock_llm("")):
+        run = generate_conversation_agent_reply(db, ws.id, conv, trigger)
+
+    assert run is not None
+    assert run.status == "success"
+    response = db.get(ConversationMessage, run.response_message_id)
+    assert response.content == "Certo!"
+    assert "agent_reply_empty_content_after_nudge" in caplog.text
+
+
 # ── Tenant isolation ──────────────────────────────────────────────────────────
 
 def test_agent_from_other_workspace_returns_none(db: Session):

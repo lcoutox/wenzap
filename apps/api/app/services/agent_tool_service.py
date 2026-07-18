@@ -658,6 +658,10 @@ def execute_mark_resolved_tool(
     (conversation is None) simulates without side effects, same as the other
     two tools. Idempotent within a turn: a second call in the same turn (model
     changes its mind about the summary) is a no-op once already resolved.
+
+    Every non-simulation return explicitly tells the model to keep talking
+    to the customer — see execute_pipeline_action_tool's docstring for why
+    (a bare "done" result risks an empty, undeliverable final reply).
     """
     if conversation is None:
         return (
@@ -668,13 +672,19 @@ def execute_mark_resolved_tool(
     assert db is not None and workspace_id is not None
 
     if conversation.status == "resolved":
-        return "A conversa já estava marcada como resolvida."
+        return (
+            "A conversa já estava marcada como resolvida. Continue a conversa "
+            "normalmente com o cliente."
+        )
 
     conversation.status = "resolved"
     conversation.resolution_summary = resolution_summary[:500]
     db.flush()
 
-    return "Conversa marcada como resolvida com sucesso."
+    return (
+        "Conversa marcada como resolvida com sucesso. Informe o cliente de forma "
+        "breve e educada que o atendimento foi concluído."
+    )
 
 
 # ── Capture-contact-data tool execution ─────────────────────────────────────────
@@ -730,6 +740,12 @@ def execute_pipeline_action_tool(
     target stage (agent-tools-batch-2-prd.md). Reuses pipeline_service's
     create_entry/move_entry unchanged — find-or-create by (pipeline_id,
     conversation_id), same lookup ensure_conversation_pipeline_entry() uses.
+
+    Every non-simulation return explicitly tells the model to keep talking
+    to the customer — found in production (2026-07-18) that a bare "done"
+    result with no such instruction can make the model treat the tool call
+    itself as the whole turn and end up with an empty final reply, which
+    then fails to send (WhatsApp providers reject empty text messages).
     """
     if conversation is None:
         return (
@@ -750,7 +766,10 @@ def execute_pipeline_action_tool(
     )
     if existing is not None:
         if existing.stage_id == stage_id:
-            return "O card já estava nessa etapa do pipeline."
+            return (
+                "O card já estava nessa etapa do pipeline. Continue a conversa "
+                "normalmente com o cliente."
+            )
         pipeline_service.move_entry(
             db, workspace_id, pipeline_id, existing.id, PipelineEntryMove(stage_id=stage_id)
         )
@@ -760,7 +779,10 @@ def execute_pipeline_action_tool(
             PipelineEntryCreate(conversation_id=conversation.id, stage_id=stage_id),
         )
 
-    return "Card do pipeline atualizado com sucesso."
+    return (
+        "Card do pipeline atualizado com sucesso. Continue a conversa "
+        "normalmente com o cliente."
+    )
 
 
 # ── Assign-operator tool execution ──────────────────────────────────────────────

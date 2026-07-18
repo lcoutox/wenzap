@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from app.llm import client as llm_client
-from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest
+from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest, LLMResponse
 from app.services.agent_guardrails import detect_prompt_injection
 
 # Hard cap on tool-calling round-trips per user turn. Exists purely as a
@@ -98,6 +98,46 @@ def _complete_with_retries(request: LLMRequest) -> tuple:
     raise last_error
 
 
+def _nudge_for_final_reply(
+    request: LLMRequest, messages: list[LLMMessage], empty_response: LLMResponse
+) -> LLMResponse | None:
+    """
+    One bounded, tools-disabled follow-up call — used only when a turn's
+    final response had no text after the model used at least one tool.
+    Replays the model's own (empty) turn verbatim, then asks it directly to
+    reply to the customer; `tools=None` rules out yet another tool_use
+    response, so this always resolves to plain text (or genuinely gives up).
+
+    Returns None if the nudge call itself fails (network/provider error) —
+    a failed *enhancement* must never turn into a failed *turn*; the caller
+    falls back to the original (empty) content, same as before this guard
+    existed.
+    """
+    nudge_messages = [
+        *messages,
+        LLMMessage(role="assistant", content=empty_response.content_blocks),
+        LLMMessage(
+            role="user",
+            content=(
+                "Responda ao cliente agora, de forma breve, considerando o que "
+                "você acabou de fazer."
+            ),
+        ),
+    ]
+    nudge_request = LLMRequest(
+        model_name=request.model_name,
+        system=request.system,
+        messages=nudge_messages,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
+        tools=None,
+    )
+    try:
+        return _complete_with_retries(nudge_request)
+    except LLMProviderError:
+        return None
+
+
 def run_agent_turn(
     request: LLMRequest,
     *,
@@ -145,16 +185,37 @@ def run_agent_turn(
         total_duration_ms += response.duration_ms
 
         if response.stop_reason != "tool_use":
+            final_content = response.content
+            final_stop_reason = response.stop_reason
+
+            # Defensive guard (found in production 2026-07-18): a tool result
+            # with no explicit "keep talking to the customer" instruction can
+            # make the model treat the tool call as the whole turn, ending
+            # with zero text. Persisting/delivering that empty string fails
+            # downstream (every WhatsApp provider rejects empty text) — so
+            # if this turn used at least one tool (`calls` non-empty) and
+            # produced no text, nudge once for an actual reply instead of
+            # silently returning empty. Never nudges more than once per turn.
+            if not final_content.strip() and calls and response.content_blocks:
+                nudge = _nudge_for_final_reply(request, messages, response)
+                if nudge is not None:
+                    total_input_tokens += nudge.input_tokens
+                    total_output_tokens += nudge.output_tokens
+                    total_duration_ms += nudge.duration_ms
+                    if nudge.content.strip():
+                        final_content = nudge.content
+                        final_stop_reason = nudge.stop_reason
+
             calls.append(LLMTurnCallRecord(
                 call_index=call_index,
-                stop_reason=response.stop_reason,
+                stop_reason=final_stop_reason,
                 input_tokens=response.input_tokens,
                 output_tokens=response.output_tokens,
                 duration_ms=response.duration_ms,
             ))
             return AgentTurnResult(
-                content=response.content,
-                stop_reason=response.stop_reason,
+                content=final_content,
+                stop_reason=final_stop_reason,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
                 duration_ms=total_duration_ms,
