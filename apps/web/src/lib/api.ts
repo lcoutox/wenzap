@@ -488,6 +488,11 @@ export type Conversation = {
   // Null for every other path that disables ai_enabled (e.g. a human manually
   // clicking "Assumir"), and cleared again once the conversation returns to AI.
   handoff_reason: string | null;
+  // Summary captured from the model when the "mark_resolved" tool set
+  // status="resolved". Null for every other status, cleared again if the
+  // conversation moves away from "resolved" (manually or auto-reopened by
+  // a new customer message).
+  resolution_summary: string | null;
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
@@ -721,6 +726,10 @@ export type HttpToolTestResult = {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type RequestHumanToolConfig = {};
 
+// Same pure-toggle shape as RequestHumanToolConfig — no configurable fields.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export type MarkResolvedToolConfig = {};
+
 type AgentToolBase = {
   id: string;
   workspace_id: string;
@@ -735,10 +744,12 @@ type AgentToolBase = {
 
 export type AgentTool =
   | (AgentToolBase & { tool_type: "http_request"; config: HttpToolConfig })
-  | (AgentToolBase & { tool_type: "request_human"; config: RequestHumanToolConfig });
+  | (AgentToolBase & { tool_type: "request_human"; config: RequestHumanToolConfig })
+  | (AgentToolBase & { tool_type: "mark_resolved"; config: MarkResolvedToolConfig });
 
 export type HttpAgentTool = Extract<AgentTool, { tool_type: "http_request" }>;
 export type RequestHumanAgentTool = Extract<AgentTool, { tool_type: "request_human" }>;
+export type MarkResolvedAgentTool = Extract<AgentTool, { tool_type: "mark_resolved" }>;
 
 export type AgentToolCreateInput =
   | {
@@ -756,13 +767,21 @@ export type AgentToolCreateInput =
       is_enabled?: boolean;
       config?: RequestHumanToolConfig;
       sort_order?: number;
+    }
+  | {
+      tool_type: "mark_resolved";
+      name: string;
+      description: string;
+      is_enabled?: boolean;
+      config?: MarkResolvedToolConfig;
+      sort_order?: number;
     };
 
 export type AgentToolUpdateInput = Partial<{
   name: string;
   description: string;
   is_enabled: boolean;
-  config: HttpToolConfig | RequestHumanToolConfig;
+  config: HttpToolConfig | RequestHumanToolConfig | MarkResolvedToolConfig;
   sort_order: number;
 }>;
 
@@ -1767,6 +1786,22 @@ export const api = {
         }),
       delete: (agentId: string, toolId: string) =>
         cookieFetch<void>(`/agents/${agentId}/tools/request-human/${toolId}`, {
+          method: "DELETE",
+        }),
+    },
+    markResolvedTool: {
+      create: (agentId: string, data: AgentToolCreateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/mark-resolved`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      update: (agentId: string, toolId: string, data: AgentToolUpdateInput) =>
+        cookieFetch<AgentTool>(`/agents/${agentId}/tools/mark-resolved/${toolId}`, {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        }),
+      delete: (agentId: string, toolId: string) =>
+        cookieFetch<void>(`/agents/${agentId}/tools/mark-resolved/${toolId}`, {
           method: "DELETE",
         }),
     },

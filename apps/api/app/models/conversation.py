@@ -70,6 +70,12 @@ class Conversation(Base):
     last_customer_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Summary captured from the model when the "mark_resolved" tool set
+    # status="resolved" (mark-resolved-tool-prd.md). Cleared whenever status
+    # moves away from "resolved" — via conversation_message_service.py's
+    # auto-reopen-on-new-customer-message, or a manual status change in
+    # conversation_service.update_conversation().
+    resolution_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

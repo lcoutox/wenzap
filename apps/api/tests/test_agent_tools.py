@@ -7,6 +7,10 @@ Also covers tool_type="request_human" (request-human-tool-prd.md): the
 /agents/{id}/tools/request-human endpoints (no plan gate — available on
 every plan) and execute_request_human_tool's simulation/real/idempotent/
 notification behavior.
+
+Also covers tool_type="mark_resolved" (mark-resolved-tool-prd.md): the
+/agents/{id}/tools/mark-resolved endpoints (no plan gate) and
+execute_mark_resolved_tool's simulation/real/idempotent behavior.
 """
 
 import uuid
@@ -21,6 +25,7 @@ from app.services.agent_tool_service import (
     build_tool_dispatch,
     build_tool_schema,
     execute_http_tool,
+    execute_mark_resolved_tool,
     execute_request_human_tool,
     validate_http_tool_config,
 )
@@ -493,6 +498,168 @@ def test_build_tool_dispatch_request_human_wires_context():
     assert calls == [{
         "db": "db-sentinel", "workspace_id": "ws-sentinel",
         "conversation": "conv-sentinel", "reason": "Teste",
+    }]
+
+
+# ── mark_resolved: CRUD (no plan gate) ──────────────────────────────────────────
+
+
+def _mark_resolved_payload(**overrides) -> dict:
+    defaults = {
+        "tool_type": "mark_resolved",
+        "name": "marcar_resolvido",
+        "description": "Aciona quando o cliente confirma que o problema foi resolvido.",
+        "config": {},
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+def test_create_mark_resolved_tool_succeeds_on_starter_plan(client_a, subscription_a, ai_model):
+    """subscription_a defaults to starter — mark_resolved has no plan gate."""
+    agent_id = _create_agent(client_a, ai_model)
+    r = client_a.post(f"/agents/{agent_id}/tools/mark-resolved", json=_mark_resolved_payload())
+    assert r.status_code == 201
+    body = r.json()
+    assert body["tool_type"] == "mark_resolved"
+    assert body["config"] == {}
+
+
+def test_create_mark_resolved_tool_rejects_wrong_tool_type(client_a, subscription_a, ai_model):
+    agent_id = _create_agent(client_a, ai_model)
+    r = client_a.post(f"/agents/{agent_id}/tools/mark-resolved", json=_http_tool_payload())
+    assert r.status_code == 400
+
+
+def test_create_http_tool_via_mark_resolved_route_rejected(
+    client_a, scale_subscription_a, ai_model
+):
+    agent_id = _create_agent(client_a, ai_model)
+    r = client_a.post(f"/agents/{agent_id}/tools/http", json=_mark_resolved_payload())
+    assert r.status_code == 400
+
+
+def test_mark_resolved_config_accepted_even_though_identical_to_request_human(
+    client_a, subscription_a, ai_model
+):
+    """RequestHumanToolConfig and MarkResolvedToolConfig are structurally
+    identical ({} + extra=forbid) — confirms the union ambiguity doesn't
+    cause a spurious 400 for either tool_type."""
+    agent_id = _create_agent(client_a, ai_model)
+    r1 = client_a.post(f"/agents/{agent_id}/tools/request-human", json=_request_human_payload())
+    r2 = client_a.post(f"/agents/{agent_id}/tools/mark-resolved", json=_mark_resolved_payload())
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+
+
+def test_update_mark_resolved_tool_toggle_disabled(client_a, subscription_a, ai_model):
+    agent_id = _create_agent(client_a, ai_model)
+    created = client_a.post(
+        f"/agents/{agent_id}/tools/mark-resolved", json=_mark_resolved_payload()
+    ).json()
+    r = client_a.patch(
+        f"/agents/{agent_id}/tools/mark-resolved/{created['id']}", json={"is_enabled": False}
+    )
+    assert r.status_code == 200
+    assert r.json()["is_enabled"] is False
+
+
+def test_delete_mark_resolved_tool(client_a, subscription_a, ai_model):
+    agent_id = _create_agent(client_a, ai_model)
+    created = client_a.post(
+        f"/agents/{agent_id}/tools/mark-resolved", json=_mark_resolved_payload()
+    ).json()
+    r = client_a.delete(f"/agents/{agent_id}/tools/mark-resolved/{created['id']}")
+    assert r.status_code == 204
+    assert client_a.get(f"/agents/{agent_id}/tools/http").json() == []
+
+
+# ── mark_resolved: service-level schema/dispatch/execution ─────────────────────
+
+
+class _FakeMarkResolvedTool(_FakeTool):
+    def __init__(self, name="marcar_resolvido", description="Aciona quando resolvido."):
+        super().__init__(tool_type="mark_resolved", name=name, description=description, config={})
+
+
+def test_build_tool_schema_mark_resolved():
+    schema = build_tool_schema(_FakeMarkResolvedTool())
+    assert schema["name"] == "marcar_resolvido"
+    assert schema["input_schema"]["required"] == ["resolution_summary"]
+    assert "resolution_summary" in schema["input_schema"]["properties"]
+
+
+def test_execute_mark_resolved_tool_simulation_mode_when_no_conversation():
+    result = execute_mark_resolved_tool(
+        db=None, workspace_id=None, conversation=None,
+        resolution_summary="Cliente confirmou recebimento.",
+    )
+    assert "Simulação" in result
+    assert "recebimento" in result
+
+
+def test_execute_mark_resolved_tool_sets_status_and_summary(db, workspace_a):
+    contact = Contact(workspace_id=workspace_a.id, name="Cliente Teste", phone="+5511999999999")
+    db.add(contact)
+    db.flush()
+    conv = Conversation(
+        workspace_id=workspace_a.id, contact_id=contact.id,
+        channel_type="internal", status="open", ai_enabled=True,
+    )
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+
+    result = execute_mark_resolved_tool(
+        db=db, workspace_id=workspace_a.id, conversation=conv,
+        resolution_summary="Cliente confirmou recebimento do pedido.",
+    )
+
+    assert "sucesso" in result.lower()
+    assert conv.status == "resolved"
+    assert conv.resolution_summary == "Cliente confirmou recebimento do pedido."
+    # Unlike request_human, this must NOT touch ai_enabled/assigned_user_id —
+    # same end state as the manual "Resolvida" dropdown in the Inbox.
+    assert conv.ai_enabled is True
+    assert conv.assigned_user_id is None
+
+
+def test_execute_mark_resolved_tool_is_idempotent_within_a_turn(db, workspace_a):
+    conv = Conversation(
+        workspace_id=workspace_a.id, channel_type="internal", status="open", ai_enabled=True,
+    )
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+
+    execute_mark_resolved_tool(
+        db=db, workspace_id=workspace_a.id, conversation=conv, resolution_summary="Primeiro."
+    )
+    second = execute_mark_resolved_tool(
+        db=db, workspace_id=workspace_a.id, conversation=conv, resolution_summary="Segundo."
+    )
+
+    assert "já" in second.lower()
+    assert conv.resolution_summary == "Primeiro."  # unchanged by the second call
+
+
+def test_build_tool_dispatch_mark_resolved_wires_context():
+    calls = []
+
+    def _fake_execute(**kwargs):
+        calls.append(kwargs)
+        return "ok"
+
+    with patch("app.services.agent_tool_service.execute_mark_resolved_tool", _fake_execute):
+        dispatch = build_tool_dispatch(
+            [_FakeMarkResolvedTool()], db="db-sentinel", workspace_id="ws-sentinel",
+            conversation="conv-sentinel",
+        )
+        dispatch["marcar_resolvido"]({"resolution_summary": "Teste"})
+
+    assert calls == [{
+        "db": "db-sentinel", "workspace_id": "ws-sentinel",
+        "conversation": "conv-sentinel", "resolution_summary": "Teste",
     }]
 
 

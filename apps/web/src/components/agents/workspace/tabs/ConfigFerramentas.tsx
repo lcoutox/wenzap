@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Check,
-  Clock,
   Globe,
   Hand,
   Info,
@@ -34,6 +33,7 @@ import type {
   HttpToolParam,
   HttpToolTestResult,
   KnowledgeBase,
+  MarkResolvedAgentTool,
   MemberRole,
   RequestHumanAgentTool,
 } from "@/lib/api";
@@ -1391,6 +1391,138 @@ function RequestHumanConfigModal({
   );
 }
 
+// ── Mark-resolved config modal ──────────────────────────────────────────────────
+
+const DEFAULT_MARK_RESOLVED_DESCRIPTION =
+  "Aciona quando o cliente confirma que seu problema foi resolvido, agradece e " +
+  "encerra a conversa, ou a conversa chega a uma conclusão natural sem nada " +
+  "pendente.";
+
+function MarkResolvedConfigModal({
+  open,
+  onClose,
+  agentId,
+  tool,
+  readonly,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  tool: MarkResolvedAgentTool | null;
+  readonly: boolean;
+}) {
+  const [description, setDescription] = useState(DEFAULT_MARK_RESOLVED_DESCRIPTION);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDescription(tool?.description || DEFAULT_MARK_RESOLVED_DESCRIPTION);
+    setError(null);
+  }, [open, tool]);
+
+  async function handleSave() {
+    if (!description.trim()) {
+      setError("Descreva quando o agente deve marcar a conversa como resolvida.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      if (tool) {
+        await api.agents.markResolvedTool.update(agentId, tool.id, {
+          description: description.trim(),
+          is_enabled: true,
+        });
+      } else {
+        const payload: AgentToolCreateInput = {
+          tool_type: "mark_resolved",
+          name: "marcar_resolvido",
+          description: description.trim(),
+          config: {},
+        };
+        await api.agents.markResolvedTool.create(agentId, payload);
+      }
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!tool) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.agents.markResolvedTool.update(agentId, tool.id, { is_enabled: false });
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Marcar como resolvido">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente decide sozinho quando o atendimento chegou ao fim, com base na descrição
+          abaixo. A conversa vira "Resolvida" com um resumo visível no Inbox — se o cliente
+          escrever de novo, a conversa reabre e a IA volta a responder normalmente.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Quando o agente deve marcar como resolvida
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            disabled={readonly}
+            className={inputCls}
+          />
+        </div>
+
+        {error && <p className="text-xs text-nb-danger">{error}</p>}
+
+        <div className="flex justify-between gap-2 pt-2 border-t border-nb-border">
+          {tool?.is_enabled ? (
+            <button
+              type="button"
+              onClick={handleDisable}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-nb-danger border border-nb-danger/20 rounded-xl hover:bg-nb-danger/10 transition-colors disabled:opacity-50"
+            >
+              Desativar
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-nb-muted border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || readonly}
+              className="px-4 py-2 text-xs font-medium text-white bg-nb-primary rounded-xl hover:bg-nb-primary-strong transition-colors disabled:opacity-50"
+            >
+              {saving ? "Salvando…" : tool ? "Salvar" : "Ativar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Follow-up config modal ──────────────────────────────────────────────────────
 
 type FollowUpStepDraft = {
@@ -1614,36 +1746,6 @@ function FollowUpConfigModal({
   );
 }
 
-// ── Roadmap card ──────────────────────────────────────────────────────────────
-
-function RoadmapCard({
-  icon: Icon,
-  name,
-  description,
-}: {
-  icon: React.ElementType;
-  name: string;
-  description: string;
-}) {
-  return (
-    <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 opacity-55 flex items-start gap-3">
-      <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
-        <Icon className="w-4 h-4 text-nb-muted" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-nb-secondary">{name}</h3>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-nb-elevated border border-nb-border text-nb-muted">
-            <Clock className="w-3 h-3" />
-            Em breve
-          </span>
-        </div>
-        <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">{description}</p>
-      </div>
-    </div>
-  );
-}
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ConfigFerramentas({
@@ -1671,11 +1773,12 @@ export function ConfigFerramentas({
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
 
   // Agent Tools state — one list call covers every tool_type (http_request,
-  // request_human); the sections below derive their own slice from it.
+  // request_human, mark_resolved); the sections below derive their own slice from it.
   const [httpToolsList, setHttpToolsList] = useState<AgentTool[]>([]);
   const [httpToolsLoading, setHttpToolsLoading] = useState(true);
   const [httpToolsModalOpen, setHttpToolsModalOpen] = useState(false);
   const [requestHumanModalOpen, setRequestHumanModalOpen] = useState(false);
+  const [markResolvedModalOpen, setMarkResolvedModalOpen] = useState(false);
 
   // Follow-up state
   const [followUpSettings, setFollowUpSettings] = useState<AgentFollowUpSettings | null>(null);
@@ -1710,6 +1813,11 @@ export function ConfigFerramentas({
 
   function handleRequestHumanModalClose() {
     setRequestHumanModalOpen(false);
+    refreshAgentTools();
+  }
+
+  function handleMarkResolvedModalClose() {
+    setMarkResolvedModalOpen(false);
     refreshAgentTools();
   }
 
@@ -1760,6 +1868,11 @@ export function ConfigFerramentas({
     (t): t is RequestHumanAgentTool => t.tool_type === "request_human"
   );
   const requestHumanActive = !httpToolsLoading && requestHumanTool?.is_enabled === true;
+
+  const markResolvedTool = httpToolsList.find(
+    (t): t is MarkResolvedAgentTool => t.tool_type === "mark_resolved"
+  );
+  const markResolvedActive = !httpToolsLoading && markResolvedTool?.is_enabled === true;
 
   const followUpActive = !followUpLoading && followUpSettings?.is_enabled === true;
 
@@ -1887,6 +2000,35 @@ export function ConfigFerramentas({
         <button
           type="button"
           onClick={() => setRequestHumanModalOpen(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+          Configurar
+        </button>
+      </div>
+    );
+  }
+
+  if (markResolvedActive) {
+    activeTools.push(
+      <div key="mark-resolved" className="bg-nb-panel rounded-2xl border border-nb-primary/20 p-4 flex items-start gap-4">
+        <div className="w-9 h-9 rounded-xl bg-nb-primary/10 border border-nb-primary/20 flex items-center justify-center flex-shrink-0">
+          <Check className="w-4 h-4 text-nb-primary-strong" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-nb-text">Marcar como resolvido</h3>
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-nb-success/10 text-nb-success border-nb-success/20">
+              Ativa
+            </span>
+          </div>
+          <p className="text-xs text-nb-muted mt-0.5 line-clamp-1">
+            {markResolvedTool?.description}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setMarkResolvedModalOpen(true)}
           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
         >
           <Settings2 className="w-3.5 h-3.5" />
@@ -2110,12 +2252,27 @@ export function ConfigFerramentas({
             )}
           </div>}
 
-          {/* Roadmap */}
-          <RoadmapCard
-            icon={Check}
-            name="Marcar como resolvido"
-            description="Permita que o agente encerre conversas automaticamente quando resolvidas."
-          />
+          {/* Marcar como resolvido — só mostra se não está ativo */}
+          {!markResolvedActive && <div className="bg-nb-panel rounded-2xl border border-nb-border p-4 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-xl bg-nb-elevated border border-nb-border flex items-center justify-center flex-shrink-0">
+              <Check className="w-4 h-4 text-nb-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-nb-text">Marcar como resolvido</h3>
+              <p className="text-xs text-nb-muted mt-0.5 leading-relaxed">
+                Permita que o agente encerre conversas automaticamente quando resolvidas —
+                disponível em todos os planos.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={readonly || httpToolsLoading}
+              onClick={() => setMarkResolvedModalOpen(true)}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar
+            </button>
+          </div>}
         </div>
       </div>
 
@@ -2144,6 +2301,13 @@ export function ConfigFerramentas({
         onClose={handleRequestHumanModalClose}
         agentId={agentId}
         tool={requestHumanTool ?? null}
+        readonly={readonly}
+      />
+      <MarkResolvedConfigModal
+        open={markResolvedModalOpen}
+        onClose={handleMarkResolvedModalClose}
+        agentId={agentId}
+        tool={markResolvedTool ?? null}
         readonly={readonly}
       />
       <FollowUpConfigModal

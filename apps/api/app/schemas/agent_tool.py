@@ -75,11 +75,31 @@ class RequestHumanToolConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-AgentToolConfig = HttpToolConfig | RequestHumanToolConfig
+class MarkResolvedToolConfig(BaseModel):
+    """
+    Config for tool_type="mark_resolved". No configurable fields — same
+    pure-toggle shape as RequestHumanToolConfig; the model-facing behavior
+    is driven entirely by the tool's `name`/`description`.
+
+    NOTE: this is structurally identical to RequestHumanToolConfig (both
+    empty, both extra="forbid") — Pydantic's smart union can resolve an
+    incoming `{}` to *either* class regardless of which tool_type it's
+    actually for, since both accept exactly the same (empty) input. That's
+    harmless here (they behave identically either way), but means
+    agent_tool_service._validate_tool_config must NOT isinstance-check
+    against one specific empty-config class — check membership in "any
+    empty-config type" instead. Only HttpToolConfig (which requires `url`)
+    is reliably distinguishable from the other two.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+AgentToolConfig = HttpToolConfig | RequestHumanToolConfig | MarkResolvedToolConfig
 
 
 class AgentToolCreate(BaseModel):
-    tool_type: Literal["http_request", "request_human"]
+    tool_type: Literal["http_request", "request_human", "mark_resolved"]
     name: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_]+$")
     description: str = Field(min_length=1, max_length=500)
     is_enabled: bool = True

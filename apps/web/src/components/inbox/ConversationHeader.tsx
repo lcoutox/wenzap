@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Hand, KanbanSquare, Loader2, X } from "lucide-react";
+import { Check, Hand, KanbanSquare, Loader2, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Conversation, ConversationStatus, MemberRole, Pipeline, PipelineStage } from "@/lib/api";
 
@@ -381,6 +381,16 @@ export function ConversationHeader({
           <Hand className="w-3 h-3 text-nb-muted flex-shrink-0" />
           <span className="text-[10px] text-nb-muted truncate">
             {conversation.handoff_reason}
+          </span>
+        </div>
+      )}
+
+      {/* Resolution summary row — set by the "Marcar como resolvido" tool. */}
+      {conversation.status === "resolved" && conversation.resolution_summary && (
+        <div className="flex items-center gap-1.5 px-5 pb-2">
+          <Check className="w-3 h-3 text-nb-muted flex-shrink-0" />
+          <span className="text-[10px] text-nb-muted truncate">
+            {conversation.resolution_summary}
           </span>
         </div>
       )}

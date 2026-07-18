@@ -41,6 +41,7 @@ class ConversationOut(BaseModel):
     status: str
     ai_enabled: bool
     handoff_reason: str | None = None
+    resolution_summary: str | None = None
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime

@@ -51,6 +51,7 @@ def _conv_to_dict(
         "status": conv.status,
         "ai_enabled": conv.ai_enabled,
         "handoff_reason": conv.handoff_reason,
+        "resolution_summary": conv.resolution_summary,
         "last_message_at": conv.last_message_at,
         "created_at": conv.created_at,
         "updated_at": conv.updated_at,
@@ -255,6 +256,10 @@ def update_conversation(
 
     if "status" in data.model_fields_set and data.status is not None:
         conv.status = data.status
+        if data.status != "resolved":
+            # Stale once the conversation isn't resolved anymore — same
+            # cleanup conversation_message_service.py's auto-reopen does.
+            conv.resolution_summary = None
 
     if "agent_id" in data.model_fields_set:
         if data.agent_id is not None:

@@ -174,6 +174,16 @@ def create_message(
     db.add(msg)
     db.flush()  # Assign id and created_at from the DB.
 
+    # Auto-reopen: a conversation the "mark_resolved" tool (or a human) closed
+    # shouldn't stay permanently silent just because the customer wrote again
+    # — see mark-resolved-tool-prd.md. WhatsApp doesn't hit this path for a
+    # resolved conversation (its own lookup only matches open/pending, so it
+    # spins up a new conversation instead) — this only matters here, for the
+    # widget/API path, which reuses one persistent conversation per session.
+    if data.sender_type == "customer" and conv.status == "resolved":
+        conv.status = "open"
+        conv.resolution_summary = None
+
     # Update conversation timestamps.
     now = datetime.now(timezone.utc)
     conv.last_message_at = msg.created_at or now

@@ -8,6 +8,8 @@ row into something the LLM tool-calling loop can actually use:
   a synchronous, SSRF-safe outbound HTTP call.
 - execute_request_human_tool(): tool_type="request_human" (request-human-tool-prd.md) —
   pauses the AI on the conversation and notifies workspace admins by email.
+- execute_mark_resolved_tool(): tool_type="mark_resolved" (mark-resolved-tool-prd.md) —
+  sets the conversation to status="resolved" with a summary.
 
 The CRUD functions and build_tool_schema/build_tool_dispatch are written
 generically so a future tool type plugs in without reshaping this module.
@@ -36,6 +38,7 @@ from app.schemas.agent_tool import (
     AgentToolCreate,
     AgentToolUpdate,
     HttpToolConfig,
+    MarkResolvedToolConfig,
     RequestHumanToolConfig,
 )
 from app.services.agent_llm_executor import ToolExecutor
@@ -235,6 +238,23 @@ def build_tool_schema(tool: AgentTool) -> dict:
                 "required": ["reason"],
             },
         }
+    if tool.tool_type == "mark_resolved":
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "resolution_summary": {
+                        "type": "string",
+                        "description": (
+                            "Resumo curto de como o problema do cliente foi resolvido."
+                        ),
+                    }
+                },
+                "required": ["resolution_summary"],
+            },
+        }
     raise ValueError(f"Unknown tool_type: {tool.tool_type!r}")
 
 
@@ -264,6 +284,10 @@ def build_tool_dispatch(
             dispatch[tool.name] = _make_request_human_executor(
                 db=db, workspace_id=workspace_id, conversation=conversation
             )
+        elif tool.tool_type == "mark_resolved":
+            dispatch[tool.name] = _make_mark_resolved_executor(
+                db=db, workspace_id=workspace_id, conversation=conversation
+            )
     return dispatch
 
 
@@ -283,6 +307,21 @@ def _make_request_human_executor(
         reason = str(input_.get("reason") or "Motivo não informado.")
         return execute_request_human_tool(
             db=db, workspace_id=workspace_id, conversation=conversation, reason=reason
+        )
+    return executor
+
+
+def _make_mark_resolved_executor(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+) -> ToolExecutor:
+    def executor(input_: dict) -> str:
+        summary = str(input_.get("resolution_summary") or "Resumo não informado.")
+        return execute_mark_resolved_tool(
+            db=db, workspace_id=workspace_id, conversation=conversation,
+            resolution_summary=summary,
         )
     return executor
 
@@ -472,6 +511,50 @@ def _get_workspace_notify_recipients(
     return [(email, name) for email, name in rows]
 
 
+#  RequestHumanToolConfig and MarkResolvedToolConfig are structurally
+#  identical (both empty, extra="forbid") — Pydantic's smart union can
+#  resolve an incoming `{}` to either class regardless of which tool_type
+#  it's actually for. Harmless (they behave identically), but means we must
+#  check membership in this tuple, not isinstance against one specific class.
+_EMPTY_TOOL_CONFIG_TYPES = (RequestHumanToolConfig, MarkResolvedToolConfig)
+
+
+# ── Mark-resolved tool execution ────────────────────────────────────────────────
+
+def execute_mark_resolved_tool(
+    *,
+    db: Session | None,
+    workspace_id: uuid.UUID | None,
+    conversation: Conversation | None,
+    resolution_summary: str,
+) -> str:
+    """
+    Set *conversation* to status="resolved" with a summary (mark-resolved-tool-prd.md).
+
+    Same end state as a human manually picking "Resolvida" in the Inbox status
+    dropdown — does NOT touch ai_enabled/assigned_user_id. Playground mode
+    (conversation is None) simulates without side effects, same as the other
+    two tools. Idempotent within a turn: a second call in the same turn (model
+    changes its mind about the summary) is a no-op once already resolved.
+    """
+    if conversation is None:
+        return (
+            "[Simulação de Playground] Em uma conversa real, isso marcaria a conversa "
+            f"como resolvida. Resumo: {resolution_summary}"
+        )
+
+    assert db is not None and workspace_id is not None
+
+    if conversation.status == "resolved":
+        return "A conversa já estava marcada como resolvida."
+
+    conversation.status = "resolved"
+    conversation.resolution_summary = resolution_summary[:500]
+    db.flush()
+
+    return "Conversa marcada como resolvida com sucesso."
+
+
 def _validate_tool_config(tool_type: str, config: AgentToolConfig) -> None:
     if tool_type == "http_request":
         if not isinstance(config, HttpToolConfig):
@@ -483,11 +566,11 @@ def _validate_tool_config(tool_type: str, config: AgentToolConfig) -> None:
             validate_webhook_url(config.url)
         except WebhookUrlError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    elif tool_type == "request_human":
-        if not isinstance(config, RequestHumanToolConfig):
+    elif tool_type in ("request_human", "mark_resolved"):
+        if not isinstance(config, _EMPTY_TOOL_CONFIG_TYPES):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Config inválida para tool_type='request_human'.",
+                detail=f"Config inválida para tool_type='{tool_type}'.",
             )
 
 

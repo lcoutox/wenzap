@@ -592,3 +592,79 @@ def test_write_roles_can_create_message(
             sender_type="customer",
         )
     assert r.status_code == 201
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 9. AUTO-REOPEN on resolved conversations (mark-resolved-tool-prd.md)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_customer_message_reopens_resolved_conversation(
+    db: Session, client_a, workspace_a: Workspace
+):
+    contact = _seed_contact(db, workspace_a)
+    conv = _seed_conversation(db, workspace_a, contact)
+    conv.status = "resolved"
+    conv.resolution_summary = "Cliente confirmou recebimento."
+    db.commit()
+
+    r = _post_msg(
+        client_a, conv.id,
+        content="Na verdade voltou a dar problema.",
+        direction="inbound",
+        sender_type="customer",
+    )
+    assert r.status_code == 201
+
+    db.refresh(conv)
+    assert conv.status == "open"
+    assert conv.resolution_summary is None
+
+
+def test_human_message_does_not_reopen_resolved_conversation(
+    db: Session, client_a, workspace_a: Workspace, user_a: User
+):
+    """Only a customer message reopens — a human/agent/system message on a
+    resolved conversation shouldn't silently flip it back to open."""
+    contact = _seed_contact(db, workspace_a)
+    conv = _seed_conversation(db, workspace_a, contact)
+    conv.status = "resolved"
+    conv.resolution_summary = "Cliente confirmou recebimento."
+    db.commit()
+
+    r = _post_msg(
+        client_a, conv.id,
+        content="Nota interna.",
+        direction="internal",
+        sender_type="human",
+    )
+    assert r.status_code == 201
+
+    db.refresh(conv)
+    assert conv.status == "resolved"
+    assert conv.resolution_summary == "Cliente confirmou recebimento."
+
+
+def test_customer_message_on_open_conversation_leaves_resolution_summary_alone(
+    db: Session, client_a, workspace_a: Workspace
+):
+    """Sanity check: the auto-reopen branch only fires when status is
+    actually "resolved" — must not clear an unrelated summary otherwise
+    (there shouldn't be one on an open conversation, but confirms no
+    unconditional clear-on-every-customer-message bug)."""
+    contact = _seed_contact(db, workspace_a)
+    conv = _seed_conversation(db, workspace_a, contact)
+    db.commit()
+    assert conv.status == "open"
+
+    r = _post_msg(
+        client_a, conv.id,
+        content="Primeira mensagem.",
+        direction="inbound",
+        sender_type="customer",
+    )
+    assert r.status_code == 201
+
+    db.refresh(conv)
+    assert conv.status == "open"
+    assert conv.resolution_summary is None

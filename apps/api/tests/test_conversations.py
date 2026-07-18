@@ -550,3 +550,19 @@ def test_update_conversation_response_includes_contact_name(
     r = client_a.patch(f"/conversations/{conv.id}", json={"status": "pending"})
     assert r.status_code == 200
     assert r.json()["contact_name"] == "Lucas Souza"
+
+
+def test_patch_status_away_from_resolved_clears_resolution_summary(
+    db: Session, client_a, workspace_a: Workspace
+):
+    """mark-resolved-tool-prd.md — a stale summary shouldn't survive a manual
+    status change away from "resolved" (same cleanup the auto-reopen path does)."""
+    contact = _seed_contact(db, workspace_a)
+    conv = _seed_conversation(db, workspace_a, contact)
+    conv.status = "resolved"
+    conv.resolution_summary = "Cliente confirmou recebimento."
+    db.commit()
+
+    r = client_a.patch(f"/conversations/{conv.id}", json={"status": "open"})
+    assert r.status_code == 200
+    assert r.json()["resolution_summary"] is None

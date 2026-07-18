@@ -430,6 +430,52 @@ def delete_agent_request_human_tool(
     agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
 
 
+@router.post(
+    "/{agent_id}/tools/mark-resolved",
+    response_model=AgentToolOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_mark_resolved_tool(
+    agent_id: uuid.UUID,
+    data: AgentToolCreate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    # No feature gate — same product decision as "Solicitar humano": basic
+    # Inbox capability, not premium automation like http_tools.
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    _require_tool_type(data, "mark_resolved")
+    return agent_tool_service.create_agent_tool(db, current_workspace.id, agent_id, data)
+
+
+@router.patch("/{agent_id}/tools/mark-resolved/{tool_id}", response_model=AgentToolOut)
+def update_agent_mark_resolved_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    data: AgentToolUpdate,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> AgentToolOut:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    return agent_tool_service.update_agent_tool(
+        db, current_workspace.id, agent_id, tool_id, data
+    )
+
+
+@router.delete("/{agent_id}/tools/mark-resolved/{tool_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_agent_mark_resolved_tool(
+    agent_id: uuid.UUID,
+    tool_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> None:
+    _require_role(_WRITE_ROLES, db, current_workspace, current_user)
+    agent_tool_service.delete_agent_tool(db, current_workspace.id, agent_id, tool_id)
+
+
 # ── Test endpoint ──────────────────────────────────────────────────────────────
 
 @router.post("/{agent_id}/test", response_model=AgentTestResponse)

@@ -115,7 +115,7 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Envio de mensagens como humano | ✅ Feito | — |
 | Resposta automática pelo agente | ✅ Feito | — |
 | Assumir conversa (human handoff) | ✅ Feito | — |
-| Marcar conversa como resolvida | ⬜ Planejado | — |
+| Marcar conversa como resolvida (manual + automática pelo agente) | ✅ Feito | `docs/agents/mark-resolved-tool-prd.md` |
 | Filtros e busca no inbox | ⬜ Planejado | — |
 | Atribuição de conversa a operador | ⬜ Planejado | — |
 | Tags em conversas | ⬜ Planejado | — |
@@ -167,6 +167,8 @@ O Nexbrain está na fase de MVP avançado. As fundações técnicas (multi-tenan
 | Ativação de catálogo por agente | ✅ Feito | — |
 | HTTP Tool (agente chama webhook externo) | ✅ Feito | `docs/agents/agent-tool-calling-prd.md` |
 | Solicitar humano (handoff estruturado, sem gate de plano) | ✅ Feito | `docs/agents/request-human-tool-prd.md` |
+| Follow-up automático (reengajamento por silêncio) | ✅ Feito | `docs/agents/follow-up-tool-prd.md` |
+| Marcar como resolvido (sem gate de plano) | ✅ Feito | `docs/agents/mark-resolved-tool-prd.md` |
 | Criação de card no pipeline (action) | ⬜ Planejado | — |
 | Criação de contato (action) | ⬜ Planejado | — |
 | Envio de e-mail (action) | ⬜ Planejado | — |
@@ -243,16 +245,17 @@ Esta seção lista o que deve ser feito nos próximos ciclos, em ordem de priori
 |---|---|---|---|
 | 1 | Fonte via URL (scraping) | Base de Conhecimento | Reduz fricção no onboarding |
 | 2 | Filtros e busca no inbox | Inbox | Necessário assim que volume crescer |
-| 3 | Marcar conversa como resolvida | Inbox | Automação essencial, baixa complexidade |
-| 4 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
-| 5 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
-| 6 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
-| 7 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
-| 8 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
-~~9. Follow-up automático pós-conversa~~ ✅ **Feito (2026-07-18)** — degraus configuráveis, ver [follow-up-tool-prd.md](../agents/follow-up-tool-prd.md).
-| 9 | Instagram como canal | Canais | Alta demanda esperada |
-| 10 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
-| 11 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
+| 3 | Resumo automático de conversa | Inbox | Alto valor, baixo esforço |
+| 4 | Atribuição de conversa a operador | Inbox | Necessário para equipes |
+| 5 | Fonte via Notion | Base de Conhecimento | Alta demanda, clientes já usam Notion |
+| 6 | Fonte via Google Drive | Base de Conhecimento | Complementa Notion, acesso a docs compartilhados |
+| 7 | Fonte via YouTube | Base de Conhecimento | Caso de uso específico (transcrições) |
+| 8 | Instagram como canal | Canais | Alta demanda esperada |
+| 9 | Aba Segurança — domínios do widget | Agentes | Proteção básica para clientes em produção |
+| 10 | Plano Scale — checkout self-serve | Billing | Hoje sales-assisted; infraestrutura Stripe já pronta |
+
+~~Marcar conversa como resolvida~~ ✅ **Feito (2026-07-18)** — automático pelo agente via tool "Marcar como resolvido", ver [mark-resolved-tool-prd.md](../agents/mark-resolved-tool-prd.md).
+~~Follow-up automático pós-conversa~~ ✅ **Feito (2026-07-18)** — degraus configuráveis, ver [follow-up-tool-prd.md](../agents/follow-up-tool-prd.md).
 
 ---
 
