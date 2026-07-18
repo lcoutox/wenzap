@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.workspace import Workspace
 from app.models.workspace_onboarding_profile import WorkspaceOnboardingProfile
 from app.schemas.onboarding import OnboardingProfileCreate, OnboardingStatusOut
 
@@ -42,7 +43,7 @@ def get_onboarding_status(
 
 def submit_onboarding_profile(
     db: Session,
-    workspace_id: uuid.UUID,
+    workspace: Workspace,
     user_id: uuid.UUID,
     data: OnboardingProfileCreate,
 ) -> OnboardingStatusOut:
@@ -52,19 +53,19 @@ def submit_onboarding_profile(
     If a profile already exists and completed_at is already set, the data is
     updated but completed_at is preserved (not cleared or reset).
 
-    workspace_id and user_id come from authenticated context, never from input.
+    workspace and user_id come from authenticated context, never from input.
     """
     now = datetime.now(timezone.utc)
 
     profile = db.scalar(
         select(WorkspaceOnboardingProfile).where(
-            WorkspaceOnboardingProfile.workspace_id == workspace_id
+            WorkspaceOnboardingProfile.workspace_id == workspace.id
         )
     )
 
     if profile is None:
         profile = WorkspaceOnboardingProfile(
-            workspace_id=workspace_id,
+            workspace_id=workspace.id,
             user_id=user_id,
             completed_at=now,
         )
@@ -86,6 +87,14 @@ def submit_onboarding_profile(
     profile.role = data.role
     profile.heard_from = data.heard_from
     profile.contact_consent = data.contact_consent
+
+    # Sync the workspace name to the company name collected here — but only
+    # while it's still the signup-generated default ("Workspace de X").
+    # Never overwrites a name someone deliberately set in Settings
+    # (workspace_service.update_workspace flips name_is_default to False).
+    company_name = data.company_name.strip()
+    if workspace.name_is_default and company_name:
+        workspace.name = company_name
 
     db.commit()
     db.refresh(profile)

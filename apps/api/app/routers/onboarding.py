@@ -44,4 +44,4 @@ def post_onboarding(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OnboardingStatusOut:
-    return submit_onboarding_profile(db, current_workspace.id, current_user.id, data)
+    return submit_onboarding_profile(db, current_workspace, current_user.id, data)

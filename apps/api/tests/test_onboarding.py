@@ -269,6 +269,61 @@ class TestOnboardingIsolation:
         assert profile_a.full_name == "User A Name"
 
 
+# ── Workspace name sync ────────────────────────────────────────────────────────
+
+class TestOnboardingWorkspaceNameSync:
+    """
+    Onboarding syncs the collected company_name into Workspace.name — but
+    only while it's still the signup-generated default. A deliberate rename
+    via PATCH /workspaces/current (workspace_service.update_workspace)
+    permanently opts the workspace out of this sync.
+    """
+
+    def test_syncs_workspace_name_to_company_name(
+        self, db: Session, client_a: TestClient, workspace_a: Workspace
+    ):
+        assert workspace_a.name_is_default is True  # signup default, from conftest
+
+        resp = client_a.post(URL, json=_valid_payload(company_name="Nexalt Automações"))
+        assert resp.status_code == 200
+
+        db.refresh(workspace_a)
+        assert workspace_a.name == "Nexalt Automações"
+        assert workspace_a.name_is_default is True  # still eligible for future syncs
+
+    def test_second_onboarding_post_resyncs_on_new_company_name(
+        self, db: Session, client_a: TestClient, workspace_a: Workspace
+    ):
+        client_a.post(URL, json=_valid_payload(company_name="First Co"))
+        client_a.post(URL, json=_valid_payload(company_name="Corrected Co"))
+
+        db.refresh(workspace_a)
+        assert workspace_a.name == "Corrected Co"
+
+    def test_does_not_overwrite_a_manually_renamed_workspace(
+        self, db: Session, client_a: TestClient, workspace_a: Workspace
+    ):
+        workspace_a.name = "Nome Escolhido Manualmente"
+        workspace_a.name_is_default = False
+        db.commit()
+
+        resp = client_a.post(URL, json=_valid_payload(company_name="Nexalt Automações"))
+        assert resp.status_code == 200
+
+        db.refresh(workspace_a)
+        assert workspace_a.name == "Nome Escolhido Manualmente"
+
+    def test_manual_rename_flips_name_is_default_to_false(
+        self, db: Session, client_a: TestClient, workspace_a: Workspace
+    ):
+        resp = client_a.patch("/workspaces/current", json={"name": "Renomeado no Settings"})
+        assert resp.status_code == 200
+
+        db.refresh(workspace_a)
+        assert workspace_a.name == "Renomeado no Settings"
+        assert workspace_a.name_is_default is False
+
+
 # ── Validations ────────────────────────────────────────────────────────────────
 
 class TestOnboardingValidations:

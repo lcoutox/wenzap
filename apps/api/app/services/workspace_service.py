@@ -23,6 +23,10 @@ def update_workspace(
 
     if data.name is not None:
         workspace.name = data.name
+        # A deliberate rename permanently opts this workspace out of the
+        # onboarding company_name auto-sync (onboarding_service.py) — it
+        # must never overwrite a name someone chose on purpose.
+        workspace.name_is_default = False
     if data.slug is not None:
         existing = db.scalar(
             select(Workspace).where(Workspace.slug == data.slug, Workspace.id != workspace.id)

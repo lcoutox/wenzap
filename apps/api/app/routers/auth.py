@@ -130,6 +130,7 @@ def _provision_workspace(user: User, db: Session) -> Workspace:
     workspace = Workspace(
         id=uuid.uuid4(),
         name=f"Workspace de {name_part}",
+        name_is_default=True,
         slug=slug,
         owner_user_id=user.id,
         status=WorkspaceStatus.active.value,
