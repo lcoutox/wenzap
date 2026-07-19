@@ -277,6 +277,35 @@ export type AgentAlert = {
   created_at: string;
 };
 
+export type AgentRunToolCall = {
+  call_index: number;
+  tool_name: string | null;
+  input: unknown;
+  output: unknown;
+  status: "success" | "error" | null;
+};
+
+export type AgentRun = {
+  id: string;
+  conversation_id: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+  agent_id: string;
+  agent_name: string | null;
+  status: "success" | "failed" | "skipped" | "blocked";
+  had_tool_error: boolean;
+  error_code: string | null;
+  error_message: string | null;
+  credits_used: number;
+  duration_ms: number | null;
+  tool_names: string[];
+  created_at: string;
+};
+
+export type AgentRunDetail = AgentRun & {
+  tool_calls: AgentRunToolCall[];
+};
+
 export type AgentTestModelInfo = {
   display_name: string;
   provider: string;
@@ -2044,6 +2073,34 @@ export const api = {
         return res.json() as Promise<KnowledgeSource>;
       },
     },
+  },
+
+  agentRuns: {
+    list: (params?: {
+      status?: string;
+      had_error?: boolean;
+      agent_id?: string;
+      conversation_id?: string;
+      tool_name?: string;
+      date_from?: string;
+      date_to?: string;
+      skip?: number;
+      limit?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params?.status) qs.set("status", params.status);
+      if (params?.had_error) qs.set("had_error", "true");
+      if (params?.agent_id) qs.set("agent_id", params.agent_id);
+      if (params?.conversation_id) qs.set("conversation_id", params.conversation_id);
+      if (params?.tool_name) qs.set("tool_name", params.tool_name);
+      if (params?.date_from) qs.set("date_from", params.date_from);
+      if (params?.date_to) qs.set("date_to", params.date_to);
+      if (params?.skip != null) qs.set("skip", String(params.skip));
+      if (params?.limit != null) qs.set("limit", String(params.limit));
+      const q = qs.toString();
+      return cookieFetch<AgentRun[]>(q ? `/agent-runs?${q}` : "/agent-runs");
+    },
+    get: (runId: string) => cookieFetch<AgentRunDetail>(`/agent-runs/${runId}`),
   },
 
   agentAlerts: {

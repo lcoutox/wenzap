@@ -13,6 +13,7 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 from app.config import settings
 from app.routers import (
     agent_alerts,
+    agent_runs,
     agents,
     ai_models,
     auth,
@@ -115,6 +116,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(agent_alerts.router)
+app.include_router(agent_runs.router)
 app.include_router(workspaces.router)
 app.include_router(members.router)
 app.include_router(plans.router)

@@ -1,9 +1,41 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Hand, KanbanSquare, Loader2, UserCheck, X } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Check, Hand, KanbanSquare, Loader2, UserCheck, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Conversation, ConversationStatus, MemberRole, Pipeline, PipelineStage } from "@/lib/api";
+
+// Small, quiet badge — only renders when this conversation actually had a
+// tool call fail (or a run crash outright). Links straight to that run,
+// pre-filtered, in the Execuções screen — no need to dig through the
+// transcript or ask an engineer to check the database.
+function AgentErrorIndicator({ conversationId }: { conversationId: string }) {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHasError(false);
+    api.agentRuns
+      .list({ conversation_id: conversationId, had_error: true, limit: 1 })
+      .then((runs) => { if (!cancelled) setHasError(runs.length > 0); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [conversationId]);
+
+  if (!hasError) return null;
+
+  return (
+    <Link
+      href={`/dashboard/logs?conversation_id=${conversationId}`}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium bg-nb-danger/10 border border-nb-danger/20 text-nb-danger flex-shrink-0 hover:opacity-80 transition-opacity"
+      title="Uma ferramenta falhou nessa conversa — ver detalhes"
+    >
+      <AlertTriangle className="w-3 h-3" />
+      Falha detectada
+    </Link>
+  );
+}
 
 // ── SendToPipelineModal ───────────────────────────────────────────────────────
 
@@ -322,6 +354,8 @@ export function ConversationHeader({
             IA ativa
           </span>
         )}
+
+        <AgentErrorIndicator conversationId={conversation.id} />
 
         <div className="flex-1 min-w-0" />
 

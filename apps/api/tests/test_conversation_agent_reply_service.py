@@ -65,6 +65,7 @@ from app.models.agent import Agent
 from app.models.agent_knowledge_base import AgentKnowledgeBase
 from app.models.agent_model_settings import AgentModelSettings
 from app.models.agent_prompt_settings import AgentPromptSettings
+from app.models.agent_tool import AgentTool
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
 from app.models.conversation import Conversation
@@ -78,6 +79,10 @@ from app.services.conversation_agent_reply_service import generate_conversation_
 from app.services.embedding_providers.mock import MockEmbeddingProvider
 from app.services.indexing_service import index_source
 from tests.conftest import _make_subscription, _make_user, _make_workspace
+
+_PUBLIC_DNS_PATCH = patch(
+    "socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]
+)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -334,6 +339,49 @@ def test_success_token_metadata_saved(db: Session):
     assert run.input_tokens == 120
     assert run.output_tokens == 60
     assert run.duration_ms == 800
+
+
+def test_success_with_failed_tool_call_sets_had_tool_error(db: Session):
+    # The turn itself completes fine (status stays "success") — only a tool
+    # call inside it fails (e.g. the external API rejects the request with
+    # a 4xx). had_tool_error must flag that so it's not indistinguishable
+    # from a genuinely clean run. Found via a real production incident
+    # (Cal.com 400 recorded with no visible failure signal).
+    ws, agent, *_ = _full_setup(db)
+    db.add(AgentTool(
+        workspace_id=ws.id, agent_id=agent.id, tool_type="http_request",
+        name="agendar_visita", description="Agenda uma visita.", is_enabled=True,
+        config={
+            "method": "POST", "url": "https://api.example.com/bookings",
+            "headers": {}, "timeout_seconds": 8,
+        },
+    ))
+    conv = _make_conversation(db, ws.id, agent)
+    trigger = _make_trigger(db, ws.id, conv)
+    db.commit()
+
+    tool_use_resp = LLMResponse(
+        content="", input_tokens=50, output_tokens=20, duration_ms=300,
+        stop_reason="tool_use",
+        content_blocks=[{
+            "type": "tool_use", "id": "toolu_1", "name": "agendar_visita", "input": {},
+        }],
+    )
+    final_resp = _mock_llm("Um corretor vai confirmar sua visita.")
+
+    import httpx
+    with (
+        _PUBLIC_DNS_PATCH,
+        patch(_LLM_PATCH, side_effect=[tool_use_resp, final_resp]),
+        patch(
+            "app.services.agent_tool_service.httpx.request",
+            return_value=httpx.Response(400, text='{"error": "bad request"}'),
+        ),
+    ):
+        run = generate_conversation_agent_reply(db, ws.id, conv, trigger)
+
+    assert run.status == "success"
+    assert run.had_tool_error is True
 
 
 def test_success_pending_conversation_replies(db: Session):

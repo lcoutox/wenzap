@@ -48,6 +48,13 @@ class ConversationAgentRun(Base):
     # One of: success | failed | skipped | blocked
     status: Mapped[str] = mapped_column(String(20), nullable=False)
 
+    # True when the turn itself completed (status stays "success") but one
+    # or more tool calls inside it failed (agent_tool_calls has a "status":
+    # "error" entry) — orthogonal to `status`, which only reflects whether
+    # the LLM turn crashed. Powers the "Execuções" log screen's failure
+    # filter and the Inbox error indicator (execucoes-log-prd.md).
+    had_tool_error: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Credit / token accounting
     credits_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)

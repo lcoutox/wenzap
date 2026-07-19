@@ -425,6 +425,15 @@ def generate_conversation_agent_reply(
     _increment_credits(db, workspace_id, credits_needed)
 
     # ── 11. Persist success run ───────────────────────────────────────────────
+    # The turn itself completed fine (status stays "success"), but a tool
+    # call inside it may still have failed (e.g. Cal.com rejecting a
+    # booking) — had_tool_error tracks that separately so the Execuções log
+    # screen and the Inbox indicator can surface it.
+    had_tool_error = any(
+        tc.get("status") == "error"
+        for call in llm_response.calls
+        for tc in call.tool_calls
+    )
     run = ConversationAgentRun(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
@@ -433,6 +442,7 @@ def generate_conversation_agent_reply(
         agent_id=agent.id,
         ai_model_id=model.id,
         status="success",
+        had_tool_error=had_tool_error,
         credits_used=credits_needed,
         input_tokens=llm_response.input_tokens,
         output_tokens=llm_response.output_tokens,
