@@ -620,6 +620,38 @@ function extractPathVars(url: string): string[] {
   return Array.from(found);
 }
 
+// ── Fixed query string embedded in the URL (e.g. ?username=foo&event=bar) ──────
+// Distinct from the "Query" section below, which is for values the AGENT
+// supplies per call — these are set once by whoever configures the tool and
+// never change, so they're edited as plain key/value rows instead of typed
+// directly into the URL text, same idea as the Body's isUserProvided split.
+
+function parseUrlQueryPairs(url: string): { key: string; value: string }[] {
+  const qIndex = url.indexOf("?");
+  if (qIndex === -1) return [];
+  const qs = url.slice(qIndex + 1);
+  if (!qs) return [];
+  return qs.split("&").filter(Boolean).map((pair) => {
+    const eq = pair.indexOf("=");
+    if (eq === -1) return { key: decodeURIComponent(pair), value: "" };
+    try {
+      return { key: decodeURIComponent(pair.slice(0, eq)), value: decodeURIComponent(pair.slice(eq + 1)) };
+    } catch {
+      return { key: pair.slice(0, eq), value: pair.slice(eq + 1) };
+    }
+  });
+}
+
+function buildUrlWithQueryPairs(url: string, pairs: { key: string; value: string }[]): string {
+  const qIndex = url.indexOf("?");
+  const base = qIndex === -1 ? url : url.slice(0, qIndex);
+  const qs = pairs
+    .filter((p) => p.key.trim())
+    .map((p) => `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(p.value)}`)
+    .join("&");
+  return qs ? `${base}?${qs}` : base;
+}
+
 type HttpToolTemplate = {
   label: string;
   name: string;
@@ -719,9 +751,15 @@ const HTTP_TOOL_TEMPLATES: HttpToolTemplate[] = [
 function HeadersEditor({
   rows,
   onChange,
+  keyPlaceholder = "Authorization",
+  valuePlaceholder = "Bearer ...",
+  addLabel = "Add Header",
 }: {
   rows: { key: string; value: string }[];
   onChange: (rows: { key: string; value: string }[]) => void;
+  keyPlaceholder?: string;
+  valuePlaceholder?: string;
+  addLabel?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -731,14 +769,14 @@ function HeadersEditor({
             type="text"
             value={row.key}
             onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))}
-            placeholder="Authorization"
+            placeholder={keyPlaceholder}
             className={`${inputCls} font-mono text-xs`}
           />
           <input
             type="text"
             value={row.value}
             onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
-            placeholder="Bearer ..."
+            placeholder={valuePlaceholder}
             className={`${inputCls} font-mono text-xs`}
           />
           <button
@@ -755,7 +793,7 @@ function HeadersEditor({
         onClick={() => onChange([...rows, { key: "", value: "" }])}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
       >
-        <Plus className="w-3.5 h-3.5" /> Add Header
+        <Plus className="w-3.5 h-3.5" /> {addLabel}
       </button>
     </div>
   );
@@ -1314,6 +1352,10 @@ function HttpToolFormModal({
   const [testResult, setTestResult] = useState<HttpToolTestResult | null>(null);
 
   const pathVars = extractPathVars(url);
+  const urlQueryPairs = parseUrlQueryPairs(url);
+  function setUrlQueryPairs(pairs: { key: string; value: string }[]) {
+    setUrl(buildUrlWithQueryPairs(url, pairs));
+  }
   const bodyAllowed = method === "POST" || method === "PUT" || method === "PATCH";
   // Resolved fields for whichever mode is active — null only means "JSON
   // mode has invalid text right now" (Formulário is always structurally valid).
@@ -1644,6 +1686,24 @@ function HttpToolFormModal({
               ))}
             </div>
           )}
+        </div>
+
+        {/* Query fixa — parte da URL, mesmo valor sempre (username, api key, etc) */}
+        <div>
+          <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+            Query fixa (parte da URL — mesmo valor sempre)
+          </label>
+          <HeadersEditor
+            rows={urlQueryPairs}
+            onChange={setUrlQueryPairs}
+            keyPlaceholder="username"
+            valuePlaceholder="seu-username-na-cal.com"
+            addLabel="Add Query Fixa"
+          />
+          <p className="text-xs text-nb-muted mt-1">
+            Pra valores fixos configurados uma vez (ex: seu usuário na Cal.com) — ficam embutidos na
+            URL. Pra valores que o agente preenche a cada chamada, use a seção &ldquo;Query&rdquo; abaixo.
+          </p>
         </div>
 
         {/* Query */}
