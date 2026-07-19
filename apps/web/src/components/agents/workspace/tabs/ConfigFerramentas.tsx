@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Globe,
   Hand,
@@ -624,6 +626,13 @@ type HttpToolTemplate = {
   description: string;
   url: string;
   pathParamDescriptions: Record<string, string>;
+  method?: HttpToolConfig["method"];
+  headers?: Record<string, string>;
+  queryParams?: HttpToolParam[];
+  // Contract JSON text (same shape the "JSON" body mode reads/writes) — kept
+  // as a literal string here so applyTemplate() doesn't need to know about
+  // the field-tree types.
+  bodyJsonText?: string;
 };
 
 const HTTP_TOOL_TEMPLATES: HttpToolTemplate[] = [
@@ -640,6 +649,68 @@ const HTTP_TOOL_TEMPLATES: HttpToolTemplate[] = [
     description: "Consulta um CNPJ e retorna dados cadastrais da empresa (razão social, situação, endereço).",
     url: "https://receitaws.com.br/v1/cnpj/{cnpj}",
     pathParamDescriptions: { cnpj: "CNPJ só com números, sem pontuação." },
+  },
+  {
+    label: "Cal.com — agendar visita/reunião",
+    name: "agendar_visita",
+    description:
+      "Aciona quando o cliente confirmar um dia e horário específicos pra agendar uma visita/reunião. " +
+      "Antes de chamar, sempre pergunte e confirme o nome completo e o e-mail do cliente.",
+    url: "https://api.cal.com/v2/bookings",
+    method: "POST",
+    pathParamDescriptions: {},
+    headers: {
+      Authorization: "Bearer <sua-api-key-da-cal.com>",
+      "cal-api-version": "2026-02-25",
+    },
+    bodyJsonText: JSON.stringify(
+      {
+        eventTypeId: {
+          type: "number", isUserProvided: false, value: 0,
+          description: "Substitua pelo ID do seu Tipo de Evento na Cal.com (Event Types → copie o ID na URL).",
+        },
+        start: {
+          type: "string", isUserProvided: true,
+          description:
+            "Data/hora de início da visita em UTC, formato ISO 8601 (ex: 2026-07-25T17:00:00Z). " +
+            "Se o cliente informar horário de Brasília, converta somando 3 horas antes de preencher.",
+        },
+        attendee: {
+          type: "object",
+          properties: {
+            name: { type: "string", isUserProvided: true, description: "Nome completo do cliente" },
+            email: { type: "string", isUserProvided: true, description: "E-mail do cliente" },
+            timeZone: { type: "string", isUserProvided: false, value: "America/Sao_Paulo" },
+          },
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    label: "Cal.com — verificar horários disponíveis",
+    name: "verificar_horarios_calcom",
+    description:
+      "Aciona quando o cliente perguntar sobre disponibilidade de horários pra visita/reunião, " +
+      "antes de confirmar um dia e horário específicos.",
+    url: "https://api.cal.com/v2/slots?username=<seu-username-cal.com>&eventTypeSlug=<slug-do-evento>&timeZone=America/Sao_Paulo",
+    method: "GET",
+    pathParamDescriptions: {},
+    headers: {
+      Authorization: "Bearer <sua-api-key-da-cal.com>",
+      "cal-api-version": "2024-09-04",
+    },
+    queryParams: [
+      {
+        name: "start", required: true,
+        description: "Início do intervalo de busca, ISO 8601 em UTC (ex: 2026-07-25 ou 2026-07-25T00:00:00Z).",
+      },
+      {
+        name: "end", required: true,
+        description: "Fim do intervalo de busca, ISO 8601 em UTC (ex: 2026-08-01).",
+      },
+    ],
   },
 ];
 
@@ -976,6 +1047,11 @@ function parseContractJsonToFields(jsonText: string): BodyFieldNode[] | null {
   } catch {
     return null;
   }
+  // Tolerate a single-element array wrapper (`[{...}]`) — the shape some
+  // other tools (and content pasted from them) use for the same contract.
+  if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0] === "object" && parsed[0] !== null && !Array.isArray(parsed[0])) {
+    parsed = parsed[0];
+  }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
   const fields: BodyFieldNode[] = [];
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
@@ -1214,6 +1290,7 @@ function HttpToolFormModal({
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [method, setMethod] = useState<HttpToolConfig["method"]>("GET");
   const [url, setUrl] = useState("");
   const [headerRows, setHeaderRows] = useState<{ key: string; value: string }[]>([]);
@@ -1283,6 +1360,7 @@ function HttpToolFormModal({
     setQueryTestValues({});
     setBodyTestValues({});
     setBodyMode("json");
+    setTemplatePickerOpen(false);
     setError(null);
     setTestResult(null);
   }, [open, editingTool]);
@@ -1290,13 +1368,13 @@ function HttpToolFormModal({
   function applyTemplate(t: HttpToolTemplate) {
     setName(t.name);
     setDescription(t.description);
-    setMethod("GET");
+    setMethod(t.method || "GET");
     setUrl(t.url);
     setPathDescriptions(t.pathParamDescriptions);
-    setQueryParams([]);
-    setHeaderRows([]);
+    setQueryParams(t.queryParams || []);
+    setHeaderRows(Object.entries(t.headers || {}).map(([key, value]) => ({ key, value })));
     setBodyFields([]);
-    setBodyJsonText("");
+    setBodyJsonText(t.bodyJsonText || "");
     setBodyMode("json");
     setBodyFormError(null);
     setTestResult(null);
@@ -1441,21 +1519,38 @@ function HttpToolFormModal({
       <div className="space-y-4">
         {!editingTool && (
           <div>
-            <p className="text-xs font-medium text-nb-secondary mb-1.5 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> Usar um modelo pronto
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {HTTP_TOOL_TEMPLATES.map((t) => (
-                <button
-                  key={t.name}
-                  type="button"
-                  onClick={() => applyTemplate(t)}
-                  className="px-2.5 py-1.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setTemplatePickerOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-nb-secondary border border-nb-border rounded-xl hover:bg-nb-elevated transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" /> Usar um modelo pronto
+              </span>
+              {templatePickerOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {templatePickerOpen && (
+              <div className="mt-2 space-y-1 border border-nb-border rounded-xl p-1.5">
+                {HTTP_TOOL_TEMPLATES.map((t) => (
+                  <div
+                    key={t.name}
+                    className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-nb-elevated transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-nb-text truncate">{t.label}</p>
+                      <p className="text-[11px] text-nb-muted truncate">{t.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { applyTemplate(t); setTemplatePickerOpen(false); }}
+                      className="flex-shrink-0 px-2.5 py-1 text-xs font-semibold text-white bg-nb-primary rounded-lg hover:opacity-90 transition-opacity"
+                    >
+                      Usar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
