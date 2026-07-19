@@ -220,12 +220,14 @@ function ContactModal({
   onSaved,
   initial,
   readonly,
+  initialTab = "data",
 }: {
   open: boolean;
   onClose: () => void;
   onSaved: (c: Contact) => void;
   initial?: Contact;
   readonly: boolean;
+  initialTab?: "data" | "variables";
 }) {
   const [tab, setTab] = useState<"data" | "variables">("data");
   const [name, setName] = useState(initial?.name ?? "");
@@ -237,14 +239,14 @@ function ContactModal({
 
   useEffect(() => {
     if (open) {
-      setTab("data");
+      setTab(initialTab);
       setName(initial?.name ?? "");
       setEmail(initial?.email ?? "");
       setPhone(initial?.phone ?? "");
       setOrigin(initial?.origin ?? "");
       setError("");
     }
-  }, [open, initial]);
+  }, [open, initial, initialTab]);
 
   const isEdit = !!initial;
 
@@ -425,11 +427,13 @@ function RowActions({
   onEdit,
   onDelete,
   onViewConversations,
+  onViewData,
 }: {
   contact: Contact;
   onEdit: () => void;
   onDelete: () => void;
   onViewConversations: () => void;
+  onViewData: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -451,8 +455,15 @@ function RowActions({
         <MoreHorizontal className="w-4 h-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-8 z-20 w-44 bg-nb-surface border border-nb-border rounded-xl shadow-lg py-1">
+        <div className="absolute right-0 top-8 z-20 w-52 bg-nb-surface border border-nb-border rounded-xl shadow-lg py-1">
           <MenuItem icon={MessageSquare} label="Ver conversas" onClick={() => { setOpen(false); onViewConversations(); }} />
+          {!!contact.variables_count && (
+            <MenuItem
+              icon={Variable}
+              label={`Ver dados capturados (${contact.variables_count})`}
+              onClick={() => { setOpen(false); onViewData(); }}
+            />
+          )}
           <MenuItem icon={Pencil} label="Editar" onClick={() => { setOpen(false); onEdit(); }} />
           <MenuItem icon={Trash2} label="Excluir" danger onClick={() => { setOpen(false); onDelete(); }} />
         </div>
@@ -509,6 +520,7 @@ export default function ContactsPage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [editTab, setEditTab] = useState<"data" | "variables">("data");
   const [deleteContact, setDeleteContact] = useState<Contact | null>(null);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -662,7 +674,19 @@ export default function ContactsPage() {
                     </span>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-nb-text truncate">{displayName(c)}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-nb-text truncate">{displayName(c)}</p>
+                      {!!c.variables_count && (
+                        <button
+                          type="button"
+                          onClick={() => { setEditTab("variables"); setEditContact(c); }}
+                          title={`${c.variables_count} dado(s) capturado(s) pela IA`}
+                          className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-nb-primary-bg text-nb-primary-strong hover:opacity-80 transition-opacity"
+                        >
+                          <Variable className="w-2.5 h-2.5" /> {c.variables_count}
+                        </button>
+                      )}
+                    </div>
                     {/* mobile: show phone/email below name */}
                     <p className="md:hidden text-xs text-nb-muted truncate">{c.phone ?? c.email ?? ""}</p>
                   </div>
@@ -681,9 +705,10 @@ export default function ContactsPage() {
                 <div className="shrink-0 ml-auto md:ml-0">
                   <RowActions
                     contact={c}
-                    onEdit={() => setEditContact(c)}
+                    onEdit={() => { setEditTab("data"); setEditContact(c); }}
                     onDelete={() => setDeleteContact(c)}
                     onViewConversations={() => router.push(`/dashboard/inbox?contactId=${c.id}`)}
+                    onViewData={() => { setEditTab("variables"); setEditContact(c); }}
                   />
                 </div>
               </div>
@@ -705,6 +730,7 @@ export default function ContactsPage() {
         onSaved={handleSaved}
         initial={editContact ?? undefined}
         readonly={!write}
+        initialTab={editTab}
       />
       <DeleteModal
         open={!!deleteContact}

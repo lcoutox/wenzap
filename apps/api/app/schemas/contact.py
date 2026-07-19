@@ -40,6 +40,10 @@ class ContactOut(BaseModel):
     metadata_json: dict | None
     created_at: datetime
     updated_at: datetime
+    # Only populated by list_contacts (bulk-counted, no N+1) — None elsewhere.
+    # Powers the "N dados" badge on the Clientes list so AI-captured data
+    # (contact_variables) isn't invisible unless you happen to open Editar.
+    variables_count: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

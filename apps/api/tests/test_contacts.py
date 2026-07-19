@@ -34,12 +34,14 @@ def _make_member(db: Session, workspace: Workspace, role: MemberRole) -> User:
 
     email = f"{role.value}-{uuid.uuid4().hex[:6]}@test.com"
     user = _make_user(db, email, f"{role.value.title()} User")
-    db.add(WorkspaceMember(
-        workspace_id=workspace.id,
-        user_id=user.id,
-        role=role,
-        status=MemberStatus.active,
-    ))
+    db.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role=role,
+            status=MemberStatus.active,
+        )
+    )
     db.flush()
     return user
 
@@ -82,14 +84,17 @@ def test_create_contact_minimal(db: Session, client_a, workspace_a: Workspace):
 
 
 def test_create_contact_full(db: Session, client_a):
-    r = client_a.post("/contacts", json={
-        "name": "Maria Oliveira",
-        "email": "maria@example.com",
-        "phone": "+5511999990000",
-        "origin": "WhatsApp",
-        "external_id": "wa_5511999990000",
-        "metadata": {"source": "widget", "score": 8},
-    })
+    r = client_a.post(
+        "/contacts",
+        json={
+            "name": "Maria Oliveira",
+            "email": "maria@example.com",
+            "phone": "+5511999990000",
+            "origin": "WhatsApp",
+            "external_id": "wa_5511999990000",
+            "metadata": {"source": "widget", "score": 8},
+        },
+    )
     assert r.status_code == 201
     body = r.json()
     assert body["name"] == "Maria Oliveira"
@@ -158,7 +163,9 @@ def test_create_duplicate_phone_same_workspace_rejected(db: Session, client_a, w
 
 
 def test_duplicate_email_other_workspace_allowed(
-    db: Session, client_a, workspace_b: Workspace,
+    db: Session,
+    client_a,
+    workspace_b: Workspace,
 ):
     _seed_contact(db, workspace_b, email="cross@ws.com", name="Other WS")
     db.commit()
@@ -190,6 +197,25 @@ def test_list_contacts_returns_own_workspace(db: Session, client_a, workspace_a:
     names = {c["name"] for c in _list_items(r)}
     assert names == {"Alice", "Bob"}
     assert r.json()["total"] == 2
+
+
+def test_list_contacts_includes_variables_count(db: Session, client_a, workspace_a: Workspace):
+    with_vars = _seed_contact(db, workspace_a, name="Has Data")
+    _seed_contact(db, workspace_a, name="No Data")
+    db.commit()
+
+    r1 = client_a.post(f"/contacts/{with_vars.id}/variables", json={"key": "nome", "value": "X"})
+    assert r1.status_code == 201
+    r2 = client_a.post(
+        f"/contacts/{with_vars.id}/variables", json={"key": "email", "value": "x@y.com"}
+    )
+    assert r2.status_code == 201
+
+    r = client_a.get("/contacts")
+    assert r.status_code == 200
+    by_name = {c["name"]: c["variables_count"] for c in _list_items(r)}
+    assert by_name["Has Data"] == 2
+    assert by_name["No Data"] == 0
 
 
 def test_list_contacts_ordered_newest_first(db: Session, client_a, workspace_a: Workspace):
@@ -297,7 +323,10 @@ def test_get_contact_not_found(db: Session, client_a):
 
 
 def test_get_contact_cross_tenant_returns_404(
-    db: Session, user_a: User, workspace_a: Workspace, workspace_b: Workspace,
+    db: Session,
+    user_a: User,
+    workspace_a: Workspace,
+    workspace_b: Workspace,
 ):
     c = _seed_contact(db, workspace_b, name="WS-B Only")
     db.commit()
@@ -401,7 +430,10 @@ def test_update_contact_not_found(db: Session, client_a):
 
 
 def test_update_contact_cross_tenant_returns_404(
-    db: Session, user_a: User, workspace_a: Workspace, workspace_b: Workspace,
+    db: Session,
+    user_a: User,
+    workspace_a: Workspace,
+    workspace_b: Workspace,
 ):
     c = _seed_contact(db, workspace_b, name="WS-B Only")
     db.commit()
@@ -433,7 +465,10 @@ def test_delete_contact_not_found(db: Session, client_a):
 
 
 def test_delete_contact_cross_tenant_returns_404(
-    db: Session, user_a: User, workspace_a: Workspace, workspace_b: Workspace,
+    db: Session,
+    user_a: User,
+    workspace_a: Workspace,
+    workspace_b: Workspace,
 ):
     c = _seed_contact(db, workspace_b, name="WS-B Only")
     db.commit()
@@ -444,7 +479,10 @@ def test_delete_contact_cross_tenant_returns_404(
 
 
 def test_delete_contact_with_conversation_blocked(
-    db: Session, client_a, workspace_a: Workspace, user_a: User,
+    db: Session,
+    client_a,
+    workspace_a: Workspace,
+    user_a: User,
 ):
     c = _seed_contact(db, workspace_a, name="Has Conv")
     agent = Agent(
@@ -526,7 +564,10 @@ def test_viewer_cannot_delete_contact(db: Session, workspace_a: Workspace, user_
 
 @pytest.mark.parametrize("role", [MemberRole.member, MemberRole.admin, MemberRole.owner])
 def test_write_roles_can_create_contact(
-    db: Session, workspace_a: Workspace, user_a: User, role: MemberRole,
+    db: Session,
+    workspace_a: Workspace,
+    user_a: User,
+    role: MemberRole,
 ):
     user = _make_member(db, workspace_a, role)
     db.commit()
@@ -538,7 +579,10 @@ def test_write_roles_can_create_contact(
 
 @pytest.mark.parametrize("role", [MemberRole.member, MemberRole.admin, MemberRole.owner])
 def test_write_roles_can_delete_contact(
-    db: Session, workspace_a: Workspace, user_a: User, role: MemberRole,
+    db: Session,
+    workspace_a: Workspace,
+    user_a: User,
+    role: MemberRole,
 ):
     user = _make_member(db, workspace_a, role)
     c = _seed_contact(db, workspace_a, name="To Delete")
@@ -556,8 +600,10 @@ def test_write_roles_can_delete_contact(
 
 def test_list_contacts_excludes_other_workspace(
     db: Session,
-    user_a: User, workspace_a: Workspace,
-    user_b: User, workspace_b: Workspace,
+    user_a: User,
+    workspace_a: Workspace,
+    user_b: User,
+    workspace_b: Workspace,
 ):
     _seed_contact(db, workspace_a, name="WS-A Contact")
     _seed_contact(db, workspace_b, name="WS-B Contact")
@@ -597,8 +643,10 @@ def test_create_variable_with_source(db: Session, client_a, workspace_a: Workspa
     c = _seed_contact(db, workspace_a, name="Var Test")
     db.commit()
 
-    r = client_a.post(f"/contacts/{c.id}/variables",
-                      json={"key": "segment", "value": "enterprise", "source": "crm"})
+    r = client_a.post(
+        f"/contacts/{c.id}/variables",
+        json={"key": "segment", "value": "enterprise", "source": "crm"},
+    )
     assert r.status_code == 201
     assert r.json()["source"] == "crm"
 
@@ -652,7 +700,10 @@ def test_delete_variable(db: Session, client_a, workspace_a: Workspace):
 
 
 def test_variable_cross_tenant_contact_returns_404(
-    db: Session, user_a: User, workspace_a: Workspace, workspace_b: Workspace,
+    db: Session,
+    user_a: User,
+    workspace_a: Workspace,
+    workspace_b: Workspace,
 ):
     c = _seed_contact(db, workspace_b, name="Other WS")
     db.commit()
@@ -667,7 +718,9 @@ def test_variable_cross_tenant_contact_returns_404(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def _seed_conversation(db: Session, workspace: Workspace, contact: Contact, user: User) -> Conversation:
+def _seed_conversation(
+    db: Session, workspace: Workspace, contact: Contact, user: User
+) -> Conversation:
     agent = Agent(
         workspace_id=workspace.id,
         name=f"Agent-{uuid.uuid4().hex[:4]}",
@@ -689,7 +742,10 @@ def _seed_conversation(db: Session, workspace: Workspace, contact: Contact, user
 
 
 def test_conversations_filter_by_contact_id(
-    db: Session, client_a, workspace_a: Workspace, user_a: User,
+    db: Session,
+    client_a,
+    workspace_a: Workspace,
+    user_a: User,
 ):
     c1 = _seed_contact(db, workspace_a, name="Contact One")
     c2 = _seed_contact(db, workspace_a, name="Contact Two")
@@ -704,7 +760,10 @@ def test_conversations_filter_by_contact_id(
 
 
 def test_conversations_filter_contact_id_no_results(
-    db: Session, client_a, workspace_a: Workspace, user_a: User,
+    db: Session,
+    client_a,
+    workspace_a: Workspace,
+    user_a: User,
 ):
     c = _seed_contact(db, workspace_a, name="No Conv")
     db.commit()
@@ -716,8 +775,10 @@ def test_conversations_filter_contact_id_no_results(
 
 def test_conversations_filter_contact_cross_tenant_returns_empty(
     db: Session,
-    user_a: User, workspace_a: Workspace,
-    user_b: User, workspace_b: Workspace,
+    user_a: User,
+    workspace_a: Workspace,
+    user_b: User,
+    workspace_b: Workspace,
 ):
     c_b = _seed_contact(db, workspace_b, name="WS-B contact")
     _seed_conversation(db, workspace_b, c_b, user_b)
@@ -793,7 +854,9 @@ def test_phone_dedup_no_plus_vs_e164(db: Session, client_a, workspace_a):
 
 
 def test_phone_same_number_other_workspace_allowed(
-    db: Session, client_a, workspace_b: Workspace,
+    db: Session,
+    client_a,
+    workspace_b: Workspace,
 ):
     _seed_contact(db, workspace_b, phone="+5537999999999", name="WS-B")
     db.commit()

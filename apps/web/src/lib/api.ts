@@ -451,6 +451,8 @@ export type Contact = {
   metadata_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+  // Only populated by the list endpoint — null on get/create/update responses.
+  variables_count: number | null;
 };
 
 export type ContactListOut = {

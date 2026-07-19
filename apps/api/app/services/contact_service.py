@@ -149,6 +149,19 @@ def list_contacts(
             .limit(effective_limit)
         ).all()
     )
+    # Bulk-count contact_variables for this page's contacts — one query,
+    # not one per contact — so the list can show "N dados" without N+1.
+    if items:
+        contact_ids = [c.id for c in items]
+        counts = dict(
+            db.execute(
+                select(ContactVariable.contact_id, func.count())
+                .where(ContactVariable.contact_id.in_(contact_ids))
+                .group_by(ContactVariable.contact_id)
+            ).all()
+        )
+        for c in items:
+            c.variables_count = counts.get(c.id, 0)
     return ContactListOut(items=items, total=total, limit=effective_limit, offset=offset)
 
 
