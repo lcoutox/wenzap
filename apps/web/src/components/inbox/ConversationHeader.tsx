@@ -8,7 +8,7 @@ import type { Conversation, ConversationStatus, MemberRole, Pipeline, PipelineSt
 
 // Small, quiet badge — only renders when this conversation actually had a
 // tool call fail (or a run crash outright). Links straight to that run,
-// pre-filtered, in the Execuções screen — no need to dig through the
+// pre-filtered, in the Auditoria screen — no need to dig through the
 // transcript or ask an engineer to check the database.
 function AgentErrorIndicator({ conversationId }: { conversationId: string }) {
   const [hasError, setHasError] = useState(false);
@@ -27,7 +27,7 @@ function AgentErrorIndicator({ conversationId }: { conversationId: string }) {
 
   return (
     <Link
-      href={`/dashboard/logs?conversation_id=${conversationId}`}
+      href={`/dashboard/auditoria?conversation_id=${conversationId}`}
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium bg-nb-danger/10 border border-nb-danger/20 text-nb-danger flex-shrink-0 hover:opacity-80 transition-opacity"
       title="Uma ferramenta falhou nessa conversa — ver detalhes"
     >

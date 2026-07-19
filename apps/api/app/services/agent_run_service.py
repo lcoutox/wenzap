@@ -1,7 +1,7 @@
 """
 Agent Run Service — execucoes-log-prd.md.
 
-Read-only service backing the "Execuções" dashboard screen and the Inbox
+Read-only service backing the "Auditoria" dashboard screen and the Inbox
 error indicator. Reuses data already collected by conversation_agent_reply_service
 (ConversationAgentRun) and agent_llm_executor (AgentToolCall) — this module
 adds no new write paths, only queries.

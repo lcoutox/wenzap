@@ -1,6 +1,6 @@
 """
 Tests for the Agent Run service (execucoes-log-prd.md) — the read-only
-layer backing the "Execuções" dashboard screen and the Inbox error
+layer backing the "Auditoria" dashboard screen and the Inbox error
 indicator. Builds ConversationAgentRun/AgentToolCall rows directly (no LLM
 calls) since this module only reads what conversation_agent_reply_service
 and agent_llm_executor already write.

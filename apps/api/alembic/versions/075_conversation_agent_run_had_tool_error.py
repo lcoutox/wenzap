@@ -3,7 +3,7 @@
 execucoes-log-prd.md — conversation_agent_runs.status only reflects whether
 the LLM turn itself crashed; a turn where the model replied normally but one
 of its tool calls failed (e.g. Cal.com rejecting a booking) still gets
-status="success". This adds an orthogonal boolean so the new "Execuções" log
+status="success". This adds an orthogonal boolean so the new "Auditoria"
 screen and the Inbox error indicator can filter on real tool failures too.
 
 Revision ID: 075

@@ -1,5 +1,5 @@
 """
-Agent Runs routes — "Execuções" screen (execucoes-log-prd.md).
+Agent Runs routes — "Auditoria" screen (execucoes-log-prd.md).
 
 Read-only: lists ConversationAgentRun rows with contact/agent context and
 the tool calls made inside each, so a workspace owner can see what their

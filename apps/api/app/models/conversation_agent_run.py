@@ -51,7 +51,7 @@ class ConversationAgentRun(Base):
     # True when the turn itself completed (status stays "success") but one
     # or more tool calls inside it failed (agent_tool_calls has a "status":
     # "error" entry) — orthogonal to `status`, which only reflects whether
-    # the LLM turn crashed. Powers the "Execuções" log screen's failure
+    # the LLM turn crashed. Powers the "Auditoria" screen's failure
     # filter and the Inbox error indicator (execucoes-log-prd.md).
     had_tool_error: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 

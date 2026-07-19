@@ -427,7 +427,7 @@ def generate_conversation_agent_reply(
     # ── 11. Persist success run ───────────────────────────────────────────────
     # The turn itself completed fine (status stays "success"), but a tool
     # call inside it may still have failed (e.g. Cal.com rejecting a
-    # booking) — had_tool_error tracks that separately so the Execuções log
+    # booking) — had_tool_error tracks that separately so the Auditoria
     # screen and the Inbox indicator can surface it.
     had_tool_error = any(
         tc.get("status") == "error"

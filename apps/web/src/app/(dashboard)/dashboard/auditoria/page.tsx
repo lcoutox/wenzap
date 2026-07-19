@@ -184,7 +184,7 @@ function RunDetailModal({ runId, onClose }: { runId: string; onClose: () => void
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-function LogsPageInner() {
+function AuditoriaPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -203,7 +203,7 @@ function LogsPageInner() {
     const params = new URLSearchParams(searchParams.toString());
     if (value) params.set(key, value);
     else params.delete(key);
-    router.push(`/dashboard/logs?${params.toString()}`);
+    router.push(`/dashboard/auditoria?${params.toString()}`);
   }
 
   const refresh = useCallback(() => {
@@ -229,7 +229,7 @@ function LogsPageInner() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-nb-text">Execuções</h1>
+          <h1 className="text-lg font-semibold text-nb-text">Auditoria</h1>
           <p className="text-xs text-nb-muted mt-0.5">
             Todo turno que seu agente rodou — o que ele respondeu e quais ferramentas chamou, com sucesso ou não.
           </p>
@@ -337,10 +337,10 @@ function LogsPageInner() {
   );
 }
 
-export default function LogsPage() {
+export default function AuditoriaPage() {
   return (
     <Suspense fallback={null}>
-      <LogsPageInner />
+      <AuditoriaPageInner />
     </Suspense>
   );
 }

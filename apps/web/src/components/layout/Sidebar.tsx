@@ -47,7 +47,7 @@ const nav = [
   { href: "/dashboard/catalog",        label: "Catálogo",     icon: Package  },
   { href: "/dashboard/contacts",       label: "Clientes",     icon: Users    },
   { href: "/dashboard/pipeline",       label: "Pipeline",     icon: KanbanSquare },
-  { href: "/dashboard/logs",           label: "Execuções",    icon: ScrollText },
+  { href: "/dashboard/auditoria",      label: "Auditoria",    icon: ScrollText },
   { href: "/dashboard/settings",       label: "Configurações", icon: Settings },
 ];
 
