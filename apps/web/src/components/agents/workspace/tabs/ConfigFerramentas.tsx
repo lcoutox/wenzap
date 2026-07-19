@@ -2125,6 +2125,328 @@ function AssignOperatorConfigModal({
   );
 }
 
+// ── Pipeline-action list modal ──────────────────────────────────────────────────
+//
+// Unlike Solicitar Humano/Marcar Resolvido/Capturar Dado (one instance per
+// agent), an agent can want to move cards to several different destination
+// stages — each needs its own instance (fixed pipeline+stage+trigger
+// description). Same "list + form" pattern as HttpToolsListModal, reusing
+// PipelineActionConfigModal unchanged as the create/edit form.
+
+function PipelineActionListModal({
+  open,
+  onClose,
+  agentId,
+  role,
+  gated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  role: MemberRole | null;
+  gated: boolean;
+}) {
+  const [tools, setTools] = useState<PipelineActionAgentTool[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState<PipelineActionAgentTool | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const writeAllowed = canWrite(role);
+
+  function refresh() {
+    setLoading(true);
+    setLoadError(null);
+    api.agents.httpTools
+      .list(agentId)
+      .then((all) =>
+        setTools(all.filter((t): t is PipelineActionAgentTool => t.tool_type === "pipeline_action"))
+      )
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar regras."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (open) refresh();
+  }, [open, agentId]);
+
+  async function handleToggle(tool: PipelineActionAgentTool) {
+    setBusy((p) => ({ ...p, [tool.id]: true }));
+    try {
+      const updated = await api.agents.pipelineActionTool.update(agentId, tool.id, {
+        is_enabled: !tool.is_enabled,
+      });
+      setTools((prev) => prev.map((t) => (t.id === tool.id ? (updated as PipelineActionAgentTool) : t)));
+    } catch {
+      // Toggle failure is surfaced by the row staying unchanged — same as HttpToolsListModal.
+    } finally {
+      setBusy((p) => ({ ...p, [tool.id]: false }));
+    }
+  }
+
+  async function handleDelete(tool: PipelineActionAgentTool) {
+    setBusy((p) => ({ ...p, [tool.id]: true }));
+    try {
+      await api.agents.pipelineActionTool.delete(agentId, tool.id);
+      setTools((prev) => prev.filter((t) => t.id !== tool.id));
+    } catch {
+      setBusy((p) => ({ ...p, [tool.id]: false }));
+    }
+  }
+
+  if (formOpen) {
+    return (
+      <PipelineActionConfigModal
+        open={true}
+        onClose={() => { setFormOpen(false); setEditingTool(null); refresh(); }}
+        agentId={agentId}
+        tool={editingTool}
+        readonly={!writeAllowed}
+        gated={gated}
+      />
+    );
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Mover card no pipeline">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente decide sozinho quando mover o card, com base na descrição de cada regra. Crie
+          uma regra por etapa de destino — cada uma pode apontar pra um pipeline/etapa diferente.
+        </p>
+
+        {gated && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-nb-warning/10 border border-nb-warning/20">
+            <Info className="w-4 h-4 text-nb-warning flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-nb-warning">
+              Mover card no pipeline não está disponível no seu plano atual. Regras já
+              configuradas continuam aqui, mas não serão usadas pelo agente até o upgrade.
+            </p>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => <div key={i} className="h-16 bg-nb-elevated rounded-xl animate-pulse" />)}
+          </div>
+        ) : loadError ? (
+          <p className="text-sm text-nb-danger">{loadError}</p>
+        ) : tools.length === 0 ? (
+          <div className="flex flex-col items-center py-8 text-center border border-dashed border-nb-border rounded-xl">
+            <Kanban className="w-8 h-8 text-nb-muted mb-2" />
+            <p className="text-sm font-medium text-nb-secondary mb-1">Nenhuma regra ainda.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tools.map((tool) => (
+              <div
+                key={tool.id}
+                className="flex items-start gap-3 p-3.5 bg-nb-panel rounded-xl border border-nb-border"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-nb-text font-mono">{tool.name}</span>
+                  <p className="text-xs text-nb-muted mt-0.5 truncate">{tool.description}</p>
+                </div>
+                {writeAllowed && (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {busy[tool.id] ? (
+                      <Loader2 className="w-4 h-4 text-nb-muted animate-spin" />
+                    ) : (
+                      <>
+                        <Toggle checked={tool.is_enabled} onChange={() => handleToggle(tool)} />
+                        <button
+                          type="button"
+                          onClick={() => { setEditingTool(tool); setFormOpen(true); }}
+                          className="p-1.5 rounded-lg hover:bg-nb-elevated text-nb-muted hover:text-nb-secondary transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(tool)}
+                          className="p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {writeAllowed && !gated && (
+          <button
+            type="button"
+            onClick={() => { setEditingTool(null); setFormOpen(true); }}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Nova regra
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── Assign-operator list modal ──────────────────────────────────────────────────
+//
+// Same "one instance per destination" rationale as PipelineActionListModal —
+// a distinct operator per instance (e.g. "atribuir_financeiro",
+// "atribuir_juridico"). Reuses AssignOperatorConfigModal unchanged as the
+// create/edit form. No plan gate (assign_operator is ungated).
+
+function AssignOperatorListModal({
+  open,
+  onClose,
+  agentId,
+  role,
+}: {
+  open: boolean;
+  onClose: () => void;
+  agentId: string;
+  role: MemberRole | null;
+}) {
+  const [tools, setTools] = useState<AssignOperatorAgentTool[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState<AssignOperatorAgentTool | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const writeAllowed = canWrite(role);
+
+  function refresh() {
+    setLoading(true);
+    setLoadError(null);
+    api.agents.httpTools
+      .list(agentId)
+      .then((all) =>
+        setTools(all.filter((t): t is AssignOperatorAgentTool => t.tool_type === "assign_operator"))
+      )
+      .catch((e) => setLoadError(e instanceof Error ? e.message : "Erro ao carregar operadores."))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (open) refresh();
+  }, [open, agentId]);
+
+  async function handleToggle(tool: AssignOperatorAgentTool) {
+    setBusy((p) => ({ ...p, [tool.id]: true }));
+    try {
+      const updated = await api.agents.assignOperatorTool.update(agentId, tool.id, {
+        is_enabled: !tool.is_enabled,
+      });
+      setTools((prev) => prev.map((t) => (t.id === tool.id ? (updated as AssignOperatorAgentTool) : t)));
+    } catch {
+      // Toggle failure is surfaced by the row staying unchanged — same as HttpToolsListModal.
+    } finally {
+      setBusy((p) => ({ ...p, [tool.id]: false }));
+    }
+  }
+
+  async function handleDelete(tool: AssignOperatorAgentTool) {
+    setBusy((p) => ({ ...p, [tool.id]: true }));
+    try {
+      await api.agents.assignOperatorTool.delete(agentId, tool.id);
+      setTools((prev) => prev.filter((t) => t.id !== tool.id));
+    } catch {
+      setBusy((p) => ({ ...p, [tool.id]: false }));
+    }
+  }
+
+  if (formOpen) {
+    return (
+      <AssignOperatorConfigModal
+        open={true}
+        onClose={() => { setFormOpen(false); setEditingTool(null); refresh(); }}
+        agentId={agentId}
+        tool={editingTool}
+        readonly={!writeAllowed}
+      />
+    );
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Atribuir a um operador">
+      <div className="space-y-4">
+        <p className="text-xs text-nb-muted leading-relaxed">
+          O agente decide sozinho a quem atribuir, com base na descrição de cada regra. Crie uma
+          regra por operador — cada uma aponta pra uma pessoa fixa do time.
+        </p>
+
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => <div key={i} className="h-16 bg-nb-elevated rounded-xl animate-pulse" />)}
+          </div>
+        ) : loadError ? (
+          <p className="text-sm text-nb-danger">{loadError}</p>
+        ) : tools.length === 0 ? (
+          <div className="flex flex-col items-center py-8 text-center border border-dashed border-nb-border rounded-xl">
+            <UserCheck className="w-8 h-8 text-nb-muted mb-2" />
+            <p className="text-sm font-medium text-nb-secondary mb-1">Nenhum operador ainda.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {tools.map((tool) => (
+              <div
+                key={tool.id}
+                className="flex items-start gap-3 p-3.5 bg-nb-panel rounded-xl border border-nb-border"
+              >
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-nb-text font-mono">{tool.name}</span>
+                  <p className="text-xs text-nb-muted mt-0.5 truncate">{tool.description}</p>
+                </div>
+                {writeAllowed && (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {busy[tool.id] ? (
+                      <Loader2 className="w-4 h-4 text-nb-muted animate-spin" />
+                    ) : (
+                      <>
+                        <Toggle checked={tool.is_enabled} onChange={() => handleToggle(tool)} />
+                        <button
+                          type="button"
+                          onClick={() => { setEditingTool(tool); setFormOpen(true); }}
+                          className="p-1.5 rounded-lg hover:bg-nb-elevated text-nb-muted hover:text-nb-secondary transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(tool)}
+                          className="p-1.5 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {writeAllowed && (
+          <button
+            type="button"
+            onClick={() => { setEditingTool(null); setFormOpen(true); }}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-nb-primary border border-nb-primary/20 rounded-xl hover:bg-nb-primary/10 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Novo operador
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Follow-up config modal ──────────────────────────────────────────────────────
 
 type FollowUpStepDraft = {
@@ -2501,15 +2823,20 @@ export function ConfigFerramentas({
   const captureContactDataActive =
     !httpToolsLoading && captureContactDataTool?.is_enabled === true;
 
-  const pipelineActionTool = httpToolsList.find(
+  // Unlike request_human/mark_resolved/capture_contact_data (one instance per
+  // agent), pipeline_action and assign_operator support multiple instances —
+  // one per destination stage / target operator, same pattern as HTTP tools.
+  const pipelineActionTools = httpToolsList.filter(
     (t): t is PipelineActionAgentTool => t.tool_type === "pipeline_action"
   );
-  const pipelineActionActive = !httpToolsLoading && pipelineActionTool?.is_enabled === true;
+  const enabledPipelineActionTools = pipelineActionTools.filter((t) => t.is_enabled);
+  const pipelineActionActive = !httpToolsLoading && enabledPipelineActionTools.length > 0;
 
-  const assignOperatorTool = httpToolsList.find(
+  const assignOperatorTools = httpToolsList.filter(
     (t): t is AssignOperatorAgentTool => t.tool_type === "assign_operator"
   );
-  const assignOperatorActive = !httpToolsLoading && assignOperatorTool?.is_enabled === true;
+  const enabledAssignOperatorTools = assignOperatorTools.filter((t) => t.is_enabled);
+  const assignOperatorActive = !httpToolsLoading && enabledAssignOperatorTools.length > 0;
 
   const followUpActive = !followUpLoading && followUpSettings?.is_enabled === true;
 
@@ -2719,8 +3046,10 @@ export function ConfigFerramentas({
               Ativa
             </span>
           </div>
-          <p className="text-xs text-nb-muted mt-0.5 line-clamp-1">
-            {pipelineActionTool?.description}
+          <p className="text-xs text-nb-muted mt-0.5">
+            {enabledPipelineActionTools.length === 1
+              ? "1 regra configurada"
+              : `${enabledPipelineActionTools.length} regras configuradas`}
           </p>
         </div>
         <button
@@ -2748,8 +3077,10 @@ export function ConfigFerramentas({
               Ativa
             </span>
           </div>
-          <p className="text-xs text-nb-muted mt-0.5 line-clamp-1">
-            {assignOperatorTool?.description}
+          <p className="text-xs text-nb-muted mt-0.5">
+            {enabledAssignOperatorTools.length === 1
+              ? "1 operador configurado"
+              : `${enabledAssignOperatorTools.length} operadores configurados`}
           </p>
         </div>
         <button
@@ -3115,20 +3446,18 @@ export function ConfigFerramentas({
         tool={captureContactDataTool ?? null}
         readonly={readonly}
       />
-      <PipelineActionConfigModal
+      <PipelineActionListModal
         open={pipelineActionModalOpen}
         onClose={handlePipelineActionModalClose}
         agentId={agentId}
-        tool={pipelineActionTool ?? null}
-        readonly={readonly}
+        role={role}
         gated={pipelinesGated}
       />
-      <AssignOperatorConfigModal
+      <AssignOperatorListModal
         open={assignOperatorModalOpen}
         onClose={handleAssignOperatorModalClose}
         agentId={agentId}
-        tool={assignOperatorTool ?? null}
-        readonly={readonly}
+        role={role}
       />
       <FollowUpConfigModal
         open={followUpModalOpen}
