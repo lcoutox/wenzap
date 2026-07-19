@@ -37,6 +37,7 @@ function scoreLabel(item: CatalogRetrievalItem): string {
 }
 
 function methodLabel(method: string | undefined): string {
+  if (method === "full_catalog") return "catálogo completo";
   if (method === "hybrid") return "híbrido";
   if (method === "lexical_fallback") return "lexical";
   if (method === "semantic") return "semântico";

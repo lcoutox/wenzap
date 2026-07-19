@@ -88,6 +88,7 @@ function PlaygroundCatalogInfo({ meta }: { meta: AgentTestResponse }) {
   const items = meta.catalog_items_used ?? [];
 
   const methodLabel = (m: string | null) => {
+    if (m === "full_catalog") return "catálogo completo";
     if (m === "hybrid") return "híbrido";
     if (m === "lexical_fallback") return "lexical";
     if (m === "semantic") return "semântico";

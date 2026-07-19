@@ -13,7 +13,7 @@ Coverage:
 """
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.orm import Session
@@ -22,12 +22,25 @@ from app.models.catalog_category import CatalogCategory
 from app.models.catalog_item import CatalogItem
 from app.services.catalog_retrieval_service import (
     CatalogRetrievalItem,
+    _fulltext_search,
+    _RetrievalOutcome,
+    _retrieve_catalog_items_full,
+    _rrf_combine,
     build_catalog_context_block,
     retrieve_catalog_context,
     retrieve_catalog_items,
     should_retrieve_catalog,
 )
+from app.services.embedding_providers.mock import MockEmbeddingProvider
 from tests.conftest import _make_user, _make_workspace
+
+# catalog-retrieval-robustness-prd.md — Camada 1 (full catalog injection for
+# small catalogs) means tiny test catalogs no longer exercise the real
+# ranking/hybrid-search logic (Camada 2) by default. Tests that specifically
+# target Camada 2 mechanics force it by zeroing the budget — Camada 1's own
+# behavior (always return everything under budget) is covered separately in
+# TestFullCatalogInjection below.
+_FORCE_TIER_2 = patch("app.services.catalog_retrieval_service._FULL_CATALOG_CHAR_BUDGET", 0)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,7 +104,8 @@ class TestRetrieveCatalogItems:
         _make_item(db, ws.id, "Fiat Uno", searchable_text="fiat uno popular")
         db.commit()
 
-        items = retrieve_catalog_items(db, ws.id, "automático sedan")
+        with _FORCE_TIER_2:
+            items = retrieve_catalog_items(db, ws.id, "automático sedan")
         names = [i.name for i in items]
         assert "Toyota Corolla" in names
         assert "Honda Civic" in names
@@ -126,7 +140,8 @@ class TestRetrieveCatalogItems:
             _make_item(db, ws.id, f"Produto {i}", searchable_text="produto plano serviço")
         db.commit()
 
-        items = retrieve_catalog_items(db, ws.id, "produto plano serviço", limit=3)
+        with _FORCE_TIER_2:
+            items = retrieve_catalog_items(db, ws.id, "produto plano serviço", limit=3)
         assert len(items) <= 3
 
     def test_returns_category_name(self, db: Session):
@@ -158,7 +173,8 @@ class TestRetrieveCatalogItems:
         _make_item(db, ws.id, "Toyota Corolla", searchable_text="toyota corolla")
         db.commit()
 
-        items = retrieve_catalog_items(db, ws.id, "apartamento cobertura")
+        with _FORCE_TIER_2:
+            items = retrieve_catalog_items(db, ws.id, "apartamento cobertura")
         assert items == []
 
 
@@ -254,7 +270,7 @@ class TestRetrieveCatalogContext:
     def test_handles_db_error_gracefully(self, db: Session):
         ws_id = uuid.uuid4()
         with patch(
-            "app.services.catalog_retrieval_service.retrieve_catalog_items",
+            "app.services.catalog_retrieval_service._retrieve_catalog_items_full",
             side_effect=Exception("DB error"),
         ):
             result = retrieve_catalog_context(db, ws_id, "Tem produto disponível?")
@@ -354,7 +370,7 @@ class TestAgentTestServiceCatalogFields:
     """Verify that AgentTestResponse exposes catalog metadata."""
 
     def test_response_has_catalog_fields(self):
-        from app.schemas.agent_test import AgentTestResponse, AgentTestModelInfo
+        from app.schemas.agent_test import AgentTestModelInfo, AgentTestResponse
         resp = AgentTestResponse(
             reply="ok",
             credits_used=1,
@@ -376,3 +392,200 @@ class TestAgentTestServiceCatalogFields:
         assert resp.catalog_retrieval_attempted is True
         assert resp.catalog_items_count == 2
         assert len(resp.catalog_items_used) == 1
+
+
+# ── Camada 1: full catalog injection ───────────────────────────────────────────
+
+class TestFullCatalogInjection:
+    """catalog-retrieval-robustness-prd.md — small catalogs skip ranking
+    entirely: every active in-scope item is returned, so a real match can
+    never score too low to surface (the imobiliária production incident)."""
+
+    def test_small_catalog_returns_all_items_regardless_of_query_relevance(
+        self, db: Session
+    ):
+        owner = _make_user(db, f"fc1-{uuid.uuid4().hex[:6]}@test.com", "FC1")
+        ws = _make_workspace(db, owner, f"fc-ws-{uuid.uuid4().hex[:6]}", "FC WS")
+        _make_item(db, ws.id, "Toyota Corolla", searchable_text="toyota corolla sedan")
+        _make_item(
+            db, ws.id, "Apartamento Centro",
+            searchable_text="apartamento 2 quartos centro",
+        )
+        db.commit()
+
+        # Query only mentions "carro" — under the old top-K scoring this
+        # could plausibly have left "Apartamento Centro" out entirely.
+        items = retrieve_catalog_items(db, ws.id, "Tem carro disponível?")
+        names = {i.name for i in items}
+        assert names == {"Toyota Corolla", "Apartamento Centro"}
+
+    def test_full_catalog_method_and_score(self, db: Session):
+        owner = _make_user(db, f"fc2-{uuid.uuid4().hex[:6]}@test.com", "FC2")
+        ws = _make_workspace(db, owner, f"fc-ws-{uuid.uuid4().hex[:6]}", "FC WS")
+        _make_item(db, ws.id, "Plano Básico", searchable_text="plano básico mensal")
+        db.commit()
+
+        items = retrieve_catalog_items(db, ws.id, "Qual o preço do plano?")
+        assert len(items) == 1
+        assert items[0].retrieval_method == "full_catalog"
+        assert items[0].score == 1.0
+        assert items[0].semantic_score is None
+        assert items[0].lexical_score is None
+
+    def test_large_catalog_falls_back_to_tier2(self, db: Session):
+        owner = _make_user(db, f"fc3-{uuid.uuid4().hex[:6]}@test.com", "FC3")
+        ws = _make_workspace(db, owner, f"fc-ws-{uuid.uuid4().hex[:6]}", "FC WS")
+        long_desc = "Descrição bem detalhada e longa do item disponível. " * 15
+        for i in range(15):
+            _make_item(
+                db, ws.id, f"Produto {i}",
+                short_description=long_desc,
+                searchable_text=f"produto {i} plano completo",
+            )
+        db.commit()
+
+        items = retrieve_catalog_items(db, ws.id, "produto 3 plano")
+        assert all(i.retrieval_method != "full_catalog" for i in items)
+
+
+# ── Camada 2: Reciprocal Rank Fusion ────────────────────────────────────────────
+
+class TestRRFCombine:
+    def test_item_in_both_lists_scores_higher(self):
+        a, b, c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        scores = _rrf_combine([a, b], [b, c])
+        assert scores[b] > scores[a]
+        assert scores[b] > scores[c]
+
+    def test_higher_rank_scores_higher_within_a_list(self):
+        a, b = uuid.uuid4(), uuid.uuid4()
+        scores = _rrf_combine([a, b])
+        assert scores[a] > scores[b]
+
+    def test_item_in_a_single_list_still_scored(self):
+        a = uuid.uuid4()
+        scores = _rrf_combine([a], [])
+        assert scores[a] == pytest.approx(1.0 / 61.0)
+
+    def test_no_lists_produces_no_scores(self):
+        assert _rrf_combine() == {}
+
+    def test_empty_lists_produce_no_scores(self):
+        assert _rrf_combine([], []) == {}
+
+
+# ── Camada 2: confidence floor ──────────────────────────────────────────────────
+
+class TestConfidenceFloor:
+    def test_weak_semantic_and_no_fts_match_is_dropped(self, db: Session):
+        from app.services.catalog_embedding_service import embed_catalog_item
+
+        provider = MockEmbeddingProvider(dimension=1536)
+        owner = _make_user(db, f"cf1-{uuid.uuid4().hex[:6]}@test.com", "CF1")
+        ws = _make_workspace(db, owner, f"cf-ws-{uuid.uuid4().hex[:6]}", "CF WS")
+        item = _make_item(
+            db, ws.id, "Tabuleiro de Xadrez",
+            searchable_text="tabuleiro xadrez peças madeira jogo",
+        )
+        db.commit()
+        embed_catalog_item(db, item, provider=provider)
+        db.commit()
+
+        # Random unit-vector embeddings for unrelated content are near-
+        # orthogonal (cosine ~0), reliably under the 0.15 floor; the query
+        # shares no vocabulary with the item so full-text finds nothing either.
+        with _FORCE_TIER_2:
+            outcome = _retrieve_catalog_items_full(
+                db, ws.id, "conserto de ar condicionado split",
+                provider=provider,
+            )
+        assert outcome.items == []
+        assert outcome.had_weak_candidates is True
+
+    def test_genuinely_no_candidates_does_not_set_had_weak_candidates(
+        self, db: Session
+    ):
+        owner = _make_user(db, f"cf2-{uuid.uuid4().hex[:6]}@test.com", "CF2")
+        ws = _make_workspace(db, owner, f"cf-ws-{uuid.uuid4().hex[:6]}", "CF WS")
+        db.commit()
+
+        with _FORCE_TIER_2:
+            outcome = _retrieve_catalog_items_full(db, ws.id, "produto qualquer")
+        assert outcome.items == []
+        assert outcome.had_weak_candidates is False
+
+    def test_retrieve_catalog_context_shows_inconclusive_block(self, db: Session):
+        ws_id = uuid.uuid4()
+        with patch(
+            "app.services.catalog_retrieval_service._retrieve_catalog_items_full",
+            return_value=_RetrievalOutcome(items=[], had_weak_candidates=True),
+        ):
+            result = retrieve_catalog_context(db, ws_id, "Tem plano disponível?")
+        assert result.items == []
+        assert result.context_block is not None
+        assert "não encontrou" in result.context_block.lower()
+
+    def test_retrieve_catalog_context_no_block_when_genuinely_empty(
+        self, db: Session
+    ):
+        ws_id = uuid.uuid4()
+        with patch(
+            "app.services.catalog_retrieval_service._retrieve_catalog_items_full",
+            return_value=_RetrievalOutcome(items=[], had_weak_candidates=False),
+        ):
+            result = retrieve_catalog_context(db, ws_id, "Tem plano disponível?")
+        assert result.items == []
+        assert result.context_block is None
+
+
+# ── Camada 2: native full-text search ───────────────────────────────────────────
+
+class TestFullTextSearchDirect:
+    def test_stemming_matches_plural_singular(self, db: Session):
+        owner = _make_user(db, f"fts1-{uuid.uuid4().hex[:6]}@test.com", "FTS1")
+        ws = _make_workspace(db, owner, f"fts-ws-{uuid.uuid4().hex[:6]}", "FTS WS")
+        _make_item(db, ws.id, "Apartamento", searchable_text="apartamento reformado")
+        db.commit()
+
+        # plainto_tsquery ANDs every term, so keep this to the one word whose
+        # stem should match ("apartamentos" → "apartament", same stem as the
+        # item's "apartamento").
+        rows = _fulltext_search(db, ws.id, "apartamentos", over_fetch=10)
+        assert len(rows) == 1
+        assert rows[0][0].name == "Apartamento"
+
+    def test_excludes_inactive_items(self, db: Session):
+        owner = _make_user(db, f"fts2-{uuid.uuid4().hex[:6]}@test.com", "FTS2")
+        ws = _make_workspace(db, owner, f"fts-ws-{uuid.uuid4().hex[:6]}", "FTS WS")
+        _make_item(
+            db, ws.id, "Item Draft", status="draft", searchable_text="produto especial"
+        )
+        db.commit()
+
+        rows = _fulltext_search(db, ws.id, "produto especial", over_fetch=10)
+        assert rows == []
+
+    def test_respects_workspace_isolation(self, db: Session):
+        owner_a = _make_user(db, f"fts3a-{uuid.uuid4().hex[:6]}@test.com", "FTS3A")
+        ws_a = _make_workspace(db, owner_a, f"fts-wsa-{uuid.uuid4().hex[:6]}", "FTS A")
+        owner_b = _make_user(db, f"fts3b-{uuid.uuid4().hex[:6]}@test.com", "FTS3B")
+        ws_b = _make_workspace(db, owner_b, f"fts-wsb-{uuid.uuid4().hex[:6]}", "FTS B")
+        _make_item(db, ws_a.id, "Item A", searchable_text="produto exclusivo teste")
+        db.commit()
+
+        rows = _fulltext_search(db, ws_b.id, "produto exclusivo teste", over_fetch=10)
+        assert rows == []
+
+    def test_orders_by_rank_descending(self, db: Session):
+        owner = _make_user(db, f"fts4-{uuid.uuid4().hex[:6]}@test.com", "FTS4")
+        ws = _make_workspace(db, owner, f"fts-ws-{uuid.uuid4().hex[:6]}", "FTS WS")
+        _make_item(db, ws.id, "Match Fraco", searchable_text="carro usado disponível")
+        _make_item(
+            db, ws.id, "Match Forte", searchable_text="carro carro carro sedan automático"
+        )
+        db.commit()
+
+        rows = _fulltext_search(db, ws.id, "carro", over_fetch=10)
+        assert len(rows) == 2
+        assert rows[0][0].name == "Match Forte"
+        assert rows[0][1] >= rows[1][1]

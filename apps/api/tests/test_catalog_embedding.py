@@ -21,24 +21,26 @@ Coverage:
 import uuid
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.models.catalog_item import CatalogItem
 from app.services.catalog_embedding_service import (
-    build_embedding_text,
     compute_content_hash,
     embed_catalog_item,
     embed_missing_for_workspace,
 )
 from app.services.catalog_retrieval_service import (
-    CatalogRetrievalItem,
     retrieve_catalog_context,
     retrieve_catalog_items,
 )
 from app.services.embedding_providers.base import EmbeddingError
 from app.services.embedding_providers.mock import MockEmbeddingProvider
 from tests.conftest import _make_user, _make_workspace
+
+# catalog-retrieval-robustness-prd.md — forces Camada 2 (real ranking) past
+# Camada 1's "small catalog → inject everything" shortcut, so these tests
+# keep exercising the hybrid/lexical_fallback mechanics they're named for.
+_FORCE_TIER_2 = patch("app.services.catalog_retrieval_service._FULL_CATALOG_CHAR_BUDGET", 0)
 
 
 # ── Test helpers ──────────────────────────────────────────────────────────────
@@ -230,9 +232,10 @@ class TestHybridRetrieval:
         embed_catalog_item(db, item, provider=provider)
         db.commit()
 
-        items = retrieve_catalog_items(
-            db, ws.id, "opção para família", provider=provider
-        )
+        with _FORCE_TIER_2:
+            items = retrieve_catalog_items(
+                db, ws.id, "opção para família", provider=provider
+            )
         # May find via semantic or may return empty — depends on mock embeddings
         # The important thing is no exception is raised
         assert isinstance(items, list)
@@ -257,9 +260,10 @@ class TestHybridRetrieval:
             def embed(self, texts):
                 raise EmbeddingError("unavailable")
 
-        items = retrieve_catalog_items(
-            db, ws.id, "plano básico", provider=_NoEmbed()
-        )
+        with _FORCE_TIER_2:
+            items = retrieve_catalog_items(
+                db, ws.id, "plano básico", provider=_NoEmbed()
+            )
         assert isinstance(items, list)
         if items:
             assert items[0].retrieval_method == "lexical_fallback"
@@ -325,12 +329,33 @@ class TestRetrieveCatalogContextMethod:
             def embed(self, texts):
                 raise EmbeddingError("down")
 
-        result = retrieve_catalog_context(
-            db, ws.id, "Tem algum plano disponível?",
-        )
+        with _FORCE_TIER_2:
+            result = retrieve_catalog_context(
+                db, ws.id, "Tem algum plano disponível?",
+            )
         # retrieval_attempted was set
         assert result.retrieval_attempted is True
         if result.items:
             assert result.items[0].retrieval_method in (
                 "hybrid", "lexical", "lexical_fallback"
             )
+
+    def test_hybrid_result_survives_confidence_floor_on_real_match(self, db: Session):
+        """A genuine lexical match must clear the confidence floor even when
+        its semantic score is weak — the floor only needs ONE of the two
+        signals (catalog-retrieval-robustness-prd.md)."""
+        provider = _mock_provider()
+        owner = _make_user(db, f"cfh-{uuid.uuid4().hex[:6]}@t.com", "CFH")
+        ws = _make_workspace(db, owner, f"ws-{uuid.uuid4().hex[:6]}", "W")
+        item = _make_item(
+            db, ws.id, "Plano Família",
+            searchable_text="plano família completo mensal",
+        )
+        db.commit()
+        embed_catalog_item(db, item, provider=provider)
+        db.commit()
+
+        with _FORCE_TIER_2:
+            items = retrieve_catalog_items(db, ws.id, "plano família", provider=provider)
+        assert len(items) == 1
+        assert items[0].retrieval_method == "hybrid"

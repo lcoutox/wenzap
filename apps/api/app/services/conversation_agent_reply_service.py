@@ -368,7 +368,9 @@ def generate_conversation_agent_reply(
     response_metadata: dict = {}
     if ctx.catalog_retrieval_attempted:
         methods = {i.retrieval_method for i in ctx.catalog_items}
-        method = "hybrid" if "hybrid" in methods else (
+        method = (
+            "full_catalog" if "full_catalog" in methods else
+            "hybrid" if "hybrid" in methods else
             "lexical_fallback" if methods else "none"
         )
         response_metadata["catalog_retrieval"] = {

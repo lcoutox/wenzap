@@ -20,7 +20,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.catalog_category import CatalogCategory
@@ -108,8 +108,32 @@ class CatalogRetrievalResult:
 _DEFAULT_LIMIT = 3
 _MAX_LIMIT = 20
 _MIN_TERM_LENGTH = 2
-_SEMANTIC_WEIGHT = 0.7
-_LEXICAL_WEIGHT = 0.3
+
+# catalog-retrieval-robustness-prd.md — Camada 1: below this char budget, skip
+# ranking entirely and inject the whole active catalog (respecting category
+# scope). ~6000 chars ≈ 1500 tokens, comfortably covers 15-20 typical items —
+# the point where retrieval quality matters least (few candidates, low risk
+# of a real match scoring low) and full injection matters most (zero risk of
+# "forgetting" an item, unlike top-K ranking with noisy scores).
+_FULL_CATALOG_CHAR_BUDGET = 6000
+_ITEM_FORMAT_OVERHEAD_CHARS = 80  # rough per-item cost of labels/formatting in the context block
+
+# Camada 2 — Reciprocal Rank Fusion constant (k=60 is the standard from the
+# original RRF paper; not sensitive to tuning, works well across corpus sizes
+# without per-catalog calibration — unlike a fixed weighted-sum of raw scores).
+_RRF_K = 60
+
+# Camada 2 — confidence floor. A candidate only survives if its semantic
+# cosine similarity clears this bar, OR it has a genuine full-text match
+# (Postgres FTS only returns rows that actually match the tsquery — never a
+# "kind of similar" false positive the way a weak embedding score can be).
+# Tuned conservatively; revisit if real catalogs show this rejecting good
+# matches or letting weak ones through.
+_SEMANTIC_CONFIDENCE_FLOOR = 0.15
+
+# Postgres text-search configuration — 'portuguese' stems/handles accents
+# correctly for the platform's primary language (pt-BR only, per CLAUDE.md).
+_FTS_CONFIG = "portuguese"
 
 # Numeric values that look like prices ("90 mil", "89500", "88.900").
 _PRICE_PATTERN = re.compile(r"(\d[\d.,]*)\s*(mil|k)?", re.IGNORECASE)
@@ -120,25 +144,6 @@ def _extract_terms(query: str) -> list[str]:
     cleaned = re.sub(r"[!?;:()\[\]\"'`]", " ", query.lower())
     tokens = cleaned.split()
     return [t for t in tokens if len(t) >= _MIN_TERM_LENGTH]
-
-
-def _lexical_score(item: CatalogItem, terms: list[str]) -> float:
-    """Return number of query terms that appear in the item's searchable content."""
-    haystack = " ".join(filter(None, [
-        item.searchable_text or "",
-        item.name or "",
-        (item.short_description or "").lower(),
-        (item.description or "")[:300].lower(),
-        " ".join(item.tags or []).lower(),
-    ])).lower()
-    return sum(1.0 for t in terms if t in haystack)
-
-
-def _normalise_lexical(raw: float, max_terms: int) -> float:
-    """Map raw term-count score to [0, 1] range."""
-    if max_terms <= 0:
-        return 0.0
-    return min(raw / max_terms, 1.0)
 
 
 def _resolve_support_data(
@@ -212,36 +217,49 @@ def _category_filter(allowed_category_ids: list[uuid.UUID] | None):
     return CatalogItem.category_id.in_(allowed_category_ids)
 
 
-def _lexical_search(
+def _fts_document():
+    """
+    The tsvector expression used both to query and to build the GIN index
+    (catalog-retrieval-robustness-prd.md, migration 074) — must match the
+    index definition exactly (same config, same source column) or Postgres
+    falls back to a sequential scan instead of using the index.
+    """
+    return func.to_tsvector(_FTS_CONFIG, func.coalesce(CatalogItem.searchable_text, ""))
+
+
+def _fulltext_search(
     db: Session,
     workspace_id: uuid.UUID,
-    terms: list[str],
+    query: str,
     over_fetch: int,
     allowed_category_ids: list[uuid.UUID] | None = None,
-) -> list[CatalogItem]:
-    """Return active items that match any query term via ILIKE."""
-    if not terms:
-        return []
-    conditions = []
-    for term in terms:
-        like = f"%{term}%"
-        conditions.append(or_(
-            CatalogItem.searchable_text.ilike(like),
-            CatalogItem.name.ilike(like),
-            CatalogItem.short_description.ilike(like),
-            CatalogItem.description.ilike(like),
-        ))
+) -> list[tuple[CatalogItem, float]]:
+    """
+    Native Postgres full-text search (replaces the old ILIKE term-counting) —
+    returns (item, ts_rank) pairs ordered by rank desc. Only rows that
+    genuinely match the tsquery are returned (no "kind of similar" false
+    positives the way weak embedding scores can produce), which is exactly
+    what makes a hit here a reliable confidence signal in
+    _passes_confidence_floor below.
+    """
+    tsquery = func.plainto_tsquery(_FTS_CONFIG, query)
+    document = _fts_document()
     where_clauses = [
         CatalogItem.workspace_id == workspace_id,
         CatalogItem.status == "active",
-        or_(*conditions),
+        document.op("@@")(tsquery),
     ]
     cat_filter = _category_filter(allowed_category_ids)
     if cat_filter is not None:
         where_clauses.append(cat_filter)
-    return list(db.scalars(
-        select(CatalogItem).where(*where_clauses).limit(over_fetch)
-    ).all())
+    rank = func.ts_rank(document, tsquery)
+    rows = db.execute(
+        select(CatalogItem, rank.label("rank"))
+        .where(*where_clauses)
+        .order_by(rank.desc())
+        .limit(over_fetch)
+    ).all()
+    return [(row.CatalogItem, float(row.rank)) for row in rows]
 
 
 def _semantic_search(
@@ -273,6 +291,199 @@ def _semantic_search(
     return [(row.CatalogItem, float(1.0 - row.distance)) for row in rows]
 
 
+def _fetch_active_catalog_items(
+    db: Session,
+    workspace_id: uuid.UUID,
+    allowed_category_ids: list[uuid.UUID] | None = None,
+) -> list[CatalogItem]:
+    """All active items in scope — used by Camada 1 (full injection)."""
+    where_clauses = [CatalogItem.workspace_id == workspace_id, CatalogItem.status == "active"]
+    cat_filter = _category_filter(allowed_category_ids)
+    if cat_filter is not None:
+        where_clauses.append(cat_filter)
+    return list(db.scalars(select(CatalogItem).where(*where_clauses)).all())
+
+
+def _full_catalog_fits_budget(items: list[CatalogItem]) -> bool:
+    """
+    catalog-retrieval-robustness-prd.md — Camada 1 eligibility check. Adapts
+    to both axes that make a catalog "small" in the sense that matters here:
+    few items, AND/OR short descriptions. A catalog with 30 one-line items
+    can fit; one with 8 long, detailed items might not — both are correctly
+    routed by summing actual content length instead of just counting items.
+    """
+    total = sum(
+        len(item.name or "") + len(item.short_description or "") + _ITEM_FORMAT_OVERHEAD_CHARS
+        for item in items
+    )
+    return total <= _FULL_CATALOG_CHAR_BUDGET
+
+
+def _rrf_combine(*ranked_id_lists: list[uuid.UUID]) -> dict[uuid.UUID, float]:
+    """
+    Reciprocal Rank Fusion — combines multiple ranked lists into one score
+    per id: score = Σ 1/(k + rank) across every list the id appears in
+    (1-indexed rank). k=60 is the standard from the original RRF paper.
+
+    Used instead of a weighted sum of raw scores (the old 0.7*semantic +
+    0.3*lexical) because it only cares about *relative* ordering within each
+    method — it doesn't break when one method's score distribution shifts
+    (e.g. a catalog with unusually short/similar descriptions compressing
+    semantic scores into a narrow band), which a fixed-weight raw-score sum
+    is very sensitive to.
+    """
+    scores: dict[uuid.UUID, float] = {}
+    for ranked_ids in ranked_id_lists:
+        for rank, item_id in enumerate(ranked_ids, start=1):
+            scores[item_id] = scores.get(item_id, 0.0) + 1.0 / (_RRF_K + rank)
+    return scores
+
+
+@dataclass
+class _RetrievalOutcome:
+    items: list[CatalogRetrievalItem]
+    # True when Tier 2 found candidates but none cleared the confidence
+    # floor — distinct from "found literally nothing", which needs no hedge
+    # (see retrieve_catalog_context's use of this flag).
+    had_weak_candidates: bool = False
+
+
+def _retrieve_catalog_items_full(
+    db: Session,
+    workspace_id: uuid.UUID,
+    query: str,
+    limit: int = _DEFAULT_LIMIT,
+    provider: EmbeddingProvider | None = None,
+    allowed_category_ids: list[uuid.UUID] | None = None,
+) -> _RetrievalOutcome:
+    """
+    catalog-retrieval-robustness-prd.md — the confidence-aware implementation
+    behind both retrieve_catalog_items() (backward-compatible wrapper, plain
+    list return) and retrieve_catalog_context() (uses had_weak_candidates to
+    decide whether to inject an explicit "inconclusive" warning).
+
+    Strategy
+    --------
+    Camada 1 — if the workspace's active (in-scope) catalog is small enough
+    to fit _FULL_CATALOG_CHAR_BUDGET, skip ranking entirely and return every
+    item. Zero risk of a real match scoring too low to surface.
+
+    Camada 2 — otherwise, real retrieval:
+      a. Semantic search via pgvector cosine similarity.
+      b. Native Postgres full-text search (replaces the old ILIKE scan).
+      c. Combine via Reciprocal Rank Fusion.
+      d. Drop any candidate that doesn't clear the confidence floor (decent
+         semantic similarity OR a genuine full-text match) — never surface
+         a "least bad of the bunch" result as if it were reliable.
+      e. If embedding fails entirely, fall back to full-text search alone.
+
+    Workspace isolation is enforced at every query.
+    """
+    limit = min(limit, _MAX_LIMIT)
+    terms = _extract_terms(query)
+
+    if not terms and not query.strip():
+        return _RetrievalOutcome(items=[])
+
+    # ── Camada 1 ───────────────────────────────────────────────────────────
+    full_items = _fetch_active_catalog_items(db, workspace_id, allowed_category_ids)
+    if full_items and _full_catalog_fits_budget(full_items):
+        cat_map, primary_media_ids = _resolve_support_data(db, workspace_id, full_items)
+        return _RetrievalOutcome(items=[
+            _to_retrieval_item(
+                item, cat_map, primary_media_ids, score=1.0, retrieval_method="full_catalog",
+            )
+            for item in full_items
+        ])
+
+    # ── Camada 2 — hybrid (semantic + full-text, combined via RRF) ─────────
+    try:
+        from app.services.embedding_service import embed_texts
+
+        embed_result = embed_texts([query.strip()], provider=provider)
+        query_embedding = embed_result.embeddings[0]
+
+        sem_rows = _semantic_search(
+            db, workspace_id, query_embedding, top_k=limit * 3,
+            allowed_category_ids=allowed_category_ids,
+        )
+        fts_rows = _fulltext_search(
+            db, workspace_id, query, over_fetch=limit * 5,
+            allowed_category_ids=allowed_category_ids,
+        )
+
+        if sem_rows or fts_rows:
+            all_items: dict[uuid.UUID, CatalogItem] = {r.id: r for r, _ in sem_rows}
+            for r, _ in fts_rows:
+                all_items.setdefault(r.id, r)
+
+            sem_scores = {r.id: s for r, s in sem_rows}
+            fts_scores = {r.id: s for r, s in fts_rows}
+            fts_ids = {r.id for r, _ in fts_rows}
+            rrf_scores = _rrf_combine(
+                [r.id for r, _ in sem_rows], [r.id for r, _ in fts_rows],
+            )
+
+            passing: list[tuple[CatalogItem, float, float, float]] = []
+            for item in all_items.values():
+                sem = sem_scores.get(item.id, 0.0)
+                fts = fts_scores.get(item.id, 0.0)
+                if sem < _SEMANTIC_CONFIDENCE_FLOOR and item.id not in fts_ids:
+                    continue  # confidence floor — see _SEMANTIC_CONFIDENCE_FLOOR docstring above
+                passing.append((item, rrf_scores.get(item.id, 0.0), sem, fts))
+
+            if not passing:
+                # Had candidates, none confident enough — caller injects an
+                # honest "search was inconclusive" note instead of silence.
+                return _RetrievalOutcome(items=[], had_weak_candidates=bool(all_items))
+
+            passing.sort(key=lambda x: x[1], reverse=True)
+            top = passing[:limit]
+
+            all_rows = [c[0] for c in passing]
+            cat_map, primary_media_ids = _resolve_support_data(db, workspace_id, all_rows)
+
+            return _RetrievalOutcome(items=[
+                _to_retrieval_item(
+                    item, cat_map, primary_media_ids,
+                    score=round(final, 4),
+                    semantic_score=round(sem, 4),
+                    lexical_score=round(fts, 4),
+                    retrieval_method="hybrid",
+                )
+                for item, final, sem, fts in top
+            ])
+
+    except (EmbeddingError, Exception):  # noqa: BLE001
+        # Embedding failed or provider not configured — fall through to full-text-only.
+        pass
+
+    # ── Full-text-only fallback (embedding unavailable) ─────────────────────
+    if not terms:
+        return _RetrievalOutcome(items=[])
+
+    fts_rows = _fulltext_search(
+        db, workspace_id, query, over_fetch=limit * 5,
+        allowed_category_ids=allowed_category_ids,
+    )
+    if not fts_rows:
+        return _RetrievalOutcome(items=[])
+
+    rows = [r for r, _ in fts_rows]
+    scores = {r.id: s for r, s in fts_rows}
+    cat_map, primary_media_ids = _resolve_support_data(db, workspace_id, rows)
+
+    return _RetrievalOutcome(items=[
+        _to_retrieval_item(
+            item, cat_map, primary_media_ids,
+            score=round(scores[item.id], 4),
+            lexical_score=round(scores[item.id], 4),
+            retrieval_method="lexical_fallback",
+        )
+        for item in rows[:limit]
+    ])
+
+
 def retrieve_catalog_items(
     db: Session,
     workspace_id: uuid.UUID,
@@ -284,112 +495,15 @@ def retrieve_catalog_items(
     """
     Return up to *limit* active catalog items relevant to *query*.
 
-    Strategy
-    --------
-    1. If the workspace has embedded items, attempt hybrid search:
-       a. Embed the query using the configured provider.
-       b. Semantic search via pgvector cosine distance.
-       c. Lexical search via ILIKE for complementary coverage.
-       d. Merge: final_score = 0.7 * semantic + 0.3 * lexical.
-    2. If embedding fails or no items have embeddings, fall back to
-       pure lexical search (Catálogo.3 behaviour).
-
-    Workspace isolation is enforced at every query.
+    Backward-compatible wrapper around _retrieve_catalog_items_full — plain
+    list return, same signature as before catalog-retrieval-robustness-prd.md.
+    retrieve_catalog_context() (the real production entry point) calls the
+    richer variant directly to also get the had_weak_candidates signal.
     """
-    limit = min(limit, _MAX_LIMIT)
-    terms = _extract_terms(query)
-
-    if not terms and not query.strip():
-        return []
-
-    # ── Attempt semantic (hybrid) retrieval ───────────────────────────────────
-    try:
-        from app.services.embedding_service import embed_texts
-
-        embed_result = embed_texts([query.strip()], provider=provider)
-        query_embedding = embed_result.embeddings[0]
-
-        sem_rows = _semantic_search(
-            db, workspace_id, query_embedding, top_k=limit * 3,
-            allowed_category_ids=allowed_category_ids,
-        )
-
-        if sem_rows:
-            # Fetch lexical candidates for the same workspace to compute lexical score.
-            lex_rows = _lexical_search(
-                db, workspace_id, terms, over_fetch=limit * 5,
-                allowed_category_ids=allowed_category_ids,
-            )
-
-            # Merge: all semantically-found items + lexical-only items.
-            all_items: dict[uuid.UUID, CatalogItem] = {r.id: r for r, _ in sem_rows}
-            for r in lex_rows:
-                all_items.setdefault(r.id, r)
-
-            sem_scores = {r.id: s for r, s in sem_rows}
-
-            # Score each candidate.
-            candidates: list[tuple[CatalogItem, float, float, float]] = []
-            max_terms = max(len(terms), 1)
-            for item in all_items.values():
-                sem = sem_scores.get(item.id, 0.0)
-                raw_lex = _lexical_score(item, terms) if terms else 0.0
-                lex = _normalise_lexical(raw_lex, max_terms)
-                final = _SEMANTIC_WEIGHT * sem + _LEXICAL_WEIGHT * lex
-                if final > 0:
-                    candidates.append((item, final, sem, lex))
-
-            candidates.sort(key=lambda x: x[1], reverse=True)
-            top = candidates[:limit]
-
-            if not top:
-                return []
-
-            all_rows = [c[0] for c in candidates]
-            cat_map, primary_media_ids = _resolve_support_data(db, workspace_id, all_rows)
-
-            return [
-                _to_retrieval_item(
-                    item, cat_map, primary_media_ids,
-                    score=round(final, 4),
-                    semantic_score=round(sem, 4),
-                    lexical_score=round(lex, 4),
-                    retrieval_method="hybrid",
-                )
-                for item, final, sem, lex in top
-            ]
-
-    except (EmbeddingError, Exception):  # noqa: BLE001
-        # Embedding failed or provider not configured — fall through to lexical.
-        pass
-
-    # ── Lexical fallback ──────────────────────────────────────────────────────
-    if not terms:
-        return []
-
-    rows = _lexical_search(
-        db, workspace_id, terms, over_fetch=limit * 5,
+    return _retrieve_catalog_items_full(
+        db, workspace_id, query, limit=limit, provider=provider,
         allowed_category_ids=allowed_category_ids,
-    )
-    if not rows:
-        return []
-
-    cat_map, primary_media_ids = _resolve_support_data(db, workspace_id, rows)
-    max_terms = max(len(terms), 1)
-
-    scored = [(item, _lexical_score(item, terms)) for item in rows]
-    scored = [(i, s) for i, s in scored if s > 0]
-    scored.sort(key=lambda x: x[1], reverse=True)
-
-    return [
-        _to_retrieval_item(
-            item, cat_map, primary_media_ids,
-            score=round(_normalise_lexical(raw, max_terms), 4),
-            lexical_score=round(_normalise_lexical(raw, max_terms), 4),
-            retrieval_method="lexical_fallback",
-        )
-        for item, raw in scored[:limit]
-    ]
+    ).items
 
 
 # ── Context block builder ─────────────────────────────────────────────────────
@@ -412,6 +526,19 @@ opção cadastrada.
 e ofereça chamar a equipe.
 - Se precisar de simulação, negociação, agendamento ou confirmação, ofereça acionar \
 um humano da equipe."""
+
+# catalog-retrieval-robustness-prd.md — shown instead of a normal catalog
+# block when the search had candidates but none cleared the confidence
+# floor (never shown for "genuinely found nothing", see had_weak_candidates
+# in retrieve_catalog_context). Found via a real production incident: the
+# model received a weak top-3 with no confidence signal and confidently
+# told the customer an item "was no longer in the catalog" — false.
+_CATALOG_INCONCLUSIVE_BLOCK = """\
+CATÁLOGO: a busca não encontrou nenhum item claramente relevante para essa pergunta.
+Isso pode ser uma limitação da busca, não uma confirmação de que o item não existe \
+ou não está disponível. Não afirme que um produto/serviço não existe ou "não está \
+mais no catálogo" com base só nisso — peça mais detalhes ao cliente sobre o que ele \
+procura, ou ofereça verificar com a equipe antes de descartar a opção."""
 
 
 def _format_price(price: float | None, currency: str) -> str:
@@ -502,13 +629,15 @@ def retrieve_catalog_context(
     result.retrieval_attempted = True
 
     try:
-        items = retrieve_catalog_items(
+        outcome = _retrieve_catalog_items_full(
             db, workspace_id, query, limit=limit,
             allowed_category_ids=allowed_category_ids,
         )
-        result.items = items
-        if items:
-            result.context_block = build_catalog_context_block(items)
+        result.items = outcome.items
+        if outcome.items:
+            result.context_block = build_catalog_context_block(outcome.items)
+        elif outcome.had_weak_candidates:
+            result.context_block = _CATALOG_INCONCLUSIVE_BLOCK
     except Exception as exc:  # noqa: BLE001
         logger.warning("catalog_retrieval_error workspace=%s error=%s", workspace_id, exc)
         result.error_message = f"Catalog retrieval error: {str(exc)[:200]}"
