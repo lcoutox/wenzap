@@ -225,13 +225,33 @@ def build_tool_schema(tool: AgentTool) -> dict:
                 "type": "object",
                 "description": "Optional query string parameters to add to the request.",
             }
-        properties["body"] = {
-            "type": "object",
-            "description": "Optional JSON body (used for POST/PUT/PATCH only).",
-        }
+        body_template = tool.config.get("body_template")
+        body_params: list[str] = []
+        if body_template:
+            # Structured body (http-tool-body-template-prd.md) — the operator
+            # wrote the literal JSON, {placeholder} marks where model-supplied
+            # values go (even inside nested objects like Cal.com's `attendee`).
+            # Named/described properties instead of a blind "body" object —
+            # same rationale as query_params/path vars.
+            body_descriptions = tool.config.get("body_param_descriptions") or {}
+            body_params = _URL_PLACEHOLDER_RE.findall(body_template)
+            for name in body_params:
+                properties[name] = {
+                    "type": "string",
+                    "description": (
+                        body_descriptions.get(name)
+                        or f"Value for '{name}', used in the request body."
+                    ),
+                }
+        else:
+            properties["body"] = {
+                "type": "object",
+                "description": "Optional JSON body (used for POST/PUT/PATCH only).",
+            }
         input_schema: dict = {"type": "object", "properties": properties}
-        if url_params:
-            input_schema["required"] = url_params
+        required = list(dict.fromkeys([*url_params, *body_params]))  # de-duped, order-preserved
+        if required:
+            input_schema["required"] = required
         return {
             "name": tool.name,
             "description": tool.description,
@@ -470,6 +490,43 @@ def _substitute_url_placeholders(url_template: str, input_: dict) -> str:
     return _URL_PLACEHOLDER_RE.sub(replacer, url_template)
 
 
+def _substitute_body_placeholders(body_template: str, input_: dict) -> dict:
+    """
+    Fill {name} placeholders inside *body_template* (a JSON string the
+    operator wrote, e.g. '{"attendee": {"name": "{name}", "email": "{email}"}}')
+    with values from *input_*, then parse the result as JSON.
+
+    Placeholders always sit inside quotes the operator already wrote in the
+    template — so substitution only needs to escape the value's *content* as
+    JSON-string text; json.dumps(value)[1:-1] produces exactly that (a fully
+    quoted+escaped JSON string literal, with the outer quotes stripped back
+    off). Unlike URL substitution (which percent-encodes because raw
+    slashes/hosts are dangerous there), there's no equivalent injection risk
+    here: a value containing '", "evil": "true' becomes one escaped string —
+    every quote/backslash inside it is escaped before insertion, so it can
+    only ever become string *content*, never new JSON keys/structure.
+
+    Every value becomes a JSON string in the result (str(value) first) — a
+    template can't produce a raw numeric/boolean field via a placeholder.
+    Operator-fixed constants (e.g. a numeric eventTypeId) go straight in the
+    template unquoted; only genuinely model-supplied values are placeholders.
+    """
+    def replacer(match: re.Match) -> str:
+        name = match.group(1)
+        value = input_.get(name)
+        if value is None:
+            raise ValueError(f"Missing required body parameter: '{name}'")
+        return json.dumps(str(value))[1:-1]
+
+    substituted = _URL_PLACEHOLDER_RE.sub(replacer, body_template)
+    try:
+        return json.loads(substituted)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Configured body_template did not produce valid JSON after substitution: {exc}"
+        ) from exc
+
+
 def execute_http_tool(config: dict, input_: dict) -> str:
     """
     Synchronously call the configured endpoint. *config* is the tool's fixed
@@ -494,11 +551,17 @@ def execute_http_tool(config: dict, input_: dict) -> str:
     headers = dict(config.get("headers") or {})
     method = config.get("method", "GET")
 
-    body = input_.get("body")
     json_body = None
-    if body is not None and method in ("POST", "PUT", "PATCH"):
-        json_body = body
-        headers.setdefault("Content-Type", "application/json")
+    if method in ("POST", "PUT", "PATCH"):
+        body_template = config.get("body_template")
+        if body_template:
+            json_body = _substitute_body_placeholders(body_template, input_)
+            headers.setdefault("Content-Type", "application/json")
+        else:
+            body = input_.get("body")
+            if body is not None:
+                json_body = body
+                headers.setdefault("Content-Type", "application/json")
 
     timeout = config.get("timeout_seconds", 8)
 

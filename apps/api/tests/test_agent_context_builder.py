@@ -280,6 +280,19 @@ def test_has_tools_true_flips_the_rule():
     assert "External actions and integrations are not available" not in prompt
 
 
+def test_has_tools_true_includes_never_claim_false_success_rule():
+    """Found via a real production incident (2026-07-18): a tool call failed
+    with a clear error and the model still told the customer it succeeded.
+    Ver decisoes.md — "Teste completo simulando imobiliária"."""
+    prompt = build_system_prompt(**_base_prompt_kwargs(), has_tools=True)
+    assert "never claim success" in prompt
+
+
+def test_has_tools_false_excludes_never_claim_false_success_rule():
+    prompt = build_system_prompt(**_base_prompt_kwargs(), has_tools=False)
+    assert "never claim success" not in prompt
+
+
 def test_has_tools_false_is_explicit_default():
     with_default = build_system_prompt(**_base_prompt_kwargs())
     with_explicit_false = build_system_prompt(**_base_prompt_kwargs(), has_tools=False)

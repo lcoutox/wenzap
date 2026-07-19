@@ -776,6 +776,9 @@ function HttpToolFormModal({
   const [pathTestValues, setPathTestValues] = useState<Record<string, string>>({});
   const [queryParams, setQueryParams] = useState<HttpToolParam[]>([]);
   const [queryTestValues, setQueryTestValues] = useState<Record<string, string>>({});
+  const [bodyTemplate, setBodyTemplate] = useState("");
+  const [bodyDescriptions, setBodyDescriptions] = useState<Record<string, string>>({});
+  const [bodyTestValues, setBodyTestValues] = useState<Record<string, string>>({});
   const [timeoutSeconds, setTimeoutSeconds] = useState(8);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -783,6 +786,8 @@ function HttpToolFormModal({
   const [testResult, setTestResult] = useState<HttpToolTestResult | null>(null);
 
   const pathVars = extractPathVars(url);
+  const bodyVars = extractPathVars(bodyTemplate);
+  const bodyAllowed = method === "POST" || method === "PUT" || method === "PATCH";
 
   useEffect(() => {
     if (!open) return;
@@ -794,6 +799,8 @@ function HttpToolFormModal({
       setHeaderRows(Object.entries(editingTool.config.headers || {}).map(([key, value]) => ({ key, value })));
       setPathDescriptions(editingTool.config.path_param_descriptions || {});
       setQueryParams(editingTool.config.query_params || []);
+      setBodyTemplate(editingTool.config.body_template || "");
+      setBodyDescriptions(editingTool.config.body_param_descriptions || {});
     } else {
       setName("");
       setDescription("");
@@ -802,10 +809,13 @@ function HttpToolFormModal({
       setHeaderRows([]);
       setPathDescriptions({});
       setQueryParams([]);
+      setBodyTemplate("");
+      setBodyDescriptions({});
     }
     setTimeoutSeconds(editingTool?.config.timeout_seconds ?? 8);
     setPathTestValues({});
     setQueryTestValues({});
+    setBodyTestValues({});
     setError(null);
     setTestResult(null);
   }, [open, editingTool]);
@@ -818,6 +828,8 @@ function HttpToolFormModal({
     setPathDescriptions(t.pathParamDescriptions);
     setQueryParams([]);
     setHeaderRows([]);
+    setBodyTemplate("");
+    setBodyDescriptions({});
     setTestResult(null);
   }
 
@@ -831,6 +843,8 @@ function HttpToolFormModal({
       timeout_seconds: timeoutSeconds,
       path_param_descriptions: pathDescriptions,
       query_params: queryParams.filter((p) => p.name.trim()),
+      body_template: bodyAllowed && bodyTemplate.trim() ? bodyTemplate.trim() : null,
+      body_param_descriptions: bodyDescriptions,
     };
   }
 
@@ -850,6 +864,7 @@ function HttpToolFormModal({
       });
       const result = await api.agents.httpTools.test(agentId, buildConfig(), {
         ...pathTestValues,
+        ...(bodyAllowed ? bodyTestValues : {}),
         query_params: sampleQuery,
       });
       setTestResult(result);
@@ -1027,6 +1042,51 @@ function HttpToolFormModal({
             onTestValueChange={(n, v) => setQueryTestValues((p) => ({ ...p, [n]: v }))}
           />
         </div>
+
+        {/* Body — só faz sentido pra métodos que enviam corpo */}
+        {bodyAllowed && (
+          <div>
+            <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+              Body (JSON)
+            </label>
+            <textarea
+              value={bodyTemplate}
+              onChange={(e) => setBodyTemplate(e.target.value)}
+              placeholder='{"eventTypeId": 123, "start": "{start}", "attendee": {"name": "{nome}"}}'
+              rows={3}
+              className={`${inputCls} font-mono text-xs`}
+            />
+            <p className="text-xs text-nb-muted mt-1">
+              Escreva o JSON exato que a API espera. Use <code className="font-mono">{"{variavel}"}</code>{" "}
+              nos valores que o agente deve preencher — funciona até dentro de objetos aninhados
+              (ex: <code className="font-mono">{"{\"attendee\": {\"name\": \"{nome}\"}}"}</code>).
+              Deixe em branco pra o agente montar o corpo sozinho (menos confiável).
+            </p>
+            {bodyVars.length > 0 && (
+              <div className="space-y-2 mt-2">
+                {bodyVars.map((v) => (
+                  <div key={v} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+                    <span className="text-xs font-mono font-medium text-nb-text">{`{${v}}`}</span>
+                    <input
+                      type="text"
+                      value={bodyDescriptions[v] || ""}
+                      onChange={(e) => setBodyDescriptions((p) => ({ ...p, [v]: e.target.value }))}
+                      placeholder={`Descrição pro agente entender o que é "${v}" (opcional)`}
+                      className={`${inputCls} text-xs`}
+                    />
+                    <input
+                      type="text"
+                      value={bodyTestValues[v] || ""}
+                      onChange={(e) => setBodyTestValues((p) => ({ ...p, [v]: e.target.value }))}
+                      placeholder="Valor de teste (usado só no botão Validar Configuração)"
+                      className={`${inputCls} text-xs`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Headers */}
         <div>

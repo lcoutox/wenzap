@@ -45,6 +45,16 @@ class HttpToolConfig(BaseModel):
     # Documented query params — when non-empty, build_tool_schema generates a
     # named/described nested schema instead of a freeform object.
     query_params: list[HttpToolParam] = Field(default_factory=list)
+    # Literal JSON the operator writes for POST/PUT/PATCH, with {variable}
+    # placeholders (same syntax as URL path vars) marking exactly where the
+    # model's values go — including inside nested objects, e.g.
+    # '{"attendee": {"name": "{name}", "email": "{email}"}}'. When set,
+    # build_tool_schema exposes one named/described property per placeholder
+    # instead of a blind "body" object (http-tool-body-template-prd.md).
+    # None/empty falls back to the original freeform "body" behavior, so
+    # tools saved before this existed keep working unchanged.
+    body_template: str | None = Field(default=None, max_length=4000)
+    body_param_descriptions: dict[str, str] = Field(default_factory=dict)
 
 
 class HttpToolTestRequest(BaseModel):

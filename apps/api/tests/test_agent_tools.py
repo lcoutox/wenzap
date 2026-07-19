@@ -22,6 +22,7 @@ import pytest
 from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.services.agent_tool_service import (
+    _substitute_body_placeholders,
     build_tool_dispatch,
     build_tool_schema,
     execute_http_tool,
@@ -714,6 +715,126 @@ def test_execute_http_tool_still_works_with_structured_query_params_config(mock_
         execute_http_tool(config, {"query_params": {"formato": "json"}})
     call_url = mock_request.call_args.args[1]
     assert "formato=json" in call_url
+
+
+# ── http_request: structured Body (JSON template, http-tool-body-template-prd) ─
+
+
+def test_build_tool_schema_backward_compatible_without_body_template():
+    """No body_template key at all — falls back to the original generic
+    "body" object, same as before this PRD existed."""
+    schema = build_tool_schema(_FakeTool())  # _SAMPLE_CONFIG has no body_template
+    assert schema["input_schema"]["properties"]["body"] == {
+        "type": "object",
+        "description": "Optional JSON body (used for POST/PUT/PATCH only).",
+    }
+
+
+def test_build_tool_schema_body_template_exposes_named_properties():
+    tool = _FakeTool(config={
+        **_SAMPLE_CONFIG,
+        "body_template": '{"eventTypeId": 123, "start": "{start}", "attendee": {"name": "{nome}"}}',
+        "body_param_descriptions": {"start": "Data/hora ISO 8601 UTC", "nome": "Nome completo"},
+    })
+    schema = build_tool_schema(tool)
+    props = schema["input_schema"]["properties"]
+    assert "body" not in props  # replaced, not additive
+    assert props["start"] == {"type": "string", "description": "Data/hora ISO 8601 UTC"}
+    assert props["nome"] == {"type": "string", "description": "Nome completo"}
+
+
+def test_build_tool_schema_body_template_placeholders_are_required():
+    tool = _FakeTool(config={
+        **_SAMPLE_CONFIG,
+        "body_template": '{"a": "{x}", "b": "{y}"}',
+    })
+    schema = build_tool_schema(tool)
+    assert set(schema["input_schema"]["required"]) == {"x", "y"}
+
+
+def test_build_tool_schema_body_template_default_description_when_undocumented():
+    tool = _FakeTool(config={**_SAMPLE_CONFIG, "body_template": '{"a": "{x}"}'})
+    schema = build_tool_schema(tool)
+    assert schema["input_schema"]["properties"]["x"]["description"] == (
+        "Value for 'x', used in the request body."
+    )
+
+
+def test_build_tool_schema_body_template_dedupes_required_with_url_params():
+    tool = _FakeTool(config={
+        "method": "POST", "url": "https://api.example.com/items/{id}", "headers": {},
+        "timeout_seconds": 8, "body_template": '{"itemId": "{id}", "note": "{note}"}',
+    })
+    schema = build_tool_schema(tool)
+    # "id" appears in both the URL and the body template — required list must
+    # not contain it twice.
+    assert schema["input_schema"]["required"] == ["id", "note"]
+
+
+def test_substitute_body_placeholders_produces_valid_nested_json():
+    template = (
+        '{"eventTypeId": 6363532, "start": "{start}", '
+        '"attendee": {"name": "{nome}", "email": "{email}", "timeZone": "America/Sao_Paulo"}}'
+    )
+    input_ = {"start": "2026-07-22T19:00:00.000Z", "nome": "Lucas Couto", "email": "lucas@x.com"}
+    result = _substitute_body_placeholders(template, input_)
+    assert result == {
+        "eventTypeId": 6363532,
+        "start": "2026-07-22T19:00:00.000Z",
+        "attendee": {
+            "name": "Lucas Couto", "email": "lucas@x.com", "timeZone": "America/Sao_Paulo",
+        },
+    }
+
+
+def test_substitute_body_placeholders_escapes_quotes_safely():
+    # A value containing a literal quote + fake JSON structure must stay
+    # confined to a single string value — never break out into new keys.
+    template = '{"name": "{name}"}'
+    result = _substitute_body_placeholders(template, {"name": 'Lucas", "evil": "true'})
+    # Exactly one key — the malicious-looking value never became a second key.
+    assert result == {"name": 'Lucas", "evil": "true'}
+
+
+def test_substitute_body_placeholders_missing_value_raises():
+    with pytest.raises(ValueError, match="start"):
+        _substitute_body_placeholders('{"start": "{start}"}', {})
+
+
+def test_substitute_body_placeholders_invalid_template_raises_value_error():
+    # Even after substitution, malformed JSON (missing closing brace) must
+    # surface as a clear error, not an unhandled JSONDecodeError leaking out.
+    with pytest.raises(ValueError, match="valid JSON"):
+        _substitute_body_placeholders('{"start": "{start}"', {"start": "now"})
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_uses_body_template_when_configured(mock_request):
+    mock_request.return_value = httpx.Response(201, text="ok")
+    config = {
+        **_SAMPLE_CONFIG, "method": "POST", "url": "https://api.example.com/bookings",
+        "body_template": '{"eventTypeId": 123, "attendee": {"name": "{nome}"}}',
+    }
+    with _PUBLIC_DNS_PATCH:
+        execute_http_tool(config, {"nome": "Lucas Couto"})
+    call_kwargs = mock_request.call_args.kwargs
+    assert call_kwargs["json"] == {"eventTypeId": 123, "attendee": {"name": "Lucas Couto"}}
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_body_template_takes_precedence_over_generic_body(mock_request):
+    """If both body_template and a freeform input_["body"] are somehow present,
+    the structured template wins — it's what the model's schema actually
+    documented as required, the generic "body" key isn't even offered."""
+    mock_request.return_value = httpx.Response(201, text="ok")
+    config = {
+        **_SAMPLE_CONFIG, "method": "POST", "url": "https://api.example.com/bookings",
+        "body_template": '{"fixed": true, "name": "{nome}"}',
+    }
+    with _PUBLIC_DNS_PATCH:
+        execute_http_tool(config, {"nome": "Lucas", "body": {"ignored": "value"}})
+    call_kwargs = mock_request.call_args.kwargs
+    assert call_kwargs["json"] == {"fixed": True, "name": "Lucas"}
 
 
 # ── http_request: "Validar Configuração" (test before saving) ──────────────────

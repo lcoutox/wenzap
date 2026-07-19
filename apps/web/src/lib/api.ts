@@ -716,6 +716,11 @@ export type HttpToolConfig = {
   // default to empty on the backend, so older tools work without them.
   path_param_descriptions?: Record<string, string>;
   query_params?: HttpToolParam[];
+  // Literal JSON template with {variable} placeholders, even inside nested
+  // objects (http-tool-body-template-prd.md). null/undefined falls back to
+  // the original freeform body behavior.
+  body_template?: string | null;
+  body_param_descriptions?: Record<string, string>;
 };
 
 export type HttpToolTestResult = {
