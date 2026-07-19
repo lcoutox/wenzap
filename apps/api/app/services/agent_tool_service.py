@@ -536,6 +536,13 @@ def execute_http_tool(config: dict, input_: dict) -> str:
     Raises on any failure — agent_llm_executor.run_agent_turn already catches
     exceptions from a tool executor and reports them to the model as a tool
     error, so this function does not need its own try/except-and-swallow.
+
+    A non-2xx response raises ToolCallFailedError (message = the same JSON
+    a success would have returned) instead of returning normally — httpx
+    doesn't raise on 4xx/5xx by default, and without this a real failure
+    (e.g. Cal.com rejecting the call) would be indistinguishable from a
+    success in the tool-call audit trail. The model still sees the exact
+    same status_code + body either way; only the recorded status changes.
     """
     url = _substitute_url_placeholders(config["url"], input_)
     # Re-validate the URL *after* substitution — defense in depth alongside
@@ -569,7 +576,11 @@ def execute_http_tool(config: dict, input_: dict) -> str:
         method, url, headers=headers, json=json_body, timeout=timeout
     )
     text = response.text[:_MAX_RESPONSE_CHARS]
-    return json.dumps({"status_code": response.status_code, "body": text})
+    result = json.dumps({"status_code": response.status_code, "body": text})
+    if response.status_code >= 400:
+        from app.services.agent_llm_executor import ToolCallFailedError  # noqa: PLC0415
+        raise ToolCallFailedError(result)
+    return result
 
 
 def validate_http_tool_config(config: dict, sample_input: dict) -> dict:
@@ -579,10 +590,20 @@ def validate_http_tool_config(config: dict, sample_input: dict) -> dict:
     result as data instead of letting the caller's exception propagate. Used by the
     /tools/http/test endpoint so a bad URL/header/timeout shows up in the config
     modal immediately, not after saving + activating + waiting for a real trigger.
+
+    A non-2xx response is still reported as `ok: True` with the real status
+    code/body — for a human testing their own config, "it responded with
+    400" is useful diagnostic data, not a failure of the test mechanism
+    itself (ToolCallFailedError only changes how agent_llm_executor's audit
+    trail records the call, not this endpoint's response shape).
     """
+    from app.services.agent_llm_executor import ToolCallFailedError  # noqa: PLC0415
     try:
         raw = execute_http_tool(config, sample_input)
         parsed = json.loads(raw)
+        return {"ok": True, "status_code": parsed.get("status_code"), "body": parsed.get("body")}
+    except ToolCallFailedError as exc:
+        parsed = json.loads(str(exc))
         return {"ok": True, "status_code": parsed.get("status_code"), "body": parsed.get("body")}
     except Exception as exc:  # noqa: BLE001 — this is a user-facing "did it work?" check
         return {"ok": False, "error": str(exc)}

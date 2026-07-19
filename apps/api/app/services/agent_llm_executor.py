@@ -23,6 +23,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
+import sentry_sdk
+
 from app.llm import client as llm_client
 from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest, LLMResponse
 from app.services.agent_guardrails import detect_prompt_injection
@@ -43,6 +45,23 @@ _MAX_RETRIES_PER_CALL = 2
 # Raising is safe — the executor loop catches it and reports the failure to
 # the model as a tool error, it never crashes the turn.
 ToolExecutor = Callable[[dict], str]
+
+
+class ToolCallFailedError(Exception):
+    """
+    Raised by a tool executor when the call completed (no crash) but the
+    result itself represents a real failure — e.g. an HTTP tool got a 4xx/5xx
+    back. `httpx` doesn't raise on a non-2xx response by default, so without
+    this, execute_http_tool would return normally and the loop below would
+    record status="success" in the audit trail even though the call failed
+    (found via a real production incident: a Cal.com 400 was recorded as a
+    successful tool call, with no way to tell from the data itself).
+
+    The exception's message is the SAME informative text execute_http_tool
+    would otherwise have returned (the status code + response body as JSON)
+    — the model still gets full detail to reason about, unlike the generic
+    "Tool execution failed: {exc}" wrapping used for genuine crashes below.
+    """
 
 
 @dataclass
@@ -250,9 +269,29 @@ def run_agent_turn(
                 try:
                     output_text = executor(tool_input)
                     status = "success"
+                except ToolCallFailedError as exc:
+                    # Message is already the informative text (e.g. HTTP
+                    # status + body) — pass through as-is, don't wrap it.
+                    output_text = str(exc)
+                    status = "error"
+                    tool_context = {
+                        "tool_name": tool_name, "input": tool_input, "output": output_text,
+                    }
+                    with sentry_sdk.new_scope() as scope:
+                        scope.set_tag("tool_name", tool_name)
+                        scope.set_context("tool_call", tool_context)
+                        sentry_sdk.capture_message(
+                            f"Tool call failed: {tool_name}", level="warning",
+                        )
                 except Exception as exc:  # noqa: BLE001 — a tool failure must never crash the turn
                     output_text = f"Tool execution failed: {exc}"
                     status = "error"
+                    with sentry_sdk.new_scope() as scope:
+                        scope.set_tag("tool_name", tool_name)
+                        scope.set_context(
+                            "tool_call", {"tool_name": tool_name, "input": tool_input},
+                        )
+                        sentry_sdk.capture_exception(exc)
 
             # Tool output is untrusted data (it can come from a third-party API
             # this agent's owner configured, not from us) — run the same

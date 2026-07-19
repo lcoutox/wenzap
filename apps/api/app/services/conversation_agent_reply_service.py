@@ -25,6 +25,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
+import sentry_sdk
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -314,8 +315,21 @@ def generate_conversation_agent_reply(
     )
 
     # ── Call LLM via the shared executor (handles retries + tool-calling loop) ─
+    # Ambient Sentry context for this turn — any event captured inside (e.g.
+    # a tool call failing, see agent_llm_executor.py) inherits these tags
+    # without needing workspace/agent/conversation threaded through the
+    # executor itself.
     try:
-        llm_response = run_agent_turn(request, tool_dispatch=tool_dispatch)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("workspace_id", str(workspace_id))
+            scope.set_tag("agent_id", str(agent.id))
+            scope.set_context("conversation", {
+                "workspace_id": str(workspace_id),
+                "agent_id": str(agent.id),
+                "conversation_id": str(conversation.id),
+                "trigger_message_id": str(trigger_message.id),
+            })
+            llm_response = run_agent_turn(request, tool_dispatch=tool_dispatch)
     except LLMProviderError as exc:
         # Notify admin of the error
         from app.services.agent_alert_service import notify_agent_error  # noqa: PLC0415

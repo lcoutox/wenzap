@@ -13,6 +13,7 @@ import pytest
 from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest, LLMResponse
 from app.services.agent_llm_executor import (
     MAX_TOOL_ITERATIONS,
+    ToolCallFailedError,
     ToolIterationLimitError,
     run_agent_turn,
 )
@@ -171,6 +172,29 @@ def test_tool_execution_exception_becomes_error_result_not_a_crash():
     assert result.content == "Não consegui acessar o endereço."
     assert result.calls[0].tool_calls[0]["status"] == "error"
     assert "connection refused" in result.calls[0].tool_calls[0]["output"]
+
+
+def test_tool_call_failed_error_marks_error_without_wrapping_message():
+    # A ToolCallFailedError (e.g. an HTTP tool's non-2xx response) must be
+    # recorded as status="error" like any other failure, but the message
+    # passed to the model is the informative payload itself (status code +
+    # body) — not wrapped in "Tool execution failed: ..." like a genuine crash.
+    tool_response = _tool_use_response("http_request", {"cep": "00000000"})
+    final_response = _text_response("Não encontrei esse CEP.")
+
+    def rejecting_tool(_input: dict) -> str:
+        raise ToolCallFailedError('{"status_code": 404, "body": "not found"}')
+
+    with patch(_LLM_PATCH, side_effect=[tool_response, final_response]):
+        result = run_agent_turn(
+            _request(tools=[{"name": "http_request"}]),
+            tool_dispatch={"http_request": rejecting_tool},
+        )
+
+    tool_call = result.calls[0].tool_calls[0]
+    assert tool_call["status"] == "error"
+    assert tool_call["output"] == '{"status_code": 404, "body": "not found"}'
+    assert "Tool execution failed" not in tool_call["output"]
 
 
 def test_unknown_tool_name_reported_to_model_not_raised():

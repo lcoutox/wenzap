@@ -311,6 +311,43 @@ def test_execute_http_tool_truncates_long_response(mock_request):
     assert len(result) < 5000
 
 
+# httpx doesn't raise on a non-2xx response by default — execute_http_tool
+# must turn that into ToolCallFailedError itself, otherwise a real API
+# failure (Cal.com rejecting a booking, etc.) gets recorded as a successful
+# tool call in the audit trail. Found via a real production incident.
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_raises_on_4xx(mock_request):
+    from app.services.agent_llm_executor import ToolCallFailedError
+
+    mock_request.return_value = httpx.Response(400, text='{"error": "bad request"}')
+    with _PUBLIC_DNS_PATCH, pytest.raises(ToolCallFailedError):
+        execute_http_tool(_SAMPLE_CONFIG, {"query_params": {"cep": "01001000"}})
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_raises_on_5xx(mock_request):
+    from app.services.agent_llm_executor import ToolCallFailedError
+
+    mock_request.return_value = httpx.Response(500, text="internal error")
+    with _PUBLIC_DNS_PATCH, pytest.raises(ToolCallFailedError):
+        execute_http_tool(_SAMPLE_CONFIG, {"query_params": {"cep": "01001000"}})
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_execute_http_tool_4xx_error_message_preserves_status_and_body(mock_request):
+    from app.services.agent_llm_executor import ToolCallFailedError
+
+    mock_request.return_value = httpx.Response(404, text='{"error": "not found"}')
+    with _PUBLIC_DNS_PATCH:
+        try:
+            execute_http_tool(_SAMPLE_CONFIG, {"query_params": {"cep": "01001000"}})
+            pytest.fail("expected ToolCallFailedError")
+        except ToolCallFailedError as exc:
+            assert '"status_code": 404' in str(exc)
+            assert "not found" in str(exc)
+
+
 # ── request_human: CRUD (no plan gate) ──────────────────────────────────────────
 
 
@@ -862,6 +899,20 @@ def test_validate_http_tool_config_rejects_private_url():
     config = {"method": "GET", "url": "http://127.0.0.1/", "headers": {}, "timeout_seconds": 8}
     result = validate_http_tool_config(config, {})
     assert result["ok"] is False
+
+
+@patch("app.services.agent_tool_service.httpx.request")
+def test_validate_http_tool_config_reports_4xx_as_ok_with_real_status(mock_request):
+    # For a human testing their own config, "it responded with 400" IS the
+    # useful diagnostic — this must stay distinct from a genuine failure of
+    # the test mechanism itself (bad URL, DNS rejection, etc.), which still
+    # reports ok=False via the generic except branch.
+    mock_request.return_value = httpx.Response(400, text='{"error": "bad request"}')
+    with _PUBLIC_DNS_PATCH:
+        result = validate_http_tool_config(_SAMPLE_CONFIG, {"query_params": {"cep": "01001000"}})
+    assert result["ok"] is True
+    assert result["status_code"] == 400
+    assert "bad request" in result["body"]
 
 
 def test_validate_endpoint_requires_scale_plan(client_a, subscription_a, ai_model):
