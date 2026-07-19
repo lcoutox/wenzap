@@ -1,4 +1,5 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 import sentry_sdk
@@ -55,6 +56,13 @@ if settings.sentry_dsn:
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s %(name)s: %(message)s",
+    # Default StreamHandler writes to stderr, and Railway (like most log
+    # aggregators) tags anything on stderr as "error" severity regardless of
+    # content — every scheduler tick, webhook, channel-connect log was
+    # showing up as a false error in the Errors & Outages view. stdout is
+    # where Uvicorn's own access logs already go, so this also keeps
+    # everything in one stream.
+    stream=sys.stdout,
 )
 # Keep noisy third-party loggers quiet.
 logging.getLogger("httpx").setLevel(logging.WARNING)
