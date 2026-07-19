@@ -297,3 +297,20 @@ def test_has_tools_false_is_explicit_default():
     with_default = build_system_prompt(**_base_prompt_kwargs())
     with_explicit_false = build_system_prompt(**_base_prompt_kwargs(), has_tools=False)
     assert with_default == with_explicit_false
+
+
+# ── build_system_prompt: current date/time grounding ────────────────────────
+# Found via a real production incident (2026-07-19): a scheduling tool call
+# went out with dates a full year off (2025 instead of 2026) because nothing
+# in the prompt told the model what day it actually is. Ver decisoes.md.
+
+def test_includes_current_datetime_block():
+    prompt = build_system_prompt(**_base_prompt_kwargs())
+    assert "DATA E HORA ATUAL" in prompt
+    assert "horário de Brasília" in prompt
+
+
+def test_current_datetime_block_includes_utc_iso_format():
+    import re
+    prompt = build_system_prompt(**_base_prompt_kwargs())
+    assert re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", prompt)

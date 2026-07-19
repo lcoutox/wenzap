@@ -10,6 +10,24 @@ The builder never receives or returns the user's message — it only
 constructs the system turn. This keeps the signature stable across phases.
 """
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# Platform is pt-BR only (see CLAUDE.md) — Brasília is the reference timezone
+# for every agent regardless of workspace, since there's no per-workspace
+# timezone setting today.
+_BR_TZ = ZoneInfo("America/Sao_Paulo")
+_UTC_TZ = ZoneInfo("UTC")
+
+_WEEKDAYS_PT = [
+    "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+    "sexta-feira", "sábado", "domingo",
+]
+_MONTHS_PT = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+
 # Fixed safety layer appended to every system prompt by the platform.
 # Kept in EN for maximum effectiveness with Anthropic models.
 # Always placed LAST so security rules benefit from the LLM's recency bias.
@@ -344,6 +362,29 @@ def build_agent_instructions_block(settings: object) -> str | None:
     return legacy_prompt or legacy_persona or None
 
 
+def _current_datetime_block() -> str:
+    """
+    Grounds the model in the real current date/time — without this, relative
+    date math ("amanhã", "semana que vem") and any tool call needing an ISO
+    date/time (scheduling, availability checks) has nothing to anchor to,
+    and models are prone to guessing a plausible-but-wrong date (e.g. a year
+    off). Found via a real production incident: an availability-check tool
+    call went out with dates in 2025 instead of 2026, got a correct-but-empty
+    result back, and the agent told the customer it "couldn't load times."
+    """
+    now_br = datetime.now(_BR_TZ)
+    now_utc = now_br.astimezone(_UTC_TZ)
+    weekday = _WEEKDAYS_PT[now_br.weekday()]
+    month = _MONTHS_PT[now_br.month - 1]
+    return (
+        f"DATA E HORA ATUAL: hoje é {weekday}, {now_br.day} de {month} de {now_br.year}, "
+        f"{now_br.strftime('%H:%M')} (horário de Brasília, UTC-3). Em UTC (use esse formato "
+        f"em qualquer tool call que peça data/hora): {now_utc.strftime('%Y-%m-%dT%H:%M:%SZ')}. "
+        "Use essa referência pra calcular qualquer data relativa (\"amanhã\", \"semana que vem\", "
+        "\"segunda-feira\") — nunca assuma o ano ou a data por conta própria."
+    )
+
+
 def build_system_prompt(
     agent_name: str,
     agent_description: str | None,
@@ -401,6 +442,8 @@ def build_system_prompt(
     if agent_description:
         identity_lines.append(agent_description)
     parts.append(" ".join(identity_lines))
+
+    parts.append(_current_datetime_block())
 
     # agent_instructions_block takes priority (new guided/advanced modes).
     # Falls back to legacy system_prompt+persona if not provided.
