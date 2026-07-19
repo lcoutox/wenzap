@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Download,
@@ -436,26 +437,52 @@ function RowActions({
   onViewData: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const MENU_WIDTH = 208; // px, matches w-52
+
+  function toggle() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({
+        top: rect.bottom + 4,
+        left: Math.max(8, rect.right - MENU_WIDTH),
+      });
+    }
+    setOpen((v) => !v);
+  }
 
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const close = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!btnRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="p-1.5 rounded-lg hover:bg-nb-elevated text-nb-muted hover:text-nb-secondary transition-colors"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-20 w-52 bg-nb-surface border border-nb-border rounded-xl shadow-lg py-1">
+      {/* Portal — the table wrapper uses overflow-hidden for its rounded
+          corners, which would silently clip an absolutely-positioned menu
+          (worst for the last row, whose menu has nowhere to open into). */}
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: MENU_WIDTH }}
+          className="z-50 bg-nb-surface border border-nb-border rounded-xl shadow-lg py-1"
+        >
           <MenuItem icon={MessageSquare} label="Ver conversas" onClick={() => { setOpen(false); onViewConversations(); }} />
           {!!contact.variables_count && (
             <MenuItem
@@ -466,9 +493,10 @@ function RowActions({
           )}
           <MenuItem icon={Pencil} label="Editar" onClick={() => { setOpen(false); onEdit(); }} />
           <MenuItem icon={Trash2} label="Excluir" danger onClick={() => { setOpen(false); onDelete(); }} />
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
