@@ -2531,6 +2531,44 @@ function CaptureContactDataConfigModal({
   );
 }
 
+// ── Unique tool name helper ──────────────────────────────────────────────────
+//
+// pipeline_action/assign_operator support multiple instances per agent (one
+// per destination stage/operator), but AgentTool.name must be unique per
+// agent (the backend rejects a duplicate with 409 — it's also the literal
+// function name the LLM sees, so two tools can't share one anyway). Derives
+// a name from the destination instead of a fixed literal, and retries with
+// a numeric suffix on a 409 collision (e.g. two stages with the same name).
+
+function slugify(text: string): string {
+  const slug = text
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return slug || "destino";
+}
+
+async function createAgentToolWithUniqueName<T>(
+  baseName: string,
+  createFn: (name: string) => Promise<T>
+): Promise<T> {
+  let name = baseName;
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    try {
+      return await createFn(name);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && attempt < 20) {
+        name = `${baseName}_${attempt + 1}`;
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("Não foi possível gerar um nome único pra ferramenta.");
+}
+
 // ── Pipeline-action config modal ────────────────────────────────────────────────
 
 const DEFAULT_PIPELINE_ACTION_DESCRIPTION =
@@ -2608,13 +2646,16 @@ function PipelineActionConfigModal({
           is_enabled: true,
         });
       } else {
-        const payload: AgentToolCreateInput = {
-          tool_type: "pipeline_action",
-          name: "mover_card_pipeline",
-          description: description.trim(),
-          config: { pipeline_id: pipelineId, stage_id: stageId },
-        };
-        await api.agents.pipelineActionTool.create(agentId, payload);
+        const stageName = stages.find((s) => s.id === stageId)?.name;
+        const baseName = `mover_card_pipeline_${slugify(stageName || "destino")}`;
+        await createAgentToolWithUniqueName(baseName, (name) =>
+          api.agents.pipelineActionTool.create(agentId, {
+            tool_type: "pipeline_action",
+            name,
+            description: description.trim(),
+            config: { pipeline_id: pipelineId, stage_id: stageId },
+          })
+        );
       }
       onClose();
     } catch (e) {
@@ -2803,13 +2844,16 @@ function AssignOperatorConfigModal({
           is_enabled: true,
         });
       } else {
-        const payload: AgentToolCreateInput = {
-          tool_type: "assign_operator",
-          name: "atribuir_operador",
-          description: description.trim(),
-          config: { user_id: userId },
-        };
-        await api.agents.assignOperatorTool.create(agentId, payload);
+        const operatorName = members.find((m) => m.user_id === userId)?.name;
+        const baseName = `atribuir_operador_${slugify(operatorName || "operador")}`;
+        await createAgentToolWithUniqueName(baseName, (name) =>
+          api.agents.assignOperatorTool.create(agentId, {
+            tool_type: "assign_operator",
+            name,
+            description: description.trim(),
+            config: { user_id: userId },
+          })
+        );
       }
       onClose();
     } catch (e) {
