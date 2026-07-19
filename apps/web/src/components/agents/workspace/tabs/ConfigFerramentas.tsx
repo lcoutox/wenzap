@@ -23,6 +23,13 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import CodeMirror from "@uiw/react-codemirror";
+import { json as cmJson, jsonParseLinter } from "@codemirror/lang-json";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { linter, lintGutter } from "@codemirror/lint";
+import { indentWithTab } from "@codemirror/commands";
+import { EditorView, keymap } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 import { api, ApiError } from "@/lib/api";
 import type {
   AgentCatalogScope,
@@ -754,6 +761,444 @@ function QueryParamsEditor({
   );
 }
 
+// ── Body (JSON) code editor — syntax highlighting, Tab-to-indent, live lint ────
+
+const cmTheme = EditorView.theme({
+  "&": {
+    backgroundColor: "var(--color-nb-panel)",
+    color: "var(--color-nb-text)",
+    fontSize: "12px",
+  },
+  ".cm-content": { fontFamily: "var(--font-mono, ui-monospace, monospace)", padding: "8px 0" },
+  ".cm-gutters": {
+    backgroundColor: "var(--color-nb-panel)",
+    color: "var(--color-nb-muted)",
+    border: "none",
+  },
+  "&.cm-focused": { outline: "none" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent" },
+});
+
+const jsonHighlightStyle = HighlightStyle.define([
+  { tag: tags.propertyName, color: "var(--color-nb-primary)" },
+  { tag: tags.string, color: "var(--color-nb-success)" },
+  { tag: tags.number, color: "#F59E0B" },
+  { tag: [tags.bool, tags.null], color: "#8B5CF6" },
+  { tag: [tags.brace, tags.squareBracket, tags.punctuation], color: "var(--color-nb-muted)" },
+]);
+
+function JsonBodyEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="rounded-xl overflow-hidden border border-nb-border">
+      <CodeMirror
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        theme={cmTheme}
+        basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
+        extensions={[
+          cmJson(),
+          syntaxHighlighting(jsonHighlightStyle),
+          linter(jsonParseLinter()),
+          lintGutter(),
+          keymap.of([indentWithTab]),
+        ]}
+        minHeight="90px"
+        maxHeight="320px"
+      />
+    </div>
+  );
+}
+
+// ── Body — contract JSON (type/isUserProvided/value/description per field) ─────
+//
+// The user edits a self-describing contract, not the literal HTTP body — no
+// {placeholder} syntax to learn or get wrong. "Formulário" and "JSON" are two
+// views of the same field tree; body_template (the literal JSON actually sent
+// to the API, still the backend's contract) is derived from that tree at
+// save/test time. Nothing changes server-side.
+
+type BodyFieldType = "string" | "number" | "boolean" | "null" | "object";
+
+type BodyFieldNode = {
+  key: string;
+  type: BodyFieldType;
+  isUserProvided: boolean; // meaningless for type "object" / "null"
+  value: string;           // raw text, used for string/number when fixed
+  boolValue: boolean;      // used for boolean when fixed
+  description: string;
+  children: BodyFieldNode[]; // used for type "object"
+};
+
+// "Valor de teste" (used only by "Validar Configuração") is intentionally NOT
+// part of this tree — it lives in the modal's bodyTestValues state, keyed by
+// field key, same pattern as pathTestValues/queryTestValues. Keeping it out
+// of the tree means it survives a JSON <-> Formulário mode switch for free.
+function emptyBodyField(): BodyFieldNode {
+  return {
+    key: "", type: "string", isUserProvided: true, value: "", boolValue: true,
+    description: "", children: [],
+  };
+}
+
+const BODY_FIELD_TYPE_LABELS: Record<BodyFieldType, string> = {
+  string: "Texto",
+  number: "Número",
+  boolean: "Verdadeiro/falso",
+  null: "Nulo",
+  object: "Objeto aninhado",
+};
+
+// ── tree -> literal body_template (what actually gets sent to the API) ─────────
+
+function serializeBodyNode(node: BodyFieldNode, indent: number): string {
+  const pad = "  ".repeat(indent);
+  const key = JSON.stringify(node.key);
+  if (node.type === "object") {
+    const inner = node.children.map((c) => serializeBodyNode(c, indent + 1)).join(",\n");
+    return `${pad}${key}: {\n${inner}\n${pad}}`;
+  }
+  if (node.isUserProvided) {
+    return `${pad}${key}: ${JSON.stringify(`{${node.key.trim() || "valor"}}`)}`;
+  }
+  switch (node.type) {
+    case "string":
+      return `${pad}${key}: ${JSON.stringify(node.value)}`;
+    case "number": {
+      const n = Number(node.value);
+      return `${pad}${key}: ${node.value.trim() !== "" && Number.isFinite(n) ? n : 0}`;
+    }
+    case "boolean":
+      return `${pad}${key}: ${node.boolValue ? "true" : "false"}`;
+    case "null":
+      return `${pad}${key}: null`;
+  }
+}
+
+function buildBodyTemplateFromFields(fields: BodyFieldNode[]): string {
+  if (fields.length === 0) return "";
+  const inner = fields.map((f) => serializeBodyNode(f, 1)).join(",\n");
+  return `{\n${inner}\n}`;
+}
+
+function collectVariablesFromFields(
+  fields: BodyFieldNode[]
+): { key: string; description: string }[] {
+  const out: { key: string; description: string }[] = [];
+  const seen = new Set<string>();
+  function walk(nodes: BodyFieldNode[]) {
+    for (const n of nodes) {
+      if (n.type === "object") {
+        walk(n.children);
+      } else if (n.isUserProvided && n.key.trim() && !seen.has(n.key.trim())) {
+        seen.add(n.key.trim());
+        out.push({ key: n.key.trim(), description: n.description });
+      }
+    }
+  }
+  walk(fields);
+  return out;
+}
+
+// ── tree <-> contract JSON (what the user reads/writes in "JSON" mode) ─────────
+//
+// { "start": { "type": "string", "isUserProvided": true, "description": "..." },
+//   "attendee": { "type": "object", "properties": { "email": {...} } } }
+
+function fieldToContractValue(node: BodyFieldNode): unknown {
+  if (node.type === "object") {
+    const properties: Record<string, unknown> = {};
+    node.children.forEach((c) => { properties[c.key] = fieldToContractValue(c); });
+    return { type: "object", properties };
+  }
+  const entry: Record<string, unknown> = { type: node.type, isUserProvided: node.isUserProvided };
+  if (!node.isUserProvided) {
+    if (node.type === "boolean") entry.value = node.boolValue;
+    else if (node.type === "number") {
+      const n = Number(node.value);
+      entry.value = node.value.trim() !== "" && Number.isFinite(n) ? n : 0;
+    } else if (node.type === "string") entry.value = node.value;
+  }
+  if (node.description.trim()) entry.description = node.description;
+  return entry;
+}
+
+function serializeFieldsToContractJson(fields: BodyFieldNode[]): string {
+  if (fields.length === 0) return "";
+  const obj: Record<string, unknown> = {};
+  fields.forEach((f) => { obj[f.key] = fieldToContractValue(f); });
+  return JSON.stringify(obj, null, 2);
+}
+
+function contractValueToField(key: string, entry: unknown): BodyFieldNode | null {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
+  const e = entry as Record<string, unknown>;
+  if (e.type === "object") {
+    if (typeof e.properties !== "object" || e.properties === null || Array.isArray(e.properties)) return null;
+    const children: BodyFieldNode[] = [];
+    for (const [k, v] of Object.entries(e.properties as Record<string, unknown>)) {
+      const child = contractValueToField(k, v);
+      if (!child) return null;
+      children.push(child);
+    }
+    return { ...emptyBodyField(), key, type: "object", children };
+  }
+  if (e.type !== "string" && e.type !== "number" && e.type !== "boolean" && e.type !== "null") return null;
+  const isUserProvided = e.isUserProvided === true;
+  const description = typeof e.description === "string" ? e.description : "";
+  const node: BodyFieldNode = { ...emptyBodyField(), key, type: e.type, isUserProvided, description };
+  if (!isUserProvided) {
+    if (e.type === "boolean") node.boolValue = e.value === true;
+    else if (e.type === "number") node.value = typeof e.value === "number" ? String(e.value) : "0";
+    else if (e.type === "string") node.value = typeof e.value === "string" ? e.value : "";
+  }
+  return node;
+}
+
+// Returns null when the text isn't a valid contract (bad JSON, contains a
+// list, isn't a top-level object) — caller keeps the user in JSON mode and
+// shows why, instead of losing/mangling what they wrote.
+function parseContractJsonToFields(jsonText: string): BodyFieldNode[] | null {
+  const trimmed = jsonText.trim();
+  if (!trimmed) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const fields: BodyFieldNode[] = [];
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    const node = contractValueToField(k, v);
+    if (!node) return null;
+    fields.push(node);
+  }
+  return fields;
+}
+
+// ── legacy migration: old body_template ("{start}" placeholders inside the
+// literal JSON) -> field tree, run once when a previously-saved tool is
+// opened, so it shows the new contract instead of erroring on load. ──────────
+
+const LEGACY_VARIABLE_VALUE_RE = /^\{([a-zA-Z_][a-zA-Z0-9_]*)\}$/;
+
+// Same intent as the backend's _URL_PLACEHOLDER_RE substitution — tolerates
+// the exact bug pattern (`"start": {start}` instead of `"start": "{start}"`)
+// some hand-typed legacy templates have.
+function normalizeUnquotedPlaceholders(raw: string): string {
+  return raw.replace(/(?<!")\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!")/g, '"{$1}"');
+}
+
+function legacyValueToField(
+  key: string,
+  value: unknown,
+  descriptions: Record<string, string>
+): BodyFieldNode | null {
+  if (Array.isArray(value)) return null;
+  if (value === null) return { ...emptyBodyField(), key, type: "null", isUserProvided: false };
+  if (typeof value === "object") {
+    const children: BodyFieldNode[] = [];
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const child = legacyValueToField(k, v, descriptions);
+      if (!child) return null;
+      children.push(child);
+    }
+    return { ...emptyBodyField(), key, type: "object", children };
+  }
+  if (typeof value === "string") {
+    const m = value.match(LEGACY_VARIABLE_VALUE_RE);
+    if (m) {
+      const varName = m[1];
+      return {
+        ...emptyBodyField(), key, type: "string", isUserProvided: true,
+        description: descriptions[varName] || "",
+      };
+    }
+    return { ...emptyBodyField(), key, type: "string", isUserProvided: false, value };
+  }
+  if (typeof value === "number") {
+    return { ...emptyBodyField(), key, type: "number", isUserProvided: false, value: String(value) };
+  }
+  if (typeof value === "boolean") {
+    return { ...emptyBodyField(), key, type: "boolean", isUserProvided: false, boolValue: value };
+  }
+  return null;
+}
+
+function parseLegacyBodyTemplateToFields(
+  template: string,
+  descriptions: Record<string, string>
+): BodyFieldNode[] | null {
+  const trimmed = template.trim();
+  if (!trimmed) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    try {
+      parsed = JSON.parse(normalizeUnquotedPlaceholders(trimmed));
+    } catch {
+      return null;
+    }
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const fields: BodyFieldNode[] = [];
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    const node = legacyValueToField(k, v, descriptions);
+    if (!node) return null;
+    fields.push(node);
+  }
+  return fields;
+}
+
+// ── Formulário — clickable view of the same field tree ─────────────────────────
+
+function BodyFormEditor({
+  fields,
+  onChange,
+  testValues,
+  onTestValueChange,
+  depth = 0,
+}: {
+  fields: BodyFieldNode[];
+  onChange: (fields: BodyFieldNode[]) => void;
+  testValues: Record<string, string>;
+  onTestValueChange: (key: string, value: string) => void;
+  depth?: number;
+}) {
+  function updateField(i: number, patch: Partial<BodyFieldNode>) {
+    onChange(fields.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  }
+  function removeField(i: number) {
+    onChange(fields.filter((_, j) => j !== i));
+  }
+
+  return (
+    <div className={depth > 0 ? "pl-3 border-l-2 border-nb-border space-y-2" : "space-y-2"}>
+      {fields.map((f, i) => (
+        <div key={i} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={f.key}
+              onChange={(e) => updateField(i, { key: e.target.value })}
+              placeholder="chave"
+              className={`${inputCls} font-mono text-xs`}
+            />
+            <select
+              value={f.type}
+              onChange={(e) => updateField(i, { type: e.target.value as BodyFieldType })}
+              className={`${inputCls} text-xs w-auto flex-shrink-0`}
+            >
+              {(Object.keys(BODY_FIELD_TYPE_LABELS) as BodyFieldType[]).map((t) => (
+                <option key={t} value={t}>{BODY_FIELD_TYPE_LABELS[t]}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => removeField(i)}
+              className="flex-shrink-0 p-2 rounded-lg hover:bg-nb-danger/10 text-nb-muted hover:text-nb-danger transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {f.type !== "object" && f.type !== "null" && (
+            <label className="flex items-center gap-1.5 text-xs text-nb-muted">
+              <input
+                type="checkbox"
+                checked={f.isUserProvided}
+                onChange={(e) => updateField(i, { isUserProvided: e.target.checked })}
+                className="accent-nb-primary"
+              />
+              Preenchido pelo agente
+            </label>
+          )}
+
+          {f.type === "object" ? (
+            <BodyFormEditor
+              fields={f.children}
+              onChange={(children) => updateField(i, { children })}
+              testValues={testValues}
+              onTestValueChange={onTestValueChange}
+              depth={depth + 1}
+            />
+          ) : f.isUserProvided ? (
+            <>
+              <input
+                type="text"
+                value={f.description}
+                onChange={(e) => updateField(i, { description: e.target.value })}
+                placeholder="Descrição pro agente entender o que preencher aqui (opcional)"
+                className={`${inputCls} text-xs`}
+              />
+              {f.key.trim() && (
+                <input
+                  type="text"
+                  value={testValues[f.key.trim()] || ""}
+                  onChange={(e) => onTestValueChange(f.key.trim(), e.target.value)}
+                  placeholder="Valor de teste (usado só no botão Validar Configuração)"
+                  className={`${inputCls} text-xs`}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              {f.type === "string" && (
+                <input
+                  type="text"
+                  value={f.value}
+                  onChange={(e) => updateField(i, { value: e.target.value })}
+                  placeholder="Valor"
+                  className={`${inputCls} text-xs`}
+                />
+              )}
+              {f.type === "number" && (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={f.value}
+                  onChange={(e) => updateField(i, { value: e.target.value })}
+                  placeholder="Valor numérico"
+                  className={`${inputCls} text-xs`}
+                />
+              )}
+              {f.type === "boolean" && (
+                <label className="flex items-center gap-1.5 text-xs text-nb-muted">
+                  <input
+                    type="checkbox"
+                    checked={f.boolValue}
+                    onChange={(e) => updateField(i, { boolValue: e.target.checked })}
+                    className="accent-nb-primary"
+                  />
+                  {f.boolValue ? "true" : "false"}
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...fields, emptyBodyField()])}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-nb-primary hover:underline"
+      >
+        <Plus className="w-3.5 h-3.5" /> Add campo
+      </button>
+    </div>
+  );
+}
+
 function HttpToolFormModal({
   open,
   onClose,
@@ -776,9 +1221,15 @@ function HttpToolFormModal({
   const [pathTestValues, setPathTestValues] = useState<Record<string, string>>({});
   const [queryParams, setQueryParams] = useState<HttpToolParam[]>([]);
   const [queryTestValues, setQueryTestValues] = useState<Record<string, string>>({});
-  const [bodyTemplate, setBodyTemplate] = useState("");
-  const [bodyDescriptions, setBodyDescriptions] = useState<Record<string, string>>({});
+  // Body — "JSON" mode is free text (bodyJsonText) validated at mode-switch /
+  // save / test time; "Formulário" mode is a live, always-valid field tree
+  // (bodyFields). bodyTestValues is ephemeral (never persisted), keyed by
+  // field key, shared by both modes so it survives switching between them.
+  const [bodyJsonText, setBodyJsonText] = useState("");
+  const [bodyFields, setBodyFields] = useState<BodyFieldNode[]>([]);
+  const [bodyMode, setBodyMode] = useState<"json" | "form">("json");
   const [bodyTestValues, setBodyTestValues] = useState<Record<string, string>>({});
+  const [bodyFormError, setBodyFormError] = useState<string | null>(null);
   const [timeoutSeconds, setTimeoutSeconds] = useState(8);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -786,8 +1237,11 @@ function HttpToolFormModal({
   const [testResult, setTestResult] = useState<HttpToolTestResult | null>(null);
 
   const pathVars = extractPathVars(url);
-  const bodyVars = extractPathVars(bodyTemplate);
   const bodyAllowed = method === "POST" || method === "PUT" || method === "PATCH";
+  // Resolved fields for whichever mode is active — null only means "JSON
+  // mode has invalid text right now" (Formulário is always structurally valid).
+  const resolvedBodyFields = bodyMode === "form" ? bodyFields : parseContractJsonToFields(bodyJsonText);
+  const bodyVars = resolvedBodyFields ? collectVariablesFromFields(resolvedBodyFields) : [];
 
   useEffect(() => {
     if (!open) return;
@@ -799,8 +1253,19 @@ function HttpToolFormModal({
       setHeaderRows(Object.entries(editingTool.config.headers || {}).map(([key, value]) => ({ key, value })));
       setPathDescriptions(editingTool.config.path_param_descriptions || {});
       setQueryParams(editingTool.config.query_params || []);
-      setBodyTemplate(editingTool.config.body_template || "");
-      setBodyDescriptions(editingTool.config.body_param_descriptions || {});
+
+      const legacyFields = parseLegacyBodyTemplateToFields(
+        editingTool.config.body_template || "",
+        editingTool.config.body_param_descriptions || {}
+      );
+      const fields = legacyFields ?? [];
+      setBodyFields(fields);
+      setBodyJsonText(serializeFieldsToContractJson(fields));
+      setBodyFormError(
+        legacyFields === null && (editingTool.config.body_template || "").trim()
+          ? "Não consegui converter automaticamente o body salvo pro contrato novo (ex: contém uma lista/array). Reconfigure abaixo."
+          : null
+      );
     } else {
       setName("");
       setDescription("");
@@ -809,13 +1274,15 @@ function HttpToolFormModal({
       setHeaderRows([]);
       setPathDescriptions({});
       setQueryParams([]);
-      setBodyTemplate("");
-      setBodyDescriptions({});
+      setBodyFields([]);
+      setBodyJsonText("");
+      setBodyFormError(null);
     }
     setTimeoutSeconds(editingTool?.config.timeout_seconds ?? 8);
     setPathTestValues({});
     setQueryTestValues({});
     setBodyTestValues({});
+    setBodyMode("json");
     setError(null);
     setTestResult(null);
   }, [open, editingTool]);
@@ -828,14 +1295,56 @@ function HttpToolFormModal({
     setPathDescriptions(t.pathParamDescriptions);
     setQueryParams([]);
     setHeaderRows([]);
-    setBodyTemplate("");
-    setBodyDescriptions({});
+    setBodyFields([]);
+    setBodyJsonText("");
+    setBodyMode("json");
+    setBodyFormError(null);
     setTestResult(null);
+  }
+
+  function switchToBodyFormMode() {
+    const fields = parseContractJsonToFields(bodyJsonText);
+    if (fields === null) {
+      setBodyFormError("O JSON do body está inválido. Corrija antes de trocar pro Formulário.");
+      return;
+    }
+    setBodyFields(fields);
+    setBodyFormError(null);
+    setBodyMode("form");
+  }
+
+  function switchToBodyJsonMode() {
+    setBodyJsonText(serializeFieldsToContractJson(bodyFields));
+    setBodyFormError(null);
+    setBodyMode("json");
+  }
+
+  function formatBodyJsonText() {
+    const fields = parseContractJsonToFields(bodyJsonText);
+    if (fields === null) {
+      setError("Não foi possível formatar: o JSON do body está inválido.");
+      return;
+    }
+    setBodyJsonText(serializeFieldsToContractJson(fields));
+    setError(null);
+  }
+
+  // Body must be valid before we can build a config from it — null only
+  // happens in JSON mode with broken text (Formulário is always valid).
+  function validateBody(): string | null {
+    if (bodyAllowed && bodyMode === "json" && resolvedBodyFields === null) {
+      return "O JSON do body está inválido. Corrija antes de continuar.";
+    }
+    return null;
   }
 
   function buildConfig(): HttpToolConfig {
     const headers: Record<string, string> = {};
     headerRows.forEach(({ key, value }) => { if (key.trim()) headers[key.trim()] = value; });
+    const fields = bodyAllowed ? resolvedBodyFields || [] : [];
+    const bodyTemplateStr = buildBodyTemplateFromFields(fields);
+    const bodyDescriptions: Record<string, string> = {};
+    collectVariablesFromFields(fields).forEach((v) => { bodyDescriptions[v.key] = v.description; });
     return {
       method,
       url: url.trim(),
@@ -843,7 +1352,7 @@ function HttpToolFormModal({
       timeout_seconds: timeoutSeconds,
       path_param_descriptions: pathDescriptions,
       query_params: queryParams.filter((p) => p.name.trim()),
-      body_template: bodyAllowed && bodyTemplate.trim() ? bodyTemplate.trim() : null,
+      body_template: bodyTemplateStr.trim() ? bodyTemplateStr.trim() : null,
       body_param_descriptions: bodyDescriptions,
     };
   }
@@ -852,6 +1361,11 @@ function HttpToolFormModal({
     setTestResult(null);
     if (!url.trim()) {
       setError("Informe a URL antes de validar.");
+      return;
+    }
+    const bodyError = validateBody();
+    if (bodyError) {
+      setError(bodyError);
       return;
     }
     setError(null);
@@ -891,6 +1405,11 @@ function HttpToolFormModal({
     }
     if (!url.trim()) {
       setError("Informe a URL da API.");
+      return;
+    }
+    const bodyError = validateBody();
+    if (bodyError) {
+      setError(bodyError);
       return;
     }
 
@@ -1046,44 +1565,93 @@ function HttpToolFormModal({
         {/* Body — só faz sentido pra métodos que enviam corpo */}
         {bodyAllowed && (
           <div>
-            <label className="block text-xs font-medium text-nb-secondary mb-1.5">
-              Body (JSON)
-            </label>
-            <textarea
-              value={bodyTemplate}
-              onChange={(e) => setBodyTemplate(e.target.value)}
-              placeholder='{"eventTypeId": 123, "start": "{start}", "attendee": {"name": "{nome}"}}'
-              rows={3}
-              className={`${inputCls} font-mono text-xs`}
-            />
-            <p className="text-xs text-nb-muted mt-1">
-              Escreva o JSON exato que a API espera. Use <code className="font-mono">{"{variavel}"}</code>{" "}
-              nos valores que o agente deve preencher — funciona até dentro de objetos aninhados
-              (ex: <code className="font-mono">{"{\"attendee\": {\"name\": \"{nome}\"}}"}</code>).
-              Deixe em branco pra o agente montar o corpo sozinho (menos confiável).
-            </p>
-            {bodyVars.length > 0 && (
-              <div className="space-y-2 mt-2">
-                {bodyVars.map((v) => (
-                  <div key={v} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
-                    <span className="text-xs font-mono font-medium text-nb-text">{`{${v}}`}</span>
-                    <input
-                      type="text"
-                      value={bodyDescriptions[v] || ""}
-                      onChange={(e) => setBodyDescriptions((p) => ({ ...p, [v]: e.target.value }))}
-                      placeholder={`Descrição pro agente entender o que é "${v}" (opcional)`}
-                      className={`${inputCls} text-xs`}
-                    />
-                    <input
-                      type="text"
-                      value={bodyTestValues[v] || ""}
-                      onChange={(e) => setBodyTestValues((p) => ({ ...p, [v]: e.target.value }))}
-                      placeholder="Valor de teste (usado só no botão Validar Configuração)"
-                      className={`${inputCls} text-xs`}
-                    />
-                  </div>
-                ))}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-nb-secondary">Body</label>
+              <div className="inline-flex rounded-lg border border-nb-border p-0.5 bg-nb-bg">
+                <button
+                  type="button"
+                  onClick={() => { if (bodyMode !== "json") switchToBodyJsonMode(); }}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                    bodyMode === "json" ? "bg-nb-primary text-nb-bg font-semibold" : "text-nb-muted"
+                  }`}
+                >
+                  JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { if (bodyMode !== "form") switchToBodyFormMode(); }}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                    bodyMode === "form" ? "bg-nb-primary text-nb-bg font-semibold" : "text-nb-muted"
+                  }`}
+                >
+                  Formulário
+                </button>
               </div>
+            </div>
+
+            {bodyFormError && (
+              <p className="text-xs text-nb-danger mb-1.5">{bodyFormError}</p>
+            )}
+
+            {bodyMode === "json" ? (
+              <>
+                <div className="flex justify-end mb-1">
+                  <button
+                    type="button"
+                    onClick={formatBodyJsonText}
+                    className="text-xs font-medium text-nb-primary hover:underline"
+                  >
+                    Formatar JSON
+                  </button>
+                </div>
+                <JsonBodyEditor
+                  value={bodyJsonText}
+                  onChange={setBodyJsonText}
+                  placeholder={
+                    '{\n  "start": { "type": "string", "isUserProvided": true, "description": "Data/hora em UTC" },\n' +
+                    '  "attendee": { "type": "object", "properties": {\n' +
+                    '    "email": { "type": "string", "isUserProvided": true, "description": "E-mail do cliente" },\n' +
+                    '    "timeZone": { "type": "string", "isUserProvided": false, "value": "America/Sao_Paulo" }\n' +
+                    '  } }\n}'
+                  }
+                />
+                <p className="text-xs text-nb-muted mt-1">
+                  Descreva o contrato do body, campo por campo: <code className="font-mono">type</code> (string/number/boolean/null/object),{" "}
+                  <code className="font-mono">isUserProvided</code> (se o agente preenche em tempo real),{" "}
+                  <code className="font-mono">value</code> (valor fixo, quando não é preenchido pelo agente) e{" "}
+                  <code className="font-mono">description</code>. Campos do tipo objeto usam{" "}
+                  <code className="font-mono">properties</code> pra aninhar. Deixe em branco pra o agente montar o corpo sozinho (menos confiável).
+                </p>
+                {bodyVars.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {bodyVars.map((v) => (
+                      <div key={v.key} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
+                        <span className="text-xs font-mono font-medium text-nb-text">{v.key}</span>
+                        <input
+                          type="text"
+                          value={bodyTestValues[v.key] || ""}
+                          onChange={(e) => setBodyTestValues((p) => ({ ...p, [v.key]: e.target.value }))}
+                          placeholder="Valor de teste (usado só no botão Validar Configuração)"
+                          className={`${inputCls} text-xs`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <BodyFormEditor
+                  fields={bodyFields}
+                  onChange={setBodyFields}
+                  testValues={bodyTestValues}
+                  onTestValueChange={(key, value) => setBodyTestValues((p) => ({ ...p, [key]: value }))}
+                />
+                <p className="text-xs text-nb-muted mt-2">
+                  Campos marcados como &ldquo;Preenchido pelo agente&rdquo; ficam de fora do valor fixo — o agente
+                  informa em tempo real. Objetos aninhados criam sub-campos dentro do mesmo campo.
+                </p>
+              </>
             )}
           </div>
         )}
