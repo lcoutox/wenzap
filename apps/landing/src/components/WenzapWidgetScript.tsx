@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 
-const WIDGET_KEY = "wgt_pTNDEUXdI6x5lRnBaH8KOoPr";
+const WIDGET_KEY = "wgt_KYnkb8022PQIDwqO5fgTxmbz";
 const WIDGET_SRC = "https://app.wenzap.com.br/widget.js";
 
 export function WenzapWidgetScript() {
