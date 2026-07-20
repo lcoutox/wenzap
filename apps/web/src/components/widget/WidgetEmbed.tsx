@@ -32,7 +32,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 3;
+const POLL_MAX_ATTEMPTS = 10;
 const PASSIVE_POLL_INTERVAL_MS = 5000;
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
@@ -138,7 +138,14 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [polling, setPolling] = useState(false);
+  // True only after the agent's configured reply delay has elapsed — the
+  // backend doesn't start composing anything before that, so showing "typing"
+  // any earlier would be lying about what's actually happening.
+  const [showTyping, setShowTyping] = useState(false);
+  // Bumped on every send; lets an in-flight wait/poll from an earlier,
+  // now-superseded message bail out instead of racing the latest one.
+  const pendingGenerationRef = useRef(0);
+  const typingTimerRef = useRef<number | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [initDone, setInitDone] = useState(false);
@@ -250,6 +257,10 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
       // Unblock any pending wait so it doesn't hold a stale resolver.
       pageContextResolverRef.current?.();
       pageContextResolverRef.current = null;
+      if (typingTimerRef.current) {
+        window.clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
     };
   }, [publicKey]);
 
@@ -310,6 +321,7 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
   const handleSend = useCallback(async () => {
     if (!sessionToken || !input.trim() || sending) return;
     const content = input.trim();
+    const replyDelayMs = (config?.reply_delay_seconds ?? 0) * 1000;
 
     setInput("");
     setSendError(null);
@@ -319,16 +331,40 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
     const optimistic = makeOptimistic(content);
     setMessages((prev) => [...prev, optimistic]);
 
+    // This message supersedes whatever an earlier send might still be
+    // awaiting — mirrors the backend, which only replies to the latest
+    // inbound message and silently drops stale ones.
+    const myGeneration = ++pendingGenerationRef.current;
+    if (typingTimerRef.current) {
+      window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    setShowTyping(false);
+
     try {
       await publicWidgetApi.sendMessage(publicKey, sessionToken, content);
+      // The POST itself is done — free the input for another fragment right
+      // away instead of locking it for the whole wait-and-poll below.
+      setSending(false);
+
+      // Don't show "typing" — or start polling — until the agent's configured
+      // reply delay has elapsed. The backend waits exactly this long (so
+      // fragmented follow-up messages can batch into one reply) before it
+      // even starts composing anything.
+      typingTimerRef.current = window.setTimeout(() => {
+        if (pendingGenerationRef.current === myGeneration) setShowTyping(true);
+      }, replyDelayMs);
+
+      await new Promise((r) => setTimeout(r, replyDelayMs));
+      if (pendingGenerationRef.current !== myGeneration) return; // superseded
 
       // Poll for agent reply
-      setPolling(true);
       let found = false;
       for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
         if (attempt > 0) {
           await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         }
+        if (pendingGenerationRef.current !== myGeneration) return; // superseded
         const updated = await publicWidgetApi.listMessages(publicKey, sessionToken);
         // Check if there's an outbound message newer than the optimistic one
         const hasReply = updated.some(
@@ -339,8 +375,9 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
         setMessages(updated);
         if (hasReply) { found = true; break; }
       }
-      if (!found) {
-        // No reply after max attempts — still show latest messages
+      if (!found && pendingGenerationRef.current === myGeneration) {
+        // No reply after max attempts — still show latest messages. The
+        // passive 5s poll keeps trying in the background from here on.
         const final = await publicWidgetApi.listMessages(publicKey, sessionToken);
         setMessages(final);
       }
@@ -348,11 +385,17 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
       setSendError("Não foi possível enviar sua mensagem. Tente novamente.");
       // Remove optimistic message on failure
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-    } finally {
       setSending(false);
-      setPolling(false);
+    } finally {
+      if (pendingGenerationRef.current === myGeneration) {
+        if (typingTimerRef.current) {
+          window.clearTimeout(typingTimerRef.current);
+          typingTimerRef.current = null;
+        }
+        setShowTyping(false);
+      }
     }
-  }, [publicKey, sessionToken, input, sending]);
+  }, [publicKey, sessionToken, input, sending, config]);
 
   // ── Contact capture submit ───────────────────────────────────────────────────
 
@@ -703,7 +746,7 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
             })}
 
             {/* Typing indicator */}
-            {(sending || polling) && (
+            {showTyping && (
               <div style={{ display: "flex", justifyContent: "flex-start" }}>
                 <div
                   style={{

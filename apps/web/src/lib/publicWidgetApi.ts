@@ -20,6 +20,7 @@ export type PublicWidgetConfig = {
   avatar_url: string | null;
   auto_open: boolean;
   auto_open_delay_seconds: number;
+  reply_delay_seconds: number;
   contact_capture_enabled: boolean;
   require_name: boolean;
   require_email: boolean;

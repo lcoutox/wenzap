@@ -2322,6 +2322,12 @@ const DEFAULT_CAPTURE_CONTACT_DATA_DESCRIPTION =
   "Aciona sempre que o cliente informar espontaneamente um dos dados configurados " +
   "abaixo durante a conversa.";
 
+const CONTACT_MAPS_TO_OPTIONS: { value: "name" | "phone" | "email"; label: string }[] = [
+  { value: "name", label: "Nome do contato" },
+  { value: "phone", label: "Telefone" },
+  { value: "email", label: "E-mail" },
+];
+
 function ContactFieldsEditor({
   fields,
   onChange,
@@ -2333,7 +2339,11 @@ function ContactFieldsEditor({
 }) {
   return (
     <div className="space-y-3">
-      {fields.map((field, i) => (
+      {fields.map((field, i) => {
+        const usedElsewhere = new Set(
+          fields.filter((_, j) => j !== i).map((f) => f.maps_to).filter(Boolean)
+        );
+        return (
         <div key={i} className="p-2.5 bg-nb-panel rounded-xl border border-nb-border space-y-1.5">
           <div className="flex items-center gap-2">
             <input
@@ -2370,8 +2380,28 @@ function ContactFieldsEditor({
             placeholder="O que é esse dado, pro agente reconhecer (opcional)"
             className={`${inputCls} text-xs`}
           />
+          <select
+            value={field.maps_to ?? ""}
+            disabled={readonly}
+            onChange={(e) =>
+              onChange(fields.map((f, j) => (
+                j === i
+                  ? { ...f, maps_to: (e.target.value || null) as ContactDataField["maps_to"] }
+                  : f
+              )))
+            }
+            className={`${inputCls} text-xs`}
+          >
+            <option value="">Só salvar como variável</option>
+            {CONTACT_MAPS_TO_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value} disabled={usedElsewhere.has(value)}>
+                Também atualizar {label.toLowerCase()}
+              </option>
+            ))}
+          </select>
         </div>
-      ))}
+        );
+      })}
       {!readonly && fields.length < 5 && (
         <button
           type="button"
@@ -2416,7 +2446,11 @@ function CaptureContactDataConfigModal({
       return;
     }
     const cleanFields = fields
-      .map((f) => ({ key: f.key.trim(), description: f.description.trim() }))
+      .map((f) => ({
+        key: f.key.trim(),
+        description: f.description.trim(),
+        maps_to: f.maps_to ?? null,
+      }))
       .filter((f) => f.key.length > 0);
     if (cleanFields.length === 0) {
       setError("Adicione pelo menos um dado para o agente capturar.");
@@ -2425,6 +2459,11 @@ function CaptureContactDataConfigModal({
     const keys = cleanFields.map((f) => f.key);
     if (new Set(keys).size !== keys.length) {
       setError("As chaves dos dados devem ser únicas.");
+      return;
+    }
+    const mapsToValues = cleanFields.map((f) => f.maps_to).filter(Boolean);
+    if (new Set(mapsToValues).size !== mapsToValues.length) {
+      setError("Só um dado pode ser mapeado pra cada campo do contato (nome/telefone/e-mail).");
       return;
     }
     setSaving(true);

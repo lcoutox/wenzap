@@ -777,6 +777,10 @@ export type MarkResolvedToolConfig = {};
 export type ContactDataField = {
   key: string;
   description: string;
+  // When set, capturing this field also updates the matching structured
+  // Contact column — not just the ContactVariable row (capture-contact-
+  // identity-sync-prd.md).
+  maps_to?: "name" | "phone" | "email" | null;
 };
 
 export type CaptureContactDataToolConfig = {
