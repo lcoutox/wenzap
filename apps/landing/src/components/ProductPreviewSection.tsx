@@ -1,65 +1,50 @@
-const screens = [
+const shots = [
   {
+    src: "/screenshots/dashboard.png",
     label: "Painel operacional",
-    caption: "Veja quais agentes estão prontos e o que está acontecendo na operação.",
-    rows: [
-      { k: "Conversas abertas", v: "24" },
-      { k: "Agentes ativos", v: "3" },
-      { k: "Canais conectados", v: "5" },
-      { k: "Itens disponíveis", v: "142" },
-    ],
+    caption: "Agentes, canais, conversas e catálogo num lugar só.",
   },
   {
-    label: "Ferramentas do agente",
-    caption: "Defina quais informações e ofertas cada agente pode consultar.",
-    tools: ["Informações da empresa", "Produtos e serviços", "Conversas organizadas"],
+    src: "/screenshots/pipeline.png",
+    label: "Funil de vendas",
+    caption: "Cada lead vira um card e anda até a visita agendada e o fechamento.",
   },
   {
-    label: "Conversas centralizadas",
-    caption: "Acompanhe respostas da IA e atendimento humano no mesmo lugar.",
-    convs: ["Carlos S. · WhatsApp · IA respondendo", "Ana Lima · Site · IA respondendo", "Marcos R. · WhatsApp · Atendimento humano"],
+    src: "/screenshots/auditoria.png",
+    label: "Auditoria",
+    caption:
+      "Todo turno que o agente rodou: o que respondeu e o que executou, com sucesso ou falha.",
   },
 ];
 
 export function ProductPreviewSection() {
   return (
     <section className="py-20 bg-nb-bg">
-      <div className="max-w-6xl mx-auto px-4">
+      <div className="max-w-5xl mx-auto px-4">
         <div className="text-center mb-14">
           <h2 className="text-2xl md:text-3xl font-bold text-nb-text">Produto em ação</h2>
           <p className="mt-4 text-nb-secondary text-base max-w-xl mx-auto">
-            Uma plataforma pensada para quem quer operar com IA de verdade — não para demos.
+            Uma plataforma pensada pra quem quer operar com IA de verdade, não pra fazer demo.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5">
-          {screens.map((s) => (
-            <div key={s.label} className="rounded-2xl border border-nb-border bg-nb-surface overflow-hidden flex flex-col">
-              <div className="bg-nb-panel border-b border-nb-border px-4 py-2.5 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-nb-primary" />
-                <span className="text-xs font-medium text-nb-secondary">{s.label}</span>
+        <div className="flex flex-col gap-12">
+          {shots.map((s) => (
+            <div key={s.src} className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                <h3 className="text-sm font-semibold text-nb-text">{s.label}</h3>
+                <p className="text-sm text-nb-muted">{s.caption}</p>
               </div>
-              <div className="p-4 flex flex-col gap-2.5 flex-1">
-                {"rows" in s && s.rows?.map((r) => (
-                  <div key={r.k} className="flex items-center justify-between py-2 px-3 rounded-lg bg-nb-elevated">
-                    <span className="text-xs text-nb-muted">{r.k}</span>
-                    <span className="text-sm font-bold text-nb-text">{r.v}</span>
-                  </div>
-                ))}
-                {"tools" in s && s.tools?.map((t) => (
-                  <div key={t} className="flex items-center gap-2.5 py-2 px-3 rounded-lg bg-nb-elevated">
-                    <span className="w-1.5 h-1.5 rounded-full bg-nb-success" />
-                    <span className="text-xs text-nb-secondary">{t}</span>
-                    <span className="ml-auto text-[10px] font-medium text-nb-primary bg-nb-primary-bg px-1.5 py-0.5 rounded-full">Ativo</span>
-                  </div>
-                ))}
-                {"convs" in s && s.convs?.map((c) => (
-                  <div key={c} className="py-2 px-3 rounded-lg bg-nb-elevated">
-                    <span className="text-xs text-nb-secondary">{c}</span>
-                  </div>
-                ))}
+              <div className="rounded-2xl border border-nb-border overflow-hidden shadow-2xl">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={s.src}
+                  alt={`${s.label} — ${s.caption}`}
+                  width={1920}
+                  height={1032}
+                  className="w-full h-auto"
+                />
               </div>
-              <p className="px-4 pb-4 text-[11px] text-nb-muted leading-relaxed">{s.caption}</p>
             </div>
           ))}
         </div>

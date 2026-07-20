@@ -44,11 +44,11 @@ export function AgentToolsSection() {
       <div className="max-w-6xl mx-auto px-4">
         <div className="text-center mb-14">
           <h2 className="text-2xl md:text-3xl font-bold text-nb-text">
-            Agentes que entendem sua empresa e atendem seus clientes.
+            O agente não para na resposta.
           </h2>
           <p className="mt-4 text-nb-secondary max-w-xl mx-auto text-base">
-            Cada agente do Wenzap pode ser conectado às informações, produtos e canais da sua
-            empresa — não é só um bot genérico.
+            Cada agente do Wenzap conecta às informações, produtos e canais da sua empresa e age
+            dentro da conversa. Não é um bot genérico.
           </p>
         </div>
 

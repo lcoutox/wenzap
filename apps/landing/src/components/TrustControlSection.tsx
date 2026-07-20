@@ -13,13 +13,13 @@ export function TrustControlSection() {
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-nb-text leading-tight">
-              Sua operação,{" "}
-              <span className="text-nb-primary">seu controle.</span>
+              Você vê tudo. E{" "}
+              <span className="text-nb-primary">assume quando quiser.</span>
             </h2>
             <p className="mt-4 text-nb-secondary leading-relaxed text-base">
-              Agentes de IA precisam de limites claros. No Wenzap você decide o que cada agente
-              pode fazer, e sua equipe sempre pode intervir. A IA trabalha dentro das regras que
-              você estabelece.
+              É a parte &ldquo;à vista&rdquo; da promessa. Você decide o que cada agente pode fazer,
+              vê cada passo que ele deu, e sua equipe assume qualquer conversa quando quiser. Nada de
+              caixa-preta com o seu cliente.
             </p>
           </div>
 

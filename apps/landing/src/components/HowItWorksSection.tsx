@@ -2,7 +2,7 @@ const steps = [
   {
     n: "1",
     title: "Crie um agente para uma função",
-    desc: "Defina o objetivo: atendimento, vendas, suporte, agendamento. Cada agente tem um papel claro dentro da sua operação.",
+    desc: "Defina o objetivo: atendimento, vendas, suporte, agendamento. Cada agente tem um papel claro no seu negócio.",
   },
   {
     n: "2",
@@ -33,7 +33,7 @@ export function HowItWorksSection() {
         <div className="text-center mb-14">
           <h2 className="text-2xl md:text-3xl font-bold text-nb-text">Como funciona</h2>
           <p className="mt-4 text-nb-secondary text-base">
-            Do primeiro agente à operação funcionando em cinco passos simples.
+            Do primeiro agente ao lead agendado, em cinco passos.
           </p>
         </div>
 

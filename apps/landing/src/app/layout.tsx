@@ -9,9 +9,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://wenzap.com.br";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Wenzap — Coloque agentes de IA para trabalhar na sua operação",
+  title: "Wenzap — Agentes de IA que qualificam, agendam e vendem no WhatsApp",
   description:
-    "O Wenzap ajuda empresas a atender clientes, organizar conversas e automatizar partes do atendimento e vendas com agentes de IA — sem tirar sua equipe do controle.",
+    "Responder rápido não vende. O Wenzap qualifica o lead, agenda a visita e faz o follow-up sozinho no WhatsApp e no seu site. Você vê cada passo e assume quando quiser.",
   keywords: [
     "agentes de IA para empresas",
     "atendimento com IA",
@@ -27,9 +27,9 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: SITE_URL,
-    title: "Wenzap — Coloque agentes de IA para trabalhar na sua operação",
+    title: "Wenzap — Agentes de IA que qualificam, agendam e vendem no WhatsApp",
     description:
-      "O Wenzap ajuda empresas a atender clientes, organizar conversas e automatizar partes do atendimento e vendas com agentes de IA — sem tirar sua equipe do controle.",
+      "Responder rápido não vende. O Wenzap qualifica o lead, agenda a visita e faz o follow-up sozinho no WhatsApp e no seu site. Você vê cada passo e assume quando quiser.",
     siteName: "Wenzap",
     images: [
       {
@@ -42,9 +42,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Wenzap — Coloque agentes de IA para trabalhar na sua operação",
+    title: "Wenzap — Agentes de IA que qualificam, agendam e vendem no WhatsApp",
     description:
-      "Atenda clientes, organize conversas e automatize partes do atendimento e vendas — sem tirar sua equipe do controle.",
+      "Responder rápido não vende. O agente qualifica, agenda a visita e faz o follow-up sozinho — e você vê cada passo e assume quando quiser.",
     images: [`${SITE_URL}/og-image.svg`],
   },
   robots: {

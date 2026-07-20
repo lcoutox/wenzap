@@ -14,13 +14,13 @@ export function SelfUseSection() {
           </span>
 
           <h2 className="text-xl md:text-2xl font-bold text-nb-text">
-            O agente no canto da tela foi criado no próprio Wenzap.
+            O agente no canto da tela foi feito no próprio Wenzap.
           </h2>
 
           <p className="mt-4 text-nb-secondary leading-relaxed max-w-xl mx-auto text-base">
-            Ele foi treinado com informações sobre o produto e pode responder dúvidas, explicar
-            recursos e encaminhar a conversa para um humano quando necessário. Essa é a mesma
-            experiência que sua empresa pode oferecer aos seus clientes.
+            O mesmo agente que te respondeu aqui é o que vai atender o seu cliente. Ele foi treinado
+            com as informações do produto, tira dúvidas, explica recursos e chama um humano quando
+            precisa. É a experiência que você entrega pros seus clientes.
           </p>
 
           <button

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { getAppSignupUrl } from "@/lib/signup";
+import { openWenzapWidget } from "@/lib/widget";
 
 function WenzapLogo() {
   return (
@@ -30,16 +30,12 @@ export function LandingHeader() {
         <Link href="/" aria-label="Wenzap">
           <WenzapLogo />
         </Link>
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            window.location.href = getAppSignupUrl();
-          }}
+        <button
+          onClick={() => openWenzapWidget()}
           className="px-4 py-2 text-sm font-semibold rounded-xl bg-nb-primary text-nb-bg hover:bg-nb-primary-strong transition-colors"
         >
-          Começar grátis
-        </a>
+          Entrar no beta
+        </button>
       </div>
     </header>
   );

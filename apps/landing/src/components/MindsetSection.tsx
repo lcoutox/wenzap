@@ -1,15 +1,15 @@
 const before = [
-  "Respostas soltas, sem contexto da empresa",
-  "Depende de copiar e colar manualmente",
-  "Sem histórico das conversas",
-  "Sem processo definido para sua equipe",
+  "Responde e para por aí",
+  "Deixa o lead esfriar, sem follow-up",
+  "Não qualifica nem agenda nada",
+  "Você não vê o que ele fez",
 ];
 
 const after = [
-  "Agentes com função clara e informações conectadas",
-  "Respostas automáticas com contexto real da empresa",
-  "Histórico centralizado em um só lugar",
-  "Humano no controle, entra quando precisar",
+  "Qualifica quem tem verba e interesse real",
+  "Agenda a visita antes do lead esfriar",
+  "Cobra o retorno que não veio",
+  "Mostra cada passo pra você assumir quando quiser",
 ];
 
 export function MindsetSection() {
@@ -18,19 +18,19 @@ export function MindsetSection() {
       <div className="max-w-5xl mx-auto px-4">
         <div className="text-center mb-14">
           <h2 className="text-2xl md:text-3xl font-bold text-nb-text">
-            IA não deveria ser só uma conversa solta.
+            Um chatbot que só responde não vende nada.
           </h2>
           <p className="mt-4 text-nb-secondary max-w-2xl mx-auto text-base leading-relaxed">
-            Muitas empresas usam IA como um chat: alguém pergunta, copia uma resposta e tenta
-            encaixar no trabalho. O Wenzap leva a IA para dentro da operação, onde agentes podem
-            atender clientes, consultar informações e ajudar sua equipe a trabalhar melhor.
+            Responder rápido é o mínimo. O que fecha a venda é o que acontece depois do &ldquo;olá&rdquo;:
+            qualificar quem tem verba, agendar a visita antes do lead esfriar e cobrar o retorno que
+            não veio. O Wenzap faz isso sozinho, e mostra cada passo pra você assumir quando quiser.
           </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="rounded-2xl border border-nb-border bg-nb-panel p-6">
             <p className="text-xs font-semibold text-nb-muted uppercase tracking-wider mb-4">
-              IA usada como chat
+              Chatbot que só responde
             </p>
             <ul className="flex flex-col gap-3">
               {before.map((item) => (
@@ -46,7 +46,7 @@ export function MindsetSection() {
 
           <div className="rounded-2xl border border-nb-primary/20 bg-nb-primary-bg/20 p-6">
             <p className="text-xs font-semibold text-nb-primary uppercase tracking-wider mb-4">
-              IA trabalhando na operação
+              Agente que opera
             </p>
             <ul className="flex flex-col gap-3">
               {after.map((item) => (

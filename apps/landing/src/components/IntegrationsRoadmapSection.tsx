@@ -4,14 +4,14 @@ const available = [
   { label: "Ensinar a IA com informações da empresa", tag: "Base de Conhecimento" },
   { label: "Apresentar produtos e serviços", tag: "Catálogo" },
   { label: "Centralizar todas as conversas", tag: "Inbox" },
+  { label: "Executar ações em sistemas externos", tag: "HTTP Tools" },
+  { label: "Retomar oportunidades paradas", tag: "Follow-up automático" },
 ];
 
 const coming = [
   { label: "Consultar dados de gestão", tag: "Bling" },
   { label: "Vender e acompanhar marketplaces", tag: "Mercado Livre" },
   { label: "Atender em novos canais", tag: "Telegram e Slack" },
-  { label: "Executar ações em sistemas externos", tag: "HTTP Tools" },
-  { label: "Retomar oportunidades paradas", tag: "Follow-up automático" },
 ];
 
 export function IntegrationsRoadmapSection() {
@@ -20,7 +20,7 @@ export function IntegrationsRoadmapSection() {
       <div className="max-w-5xl mx-auto px-4">
         <div className="text-center mb-14">
           <h2 className="text-2xl md:text-3xl font-bold text-nb-text">
-            Conecte sua operação aos poucos
+            Comece pelo atendimento. Conecte o resto quando crescer.
           </h2>
           <p className="mt-4 text-nb-secondary text-base max-w-xl mx-auto">
             Comece com atendimento e conversas. Depois, conecte sistemas, canais e fontes de dados
