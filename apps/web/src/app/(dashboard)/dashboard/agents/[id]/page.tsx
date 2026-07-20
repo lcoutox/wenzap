@@ -108,8 +108,6 @@ export default function AgentWorkspacePage() {
   // Form fields
   const [name,         setName]         = useState("");
   const [description,  setDescription]  = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [persona,      setPersona]      = useState("");
   const [aiModelId,    setAiModelId]    = useState<string | null>(null);
   const [temperature,  setTemperature]  = useState("0.7");
   const [catalogEnabled, setCatalogEnabled] = useState(true);
@@ -167,8 +165,6 @@ export default function AgentWorkspacePage() {
         setPlanCode(catalogData.current_plan);
         setName(agentData.name);
         setDescription(agentData.description ?? "");
-        setSystemPrompt(agentData.system_prompt ?? "");
-        setPersona(agentData.persona ?? "");
         setAiModelId(agentData.ai_model_id);
         setTemperature(String(agentData.temperature));
         setCatalogEnabled(agentData.catalog_enabled);
@@ -214,8 +210,6 @@ export default function AgentWorkspacePage() {
       const updated = await api.agents.update(id, {
         name: name.trim(),
         description: description.trim() || null,
-        system_prompt: systemPrompt.trim() || null,
-        persona: persona.trim() || null,
         ai_model_id: aiModelId,
         temperature: tempNum,
         catalog_enabled: catalogEnabled,
@@ -403,8 +397,6 @@ export default function AgentWorkspacePage() {
                   instructionsMode={instructionsMode}
                   guidedConfig={guidedConfig}
                   advancedPrompt={advancedPrompt}
-                  systemPrompt={systemPrompt}
-                  persona={persona}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
@@ -412,8 +404,6 @@ export default function AgentWorkspacePage() {
                   onInstructionsModeChange={setInstructionsMode}
                   onGuidedConfigChange={setGuidedConfig}
                   onAdvancedPromptChange={setAdvancedPrompt}
-                  onSystemPromptChange={setSystemPrompt}
-                  onPersonaChange={setPersona}
                 />
               )}
 

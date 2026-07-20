@@ -396,64 +396,18 @@ function GuidedForm({
 
 function AdvancedForm({
   advancedPrompt,
-  systemPrompt,
-  persona,
   onChange,
-  onSystemPromptChange,
-  onPersonaChange,
   readonly,
 }: {
   advancedPrompt: string;
-  systemPrompt: string;
-  persona: string;
   onChange: (v: string) => void;
-  onSystemPromptChange: (v: string) => void;
-  onPersonaChange: (v: string) => void;
   readonly: boolean;
 }) {
   return (
     <div className="space-y-6">
       <AgentFormSection
         title="Instruções do agente"
-        description="Explique como o agente deve se comportar, quais regras deve seguir e o que deve evitar. Obrigatório para ativar o agente."
-      >
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-nb-secondary">Instruções</label>
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => onSystemPromptChange(e.target.value)}
-            rows={10}
-            maxLength={8000}
-            disabled={readonly}
-            placeholder={readonly ? "" : "Ex: Responda de forma objetiva, não invente informações e peça para falar com um humano quando não souber responder."}
-            className={readonly ? disabledInput : baseInput}
-          />
-          <p className="text-xs text-nb-muted">{systemPrompt.length} / 8000 caracteres</p>
-        </div>
-      </AgentFormSection>
-
-      <AgentFormSection
-        title="Tom de voz"
-        description="Defina o estilo de comunicação do agente."
-      >
-        <div className="space-y-1.5">
-          <label className="block text-sm font-medium text-nb-secondary">Tom de voz</label>
-          <textarea
-            value={persona}
-            onChange={(e) => onPersonaChange(e.target.value)}
-            rows={4}
-            maxLength={1000}
-            disabled={readonly}
-            placeholder={readonly ? "" : "Ex: Profissional, simpático e direto ao ponto"}
-            className={readonly ? disabledInput : baseInput}
-          />
-          <p className="text-xs text-nb-muted">{persona.length} / 1000 caracteres</p>
-        </div>
-      </AgentFormSection>
-
-      <AgentFormSection
-        title="Instruções avançadas (legado)"
-        description="Escreva as instruções completas do agente em texto livre."
+        description="Escreva as instruções completas do agente em texto livre — comportamento, tom de voz, regras e o que evitar. Obrigatório para ativar o agente."
       >
         <div className="mb-3 p-3 bg-nb-elevated border border-nb-border rounded-xl text-xs text-nb-muted leading-relaxed">
           No modo avançado, suas instruções substituem o modo guiado. As regras internas de segurança, conhecimento, ferramentas e limites da plataforma continuam sendo aplicadas pelo Wenzap.
@@ -463,7 +417,7 @@ function AdvancedForm({
           <textarea
             value={advancedPrompt}
             onChange={(e) => onChange(e.target.value)}
-            rows={14}
+            rows={18}
             maxLength={20000}
             disabled={readonly}
             placeholder={
@@ -488,8 +442,6 @@ export function ConfigComportamento({
   instructionsMode,
   guidedConfig,
   advancedPrompt,
-  systemPrompt,
-  persona,
   readonly,
   saving,
   saveError,
@@ -497,14 +449,10 @@ export function ConfigComportamento({
   onInstructionsModeChange,
   onGuidedConfigChange,
   onAdvancedPromptChange,
-  onSystemPromptChange,
-  onPersonaChange,
 }: {
   instructionsMode: InstructionsMode;
   guidedConfig: GuidedConfig;
   advancedPrompt: string;
-  systemPrompt: string;
-  persona: string;
   readonly: boolean;
   saving: boolean;
   saveError: string | null;
@@ -512,8 +460,6 @@ export function ConfigComportamento({
   onInstructionsModeChange: (m: InstructionsMode) => void;
   onGuidedConfigChange: (c: GuidedConfig) => void;
   onAdvancedPromptChange: (v: string) => void;
-  onSystemPromptChange: (v: string) => void;
-  onPersonaChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -552,11 +498,7 @@ export function ConfigComportamento({
       ) : (
         <AdvancedForm
           advancedPrompt={advancedPrompt}
-          systemPrompt={systemPrompt}
-          persona={persona}
           onChange={onAdvancedPromptChange}
-          onSystemPromptChange={onSystemPromptChange}
-          onPersonaChange={onPersonaChange}
           readonly={readonly}
         />
       )}
