@@ -368,8 +368,15 @@ def build_tool_dispatch(
                 db=db, workspace_id=workspace_id, conversation=conversation
             )
         elif tool.tool_type == "capture_contact_data":
+            config = tool.config
+            identity_map = {
+                f["key"]: f["maps_to"]
+                for f in config.get("fields", [])
+                if f.get("maps_to")
+            }
             dispatch[tool.name] = _make_capture_contact_data_executor(
-                db=db, workspace_id=workspace_id, conversation=conversation
+                db=db, workspace_id=workspace_id, conversation=conversation,
+                identity_map=identity_map,
             )
         elif tool.tool_type == "pipeline_action":
             config = tool.config
@@ -426,11 +433,13 @@ def _make_capture_contact_data_executor(
     db: Session | None,
     workspace_id: uuid.UUID | None,
     conversation: Conversation | None,
+    identity_map: dict[str, str],
 ) -> ToolExecutor:
     def executor(input_: dict) -> str:
         captured = {k: str(v) for k, v in input_.items() if v is not None and str(v).strip()}
         return execute_capture_contact_data_tool(
             db=db, workspace_id=workspace_id, conversation=conversation, captured_fields=captured,
+            identity_map=identity_map,
         )
     return executor
 
@@ -779,6 +788,7 @@ def execute_capture_contact_data_tool(
     workspace_id: uuid.UUID | None,
     conversation: Conversation | None,
     captured_fields: dict[str, str],
+    identity_map: dict[str, str] | None = None,
 ) -> str:
     """
     Upsert one ContactVariable row per captured field (agent-tools-batch-2-prd.md).
@@ -786,6 +796,10 @@ def execute_capture_contact_data_tool(
     Not idempotency-guarded like the other tools — upserting is safe to call
     repeatedly as more data trickles in across the conversation (each call
     only ever touches the keys it actually captured this turn).
+
+    `identity_map` (capture-contact-identity-sync-prd.md) additionally syncs
+    captured keys the operator marked as the contact's name/phone/email into
+    the structured Contact columns — not just the variable.
     """
     if conversation is None:
         keys = ", ".join(captured_fields) or "nenhum"
@@ -799,14 +813,38 @@ def execute_capture_contact_data_tool(
     if conversation.contact_id is None:
         return "Não há um contato associado a esta conversa — nada foi salvo."
 
-    from app.services.contact_service import upsert_contact_variable  # noqa: PLC0415
+    from app.schemas.contact import ContactUpdate  # noqa: PLC0415
+    from app.services.contact_service import (  # noqa: PLC0415
+        update_contact,
+        upsert_contact_variable,
+    )
 
     for key, value in captured_fields.items():
         upsert_contact_variable(
             db, workspace_id, conversation.contact_id, key, value[:2000], source="ai"
         )
 
-    return f"Dados salvos no contato: {', '.join(captured_fields)}."
+    identity_updated: list[str] = []
+    for key, field_name in (identity_map or {}).items():
+        value = captured_fields.get(key)
+        if not value:
+            continue
+        try:
+            update_contact(
+                db, workspace_id, conversation.contact_id,
+                ContactUpdate(**{field_name: value}),
+            )
+            identity_updated.append(field_name)
+        except HTTPException:
+            # Dedup conflict (phone/email already belongs to another contact
+            # in the workspace) — the variable above is already saved; skip
+            # this field instead of failing the whole tool call over it.
+            pass
+
+    message = f"Dados salvos no contato: {', '.join(captured_fields)}."
+    if identity_updated:
+        message += f" Contato atualizado: {', '.join(identity_updated)}."
+    return message
 
 
 # ── Pipeline-action tool execution ──────────────────────────────────────────────
@@ -1000,6 +1038,12 @@ def _validate_tool_config(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="As chaves dos campos devem ser únicas.",
+            )
+        maps_to_values = [f.maps_to for f in config.fields if f.maps_to is not None]
+        if len(maps_to_values) != len(set(maps_to_values)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Só um campo pode ser mapeado para cada dado do contato (nome/telefone/e-mail).",
             )
     elif tool_type == "pipeline_action":
         if not isinstance(config, PipelineActionToolConfig):

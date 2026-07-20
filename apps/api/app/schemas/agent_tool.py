@@ -113,6 +113,11 @@ class ContactDataField(BaseModel):
 
     key: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
     description: str = Field(default="", max_length=300)
+    # When set, capturing this field also updates the matching structured
+    # Contact column (capture-contact-identity-sync-prd.md) — not just the
+    # ContactVariable row. Explicit per-field choice, never inferred from
+    # `key`, since the key is free text the operator picks.
+    maps_to: Literal["name", "phone", "email"] | None = None
 
 
 class CaptureContactDataToolConfig(BaseModel):

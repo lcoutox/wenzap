@@ -71,13 +71,21 @@ failed, never claim success — say honestly that something went wrong, and \
 either retry with corrected input, offer an alternative, or hand off to a \
 human, whichever fits the situation."""
 
+# Core conversational tone — always injected, independent of channel or
+# response_style. Natural, human tone is the baseline every agent starts
+# from; response_style only dials length/depth on top of it, and channel
+# rules only add channel-specific formatting constraints.
+_CORE_CONVERSATION_STYLE = """\
+Conversation style (baseline — always applies): write like a real person having a normal text \
+conversation. Natural and warm, not like a script, a form, or a corporate template. This is the \
+default regardless of channel or the response length settings below."""
+
 _WHATSAPP_CHANNEL_RULES = """\
 Channel rules (WhatsApp):
 - Respond in plain text only. Do not use Markdown, asterisks for bold, \
 italic, headers, bullet lists with special characters, tables, or any \
 other special formatting.
-- Keep messages short, clear, and easy to read on a mobile screen.
-- Write naturally, as you would in a regular text conversation."""
+- Keep messages short, clear, and easy to read on a mobile screen."""
 
 # Response style blocks — injected based on operator's response_style setting.
 # Placed after persona and before RAG so they are prominent but not mixed with reference data.
@@ -406,16 +414,17 @@ def build_system_prompt(
 
     Structure (in order):
       1. Identity anchor (name + optional description)
-      2. Operator instructions (labeled section — system_prompt text)
-      3. Persona / tone guidance (optional)
-      4. Response style block (concise / balanced / detailed)
-      5. Language mode block (auto / pt / en / es)
-      6. Knowledge restriction block (if knowledge_only=True)
-      7. RAG context block (optional, Phase 4.3+)
-      8. Show sources guidance (if show_sources=True and RAG present)
-      9. Catalog context block (optional, Catálogo.3+)
-     10. Channel rules (optional)
-     11. Nexbrain platform safety rules (fixed, always last)
+      2. Core conversation style (fixed — natural/human tone, always applies)
+      3. Operator instructions (labeled section — system_prompt text)
+      4. Persona / tone guidance (optional)
+      5. Response style block (concise / balanced / detailed)
+      6. Language mode block (auto / pt / en / es)
+      7. Knowledge restriction block (if knowledge_only=True)
+      8. RAG context block (optional, Phase 4.3+)
+      9. Show sources guidance (if show_sources=True and RAG present)
+     10. Catalog context block (optional, Catálogo.3+)
+     11. Channel rules (optional — formatting only, e.g. WhatsApp plain text)
+     12. Nexbrain platform safety rules (fixed, always last)
 
     Args:
         agent_name:        Name of the agent (used as identity anchor).
@@ -444,6 +453,7 @@ def build_system_prompt(
     parts.append(" ".join(identity_lines))
 
     parts.append(_current_datetime_block())
+    parts.append(_CORE_CONVERSATION_STYLE)
 
     # agent_instructions_block takes priority (new guided/advanced modes).
     # Falls back to legacy system_prompt+persona if not provided.

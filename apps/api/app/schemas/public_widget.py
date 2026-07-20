@@ -23,6 +23,10 @@ class PublicWidgetConfigOut(BaseModel):
     avatar_url: str | None
     auto_open: bool
     auto_open_delay_seconds: int
+    # How long (seconds) the agent waits after the visitor's last message before
+    # replying — lets the widget avoid showing "typing" before the agent has
+    # actually started composing anything.
+    reply_delay_seconds: int
     # Contact capture settings
     contact_capture_enabled: bool
     require_name: bool

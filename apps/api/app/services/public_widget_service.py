@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
+from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.channel import Channel
 from app.models.contact import Contact
 from app.models.conversation import Conversation
@@ -133,6 +134,14 @@ def get_public_widget_config(
     agent = db.get(Agent, channel.agent_id) if channel.agent_id else None
     avatar_url = get_avatar_url(agent) if agent else None
 
+    reply_delay_seconds = 0
+    if agent:
+        prompt_settings = db.scalar(
+            select(AgentPromptSettings).where(AgentPromptSettings.agent_id == agent.id)
+        )
+        if prompt_settings:
+            reply_delay_seconds = prompt_settings.reply_delay_seconds
+
     return PublicWidgetConfigOut(
         public_key=channel.public_key,
         name=channel.name,
@@ -146,6 +155,7 @@ def get_public_widget_config(
         avatar_url=avatar_url,
         auto_open=cfg["auto_open"],
         auto_open_delay_seconds=cfg["auto_open_delay_seconds"],
+        reply_delay_seconds=reply_delay_seconds,
         contact_capture_enabled=cfg["contact_capture_enabled"],
         require_name=cfg["require_name"],
         require_email=cfg["require_email"],

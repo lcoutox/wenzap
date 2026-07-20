@@ -147,6 +147,37 @@ def test_create_capture_contact_data_tool_rejects_duplicate_keys(
     assert r.status_code == 400
 
 
+def test_create_capture_contact_data_tool_rejects_duplicate_maps_to(
+    client_a, subscription_a, ai_model
+):
+    agent_id = _create_agent(client_a, ai_model)
+    r = client_a.post(
+        f"/agents/{agent_id}/tools/capture-contact-data",
+        json=_capture_payload(config={"fields": [
+            {"key": "nome_cliente", "description": "a", "maps_to": "name"},
+            {"key": "nome_completo", "description": "b", "maps_to": "name"},
+        ]}),
+    )
+    assert r.status_code == 400
+
+
+def test_create_capture_contact_data_tool_accepts_identity_mapping(
+    client_a, subscription_a, ai_model
+):
+    agent_id = _create_agent(client_a, ai_model)
+    r = client_a.post(
+        f"/agents/{agent_id}/tools/capture-contact-data",
+        json=_capture_payload(config={"fields": [
+            {"key": "nome", "description": "Nome", "maps_to": "name"},
+            {"key": "fone", "description": "Telefone", "maps_to": "phone"},
+        ]}),
+    )
+    assert r.status_code == 201
+    fields = r.json()["config"]["fields"]
+    assert fields[0]["maps_to"] == "name"
+    assert fields[1]["maps_to"] == "phone"
+
+
 def test_update_delete_capture_contact_data_tool(client_a, subscription_a, ai_model):
     agent_id = _create_agent(client_a, ai_model)
     created = client_a.post(
@@ -233,6 +264,72 @@ def test_execute_capture_contact_data_tool_upserts_contact_variables(db, workspa
     assert rows[0].value == "novo@teste.com"
 
 
+def test_execute_capture_contact_data_tool_syncs_identity_fields(db, workspace_a):
+    contact = Contact(workspace_id=workspace_a.id, name="Visitante")
+    db.add(contact)
+    db.flush()
+    conv = Conversation(
+        workspace_id=workspace_a.id, contact_id=contact.id,
+        channel_type="internal", status="open", ai_enabled=True,
+    )
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+
+    result = execute_capture_contact_data_tool(
+        db=db, workspace_id=workspace_a.id, conversation=conv,
+        captured_fields={"nome": "André", "fone": "+5537999957965", "dor": "Perde lead"},
+        identity_map={"nome": "name", "fone": "phone"},
+    )
+    assert "Contato atualizado" in result
+
+    # Structured Contact columns updated...
+    db.refresh(contact)
+    assert contact.name == "André"
+    assert contact.phone == "+5537999957965"
+
+    # ...and the ContactVariable rows are still saved as before, including
+    # the one with no identity mapping.
+    rows = {
+        v.key: v.value
+        for v in db.scalars(select(ContactVariable).where(ContactVariable.contact_id == contact.id))
+    }
+    assert rows == {"nome": "André", "fone": "+5537999957965", "dor": "Perde lead"}
+
+
+def test_execute_capture_contact_data_tool_identity_conflict_skips_gracefully(db, workspace_a):
+    # Another contact already owns this phone number.
+    other = Contact(workspace_id=workspace_a.id, name="Outro Cliente", phone="+5537999957965")
+    db.add(other)
+    contact = Contact(workspace_id=workspace_a.id, name="Visitante")
+    db.add(contact)
+    db.flush()
+    conv = Conversation(
+        workspace_id=workspace_a.id, contact_id=contact.id,
+        channel_type="internal", status="open", ai_enabled=True,
+    )
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+
+    result = execute_capture_contact_data_tool(
+        db=db, workspace_id=workspace_a.id, conversation=conv,
+        captured_fields={"fone": "+5537999957965"},
+        identity_map={"fone": "phone"},
+    )
+    # Doesn't blow up the whole tool call over a dedup conflict...
+    assert "Contato atualizado" not in result
+    assert "fone" in result
+
+    # ...the variable is still saved even though the identity sync was skipped.
+    var = db.scalar(select(ContactVariable).where(ContactVariable.contact_id == contact.id))
+    assert var.value == "+5537999957965"
+
+    # ...and the contact's own phone column was left untouched (still None).
+    db.refresh(contact)
+    assert contact.phone is None
+
+
 def test_execute_capture_contact_data_tool_no_contact_on_conversation(db, workspace_a):
     conv = Conversation(
         workspace_id=workspace_a.id, channel_type="internal", status="open", ai_enabled=True,
@@ -285,7 +382,7 @@ def test_build_tool_dispatch_capture_contact_data_filters_blank_input():
 
     assert calls == [{
         "db": "db-sentinel", "workspace_id": "ws-sentinel", "conversation": "conv-sentinel",
-        "captured_fields": {"email": "a@b.com"},
+        "captured_fields": {"email": "a@b.com"}, "identity_map": {},
     }]
 
 
