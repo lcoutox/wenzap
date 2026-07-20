@@ -74,8 +74,8 @@ _PLANS = [
         "currency": "BRL",
         "agents_limit": 20,
         "knowledge_bases_limit": 20,
-        "sources_per_kb_limit": 20,
-        "max_source_chars": 50_000,
+        "sources_per_kb_limit": 500,
+        "max_source_chars": 200_000,
         "max_file_size_bytes": None,        # PROVISIONAL — pending Scale phase
         "catalog_items_limit": 50,
         "channels_limit": 20,
