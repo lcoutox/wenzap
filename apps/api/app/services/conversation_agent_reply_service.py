@@ -21,6 +21,7 @@ Design decisions:
     RAG context. The run records rag_used=False and the retrieval error message.
 """
 
+import base64
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -65,18 +66,18 @@ ANTHROPIC_EXECUTABLE_MODELS: set[str] = {
 # ── Error codes ───────────────────────────────────────────────────────────────
 
 EC_NOT_CUSTOMER_INBOUND = "not_customer_inbound"
-EC_AI_DISABLED          = "ai_disabled"
-EC_NO_AGENT             = "no_agent"
-EC_STATUS_NOT_ALLOWED   = "status_not_allowed"
-EC_HUMAN_ASSIGNED       = "human_assigned"
-EC_AGENT_NOT_FOUND      = "agent_not_found"
-EC_AGENT_INACTIVE       = "agent_inactive"
-EC_NO_MODEL             = "no_model"
-EC_NO_CREDITS           = "no_credits"
-EC_PROMPT_INJECTION     = "prompt_injection"
-EC_LLM_ERROR            = "llm_error"
-EC_CONTEXT_ERROR        = "context_error"
-EC_UNKNOWN_ERROR        = "unknown_error"
+EC_AI_DISABLED = "ai_disabled"
+EC_NO_AGENT = "no_agent"
+EC_STATUS_NOT_ALLOWED = "status_not_allowed"
+EC_HUMAN_ASSIGNED = "human_assigned"
+EC_AGENT_NOT_FOUND = "agent_not_found"
+EC_AGENT_INACTIVE = "agent_inactive"
+EC_NO_MODEL = "no_model"
+EC_NO_CREDITS = "no_credits"
+EC_PROMPT_INJECTION = "prompt_injection"
+EC_LLM_ERROR = "llm_error"
+EC_CONTEXT_ERROR = "context_error"
+EC_UNKNOWN_ERROR = "unknown_error"
 
 _ALLOWED_CONV_STATUSES = {"open", "pending"}
 
@@ -110,25 +111,23 @@ def generate_conversation_agent_reply(
 
     # ── 2. Conversation eligibility ───────────────────────────────────────────
     if not conversation.ai_enabled:
-        logger.info(
-            "agent_reply_skip reason=ai_disabled conversation_id=%s", conversation.id
-        )
+        logger.info("agent_reply_skip reason=ai_disabled conversation_id=%s", conversation.id)
         return None
     if conversation.agent_id is None:
-        logger.info(
-            "agent_reply_skip reason=no_agent conversation_id=%s", conversation.id
-        )
+        logger.info("agent_reply_skip reason=no_agent conversation_id=%s", conversation.id)
         return None
     if conversation.status not in _ALLOWED_CONV_STATUSES:
         logger.info(
             "agent_reply_skip reason=status_%s conversation_id=%s",
-            conversation.status, conversation.id,
+            conversation.status,
+            conversation.id,
         )
         return None
     if conversation.assigned_user_id is not None:
         logger.info(
             "agent_reply_skip reason=human_assigned conversation_id=%s assigned_user_id=%s",
-            conversation.id, conversation.assigned_user_id,
+            conversation.id,
+            conversation.assigned_user_id,
         )
         return None
 
@@ -142,7 +141,8 @@ def generate_conversation_agent_reply(
     if agent is None:
         logger.info(
             "agent_reply_skip reason=agent_not_found conversation_id=%s agent_id=%s",
-            conversation.id, conversation.agent_id,
+            conversation.id,
+            conversation.agent_id,
         )
         return None
 
@@ -189,9 +189,7 @@ def generate_conversation_agent_reply(
             error_message="Configured model not found or inactive.",
         )
 
-    provider = db.scalar(
-        select(AiModelProvider).where(AiModelProvider.id == model.provider_id)
-    )
+    provider = db.scalar(select(AiModelProvider).where(AiModelProvider.id == model.provider_id))
     if provider is None or not provider.is_active:
         return _save_run(
             db,
@@ -206,8 +204,10 @@ def generate_conversation_agent_reply(
         )
 
     # Only Anthropic/Nexbrain models are executable in this phase.
-    if provider.code.lower() not in ("anthropic", "nexbrain") or \
-            model.model_name not in ANTHROPIC_EXECUTABLE_MODELS:
+    if (
+        provider.code.lower() not in ("anthropic", "nexbrain")
+        or model.model_name not in ANTHROPIC_EXECUTABLE_MODELS
+    ):
         return _save_run(
             db,
             workspace_id=workspace_id,
@@ -217,9 +217,7 @@ def generate_conversation_agent_reply(
             model=model,
             status="failed",
             error_code=EC_NO_MODEL,
-            error_message=(
-                f"Model '{model.model_name}' is not supported for automatic replies."
-            ),
+            error_message=(f"Model '{model.model_name}' is not supported for automatic replies."),
         )
 
     # ── 5. Credit check ───────────────────────────────────────────────────────
@@ -306,10 +304,40 @@ def generate_conversation_agent_reply(
         else ctx.reply_instruction
     )
 
+    # conversation-image-upload-prd.md: if the trigger message carries an
+    # image, attach it as a vision content block — but only when the
+    # agent's configured model actually supports vision. Otherwise (no
+    # vision support, or the stored image couldn't be read back), the model
+    # still gets told an image arrived instead of silently seeing nothing,
+    # so it can react with context (ask to describe it, offer a human) —
+    # see "Decisão pendente #3" in the PRD for the alternative (Chatvolt's
+    # silent-ignore behavior) if this default needs revisiting.
+    message_content: str | list[dict] = user_turn
+    # getattr, not direct attribute access: some callers/tests pass lightweight
+    # stand-ins for trigger_message that don't set every ConversationMessage
+    # column — a real ORM row always has both, so this changes nothing in
+    # production.
+    trigger_content_type = getattr(trigger_message, "content_type", None)
+    trigger_media_url = getattr(trigger_message, "media_url", None)
+    if trigger_content_type == "image" and trigger_media_url:
+        image_block = _build_image_content_block(trigger_message) if model.supports_vision else None
+        if image_block is not None:
+            message_content = [image_block, {"type": "text", "text": user_turn}]
+        else:
+            reason = (
+                "o modelo configurado para este agente não tem suporte a visão"
+                if not model.supports_vision
+                else "não foi possível carregar a imagem enviada"
+            )
+            message_content = (
+                f"{user_turn}\n\n[O cliente enviou uma imagem, mas {reason} — "
+                "a imagem não pôde ser interpretada.]"
+            )
+
     request = LLMRequest(
         model_name=model.model_name,
         system=ctx.system_prompt,
-        messages=[LLMMessage(role="user", content=user_turn)],
+        messages=[LLMMessage(role="user", content=message_content)],
         temperature=float(model_settings.temperature),
         tools=tools_schema,
     )
@@ -323,16 +351,20 @@ def generate_conversation_agent_reply(
         with sentry_sdk.new_scope() as scope:
             scope.set_tag("workspace_id", str(workspace_id))
             scope.set_tag("agent_id", str(agent.id))
-            scope.set_context("conversation", {
-                "workspace_id": str(workspace_id),
-                "agent_id": str(agent.id),
-                "conversation_id": str(conversation.id),
-                "trigger_message_id": str(trigger_message.id),
-            })
+            scope.set_context(
+                "conversation",
+                {
+                    "workspace_id": str(workspace_id),
+                    "agent_id": str(agent.id),
+                    "conversation_id": str(conversation.id),
+                    "trigger_message_id": str(trigger_message.id),
+                },
+            )
             llm_response = run_agent_turn(request, tool_dispatch=tool_dispatch)
     except LLMProviderError as exc:
         # Notify admin of the error
         from app.services.agent_alert_service import notify_agent_error  # noqa: PLC0415
+
         notify_agent_error(
             db,
             workspace_id=workspace_id,
@@ -374,7 +406,9 @@ def generate_conversation_agent_reply(
         logger.warning(
             "agent_reply_empty_content_after_nudge conversation_id=%s "
             "trigger_message_id=%s agent_id=%s",
-            conversation.id, trigger_message.id, agent.id,
+            conversation.id,
+            trigger_message.id,
+            agent.id,
         )
         reply_content = "Certo!"
 
@@ -383,9 +417,13 @@ def generate_conversation_agent_reply(
     if ctx.catalog_retrieval_attempted:
         methods = {i.retrieval_method for i in ctx.catalog_items}
         method = (
-            "full_catalog" if "full_catalog" in methods else
-            "hybrid" if "hybrid" in methods else
-            "lexical_fallback" if methods else "none"
+            "full_catalog"
+            if "full_catalog" in methods
+            else "hybrid"
+            if "hybrid" in methods
+            else "lexical_fallback"
+            if methods
+            else "none"
         )
         response_metadata["catalog_retrieval"] = {
             "query": trigger_message.content[:500],
@@ -430,9 +468,7 @@ def generate_conversation_agent_reply(
     # booking) — had_tool_error tracks that separately so the Auditoria
     # screen and the Inbox indicator can surface it.
     had_tool_error = any(
-        tc.get("status") == "error"
-        for call in llm_response.calls
-        for tc in call.tool_calls
+        tc.get("status") == "error" for call in llm_response.calls for tc in call.tool_calls
     )
     run = ConversationAgentRun(
         workspace_id=workspace_id,
@@ -462,35 +498,41 @@ def generate_conversation_agent_reply(
     # on every single reply.
     if tools_schema:
         for call in llm_response.calls:
-            db.add(AgentToolCall(
-                workspace_id=workspace_id,
-                conversation_agent_run_id=run.id,
-                call_index=call.call_index,
-                stop_reason=call.stop_reason,
-                input_tokens=call.input_tokens,
-                output_tokens=call.output_tokens,
-                duration_ms=call.duration_ms,
-                tool_calls=call.tool_calls,
-            ))
+            db.add(
+                AgentToolCall(
+                    workspace_id=workspace_id,
+                    conversation_agent_run_id=run.id,
+                    call_index=call.call_index,
+                    stop_reason=call.stop_reason,
+                    input_tokens=call.input_tokens,
+                    output_tokens=call.output_tokens,
+                    duration_ms=call.duration_ms,
+                    tool_calls=call.tool_calls,
+                )
+            )
 
     db.commit()
     db.refresh(run)
 
     logger.info(
         "agent_reply_success conversation_id=%s run_id=%s response_message_id=%s",
-        conversation.id, run.id, response_msg.id,
+        conversation.id,
+        run.id,
+        response_msg.id,
     )
 
     # Pipeline.2 Fase 2 — best-effort auto-routing by entry_condition. Runs
     # after the reply is already committed so a classifier failure never
     # blocks the actual customer-facing reply.
     from app.services.pipeline_auto_routing_service import maybe_route_conversation  # noqa: PLC0415
+
     maybe_route_conversation(db, workspace_id, conversation)
 
     # Deliver agent reply to WhatsApp when the conversation came from that channel.
     if conversation.channel_type == "whatsapp":
         try:
             from app.services.messaging import deliver_outbound_message  # noqa: PLC0415
+
             deliver_outbound_message(db, response_msg, conversation)
         except Exception:
             logger.exception(
@@ -500,9 +542,9 @@ def generate_conversation_agent_reply(
             )
 
         # After text delivery: attempt catalog image delivery if eligible.
-        text_delivered = (
-            (response_msg.metadata_json or {}).get("delivery", {}).get("status") == "sent"
-        )
+        text_delivered = (response_msg.metadata_json or {}).get("delivery", {}).get(
+            "status"
+        ) == "sent"
         if text_delivered and agent.catalog_enabled and ctx.catalog_retrieval_attempted:
             try:
                 from app.services.catalog_media_delivery_service import (  # noqa: PLC0415
@@ -516,6 +558,7 @@ def generate_conversation_agent_reply(
                     _resolve_access_token,
                     normalize_whatsapp_to,
                 )
+
                 storage = get_storage_provider()
                 wa_channel = _find_whatsapp_channel(db, conversation)
                 wa_contact = _load_contact(db, conversation)
@@ -554,6 +597,35 @@ def generate_conversation_agent_reply(
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+
+def _build_image_content_block(trigger_message: ConversationMessage) -> dict | None:
+    """
+    Fetch the stored image bytes and build an Anthropic vision content block.
+
+    Returns None if the image can't be read back from storage — callers must
+    fall back to a text-only turn (with a note that the image was unreadable)
+    rather than crash the whole reply.
+    """
+    from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+    mime_type = (trigger_message.metadata_json or {}).get("media_mime_type") or "image/jpeg"
+    try:
+        storage = get_storage_provider()
+        data = storage.get_file(trigger_message.media_url)
+    except Exception:
+        logger.exception(
+            "conversation_agent_reply image fetch failed message_id=%s",
+            trigger_message.id,
+        )
+        return None
+
+    encoded = base64.b64encode(data).decode("ascii")
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": mime_type, "data": encoded},
+    }
+
+
 def _save_run(
     db: Session,
     *,
@@ -572,7 +644,10 @@ def _save_run(
     """Persist a non-success run and commit."""
     logger.info(
         "agent_reply_run status=%s error_code=%s conversation_id=%s error=%s",
-        status, error_code, conversation.id, error_message,
+        status,
+        error_code,
+        conversation.id,
+        error_message,
     )
     run = ConversationAgentRun(
         workspace_id=workspace_id,
@@ -612,6 +687,7 @@ def _get_workspace_plan_code(db: Session, workspace_id: uuid.UUID) -> str:
 
 def _get_usage_counter(db: Session, workspace_id: uuid.UUID) -> UsageCounter | None:
     from app.services.plan_service import get_or_create_usage_counter  # noqa: PLC0415
+
     try:
         return get_or_create_usage_counter(db, workspace_id)
     except Exception:

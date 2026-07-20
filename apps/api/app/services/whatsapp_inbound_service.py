@@ -87,11 +87,14 @@ def _process(
 
     contact = _get_or_create_contact(db, workspace_id, msg)
     conversation = _get_or_create_conversation(
-        db, workspace_id, contact, agent_id,
+        db,
+        workspace_id,
+        contact,
+        agent_id,
         channel_id=channel.id,
         auto_reply_enabled=auto_reply_enabled,
     )
-    message, is_new = _create_message_idempotent(db, workspace_id, conversation, msg)
+    message, is_new = _create_message_idempotent(db, workspace_id, conversation, msg, channel)
 
     logger.info(
         "whatsapp_auto_reply_check conversation_id=%s ai_enabled=%s agent_id=%s "
@@ -193,6 +196,7 @@ def _get_or_create_conversation(
 
     if conversation is None:
         from app.services.plan_service import count_new_conversation  # noqa: PLC0415
+
         count_new_conversation(db, workspace_id)
         now = datetime.now(timezone.utc)
         conversation = Conversation(
@@ -242,6 +246,7 @@ def _create_message_idempotent(
     workspace_id: uuid.UUID,
     conversation: Conversation,
     msg: WhatsAppInboundMessage,
+    channel: Channel,
 ) -> tuple[ConversationMessage, bool]:
     """
     Create the inbound message if it doesn't already exist.
@@ -264,18 +269,35 @@ def _create_message_idempotent(
         return existing, False
 
     now = datetime.now(timezone.utc)
+    metadata_json: dict = {
+        "whatsapp_timestamp": msg.timestamp,
+        "wa_id": msg.from_wa_id,
+    }
+
+    content_type = "text"
+    # An image with no caption still needs non-empty content — see
+    # conversation_context_builder._fetch_history, which excludes rows with
+    # content == "" from the LLM history entirely.
+    content = msg.text_body
+
+    if msg.message_type == "image":
+        content_type = "image"
+        content = msg.text_body or "[Imagem]"
+
+    media_key = _download_inbound_media(db, channel, msg) if msg.message_type == "image" else None
+    if media_key is not None:
+        metadata_json["media_mime_type"] = media_key[1]
+
     message = ConversationMessage(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
         direction="inbound",
         sender_type="customer",
-        content_type="text",
-        content=msg.text_body,
+        content_type=content_type,
+        content=content,
+        media_url=media_key[0] if media_key is not None else None,
         external_message_id=msg.wamid,
-        metadata_json={
-            "whatsapp_timestamp": msg.timestamp,
-            "wa_id": msg.from_wa_id,
-        },
+        metadata_json=metadata_json,
     )
     db.add(message)
 
@@ -296,6 +318,41 @@ def _create_message_idempotent(
     return message, True
 
 
+def _download_inbound_media(
+    db: Session,
+    channel: Channel,
+    msg: WhatsAppInboundMessage,
+) -> tuple[str, str] | None:
+    """
+    Best-effort download of an inbound image via the channel's provider.
+
+    Returns (storage_key, mime_type), or None if the provider isn't
+    Evolution API (only provider supported so far — conversation-image-
+    upload-prd.md scoped Meta Cloud API's own media download as future work)
+    or the download failed for any reason. Never raises: a media download
+    failure must not prevent the text/caption message from being persisted.
+    """
+    provider = (channel.config_json or {}).get("provider")
+    if provider != "evolution_api":
+        logger.info(
+            "whatsapp_inbound image download skipped provider=%s wamid=%s "
+            "(only evolution_api is supported today)",
+            provider,
+            msg.wamid,
+        )
+        return None
+
+    from app.services.evolution_media_service import (  # noqa: PLC0415
+        download_and_store_inbound_image,
+    )
+    from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+    storage = get_storage_provider()
+    return download_and_store_inbound_image(
+        db, channel, storage, wamid=msg.wamid, from_wa_id=msg.from_wa_id
+    )
+
+
 def _trigger_agent_reply(
     db: Session,
     workspace_id: uuid.UUID,
@@ -310,8 +367,9 @@ def _trigger_agent_reply(
         from app.services.auto_reply_scheduler import schedule_agent_auto_reply  # noqa: PLC0415
 
         prompt_cfg = db.scalar(
-            _select(AgentPromptSettings)
-            .where(AgentPromptSettings.agent_id == conversation.agent_id)
+            _select(AgentPromptSettings).where(
+                AgentPromptSettings.agent_id == conversation.agent_id
+            )
         )
         delay = int(getattr(prompt_cfg, "reply_delay_seconds", 0) or 0)
         schedule_agent_auto_reply(

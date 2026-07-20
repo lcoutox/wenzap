@@ -26,6 +26,16 @@ holds the *instance name* (the Evolution routing key), not a Meta
 phone_number_id. It is used only for logging here — the caller
 (evolution_webhooks router) resolves the channel by instance name before
 processing, so the field isn't used for lookup in this path.
+
+Image messages (conversation-image-upload-prd.md, 2026-07-20): recognized
+here (`messageType == "imageMessage"`) but this parser only extracts the
+caption + routing info — the actual media bytes are fetched separately by
+evolution_media_service.py (Evolution's own `getBase64FromMediaMessage`
+endpoint handles the Baileys media decryption; this parser never touches
+the encrypted `message.imageMessage.url`). ⚠️ The exact shape of
+`message.imageMessage` (caption field name, presence of a mimetype hint)
+has NOT been confirmed against a live payload the way the text shape above
+was — verify against a real image message before fully trusting this.
 """
 
 import logging
@@ -34,9 +44,13 @@ from app.services.whatsapp_webhook_parser import WhatsAppContact, WhatsAppInboun
 
 logger = logging.getLogger(__name__)
 
-# Message types that carry plain, extractable text. Media/reaction/other types
-# are ignored for now — same "text only" MVP scope as the Meta parser.
+# Message types that carry plain, extractable text.
 _TEXT_MESSAGE_TYPES = {"conversation", "extendedTextMessage"}
+
+# Image message type (Baileys/Evolution naming). Other media types (document,
+# audio, video, sticker) are still ignored — see novas-funcionalidades-chatvolt.md
+# in NexBrain for that broader (not yet built) scope.
+_IMAGE_MESSAGE_TYPE = "imageMessage"
 
 
 def parse_inbound_text_messages(payload: object) -> list[WhatsAppInboundMessage]:
@@ -92,7 +106,8 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
         return None
 
     message_type = data.get("messageType")
-    if message_type not in _TEXT_MESSAGE_TYPES:
+    is_image = message_type == _IMAGE_MESSAGE_TYPE
+    if message_type not in _TEXT_MESSAGE_TYPES and not is_image:
         logger.info(
             "evolution_parser skipping unsupported messageType=%s wamid=%s",
             message_type,
@@ -101,7 +116,9 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
         return None
 
     text_body = _extract_text(data.get("message"))
-    if not text_body:
+    # An image with no caption is still valid business data — only plain
+    # text messages require a non-empty body to be worth persisting.
+    if not is_image and not text_body:
         logger.info("evolution_parser skipping message with empty body wamid=%s", wamid)
         return None
 
@@ -121,6 +138,7 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
         timestamp=timestamp,
         text_body=text_body,
         contact=contact,
+        message_type="image" if is_image else "text",
     )
 
 
@@ -135,6 +153,12 @@ def _extract_text(message: object) -> str:
         text = extended.get("text")
         if isinstance(text, str):
             return text
+    # Image messages carry their text as an optional caption, not "conversation".
+    image = message.get("imageMessage")
+    if isinstance(image, dict):
+        caption = image.get("caption")
+        if isinstance(caption, str):
+            return caption
     return ""
 
 

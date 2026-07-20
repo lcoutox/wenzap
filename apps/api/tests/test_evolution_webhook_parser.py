@@ -120,8 +120,8 @@ def test_missing_remote_jid_returns_empty():
 
 def test_unsupported_message_type_is_skipped():
     payload = _real_captured_payload()
-    payload["data"]["messageType"] = "imageMessage"
-    payload["data"]["message"] = {"imageMessage": {"caption": "look"}}
+    payload["data"]["messageType"] = "audioMessage"
+    payload["data"]["message"] = {"audioMessage": {"mimetype": "audio/ogg"}}
     assert parse_inbound_text_messages(payload) == []
 
 
@@ -152,3 +152,37 @@ def test_extract_apikey_missing_returns_none():
     payload = _real_captured_payload()
     del payload["apikey"]
     assert extract_apikey(payload) is None
+
+
+# ── image messages (conversation-image-upload-prd.md) ───────────────────────
+
+
+def test_image_message_with_caption_extracts_caption_and_message_type():
+    payload = _real_captured_payload()
+    payload["data"]["messageType"] = "imageMessage"
+    payload["data"]["message"] = {
+        "imageMessage": {"caption": "Olha essa foto", "mimetype": "image/jpeg"}
+    }
+    results = parse_inbound_text_messages(payload)
+    assert len(results) == 1
+    msg = results[0]
+    assert msg.message_type == "image"
+    assert msg.text_body == "Olha essa foto"
+
+
+def test_image_message_without_caption_is_not_skipped():
+    """Unlike a text message, an image with an empty caption is still valid —
+    must not be discarded the way an empty-body text message would be."""
+    payload = _real_captured_payload()
+    payload["data"]["messageType"] = "imageMessage"
+    payload["data"]["message"] = {"imageMessage": {"mimetype": "image/jpeg"}}
+    results = parse_inbound_text_messages(payload)
+    assert len(results) == 1
+    assert results[0].message_type == "image"
+    assert results[0].text_body == ""
+
+
+def test_text_message_still_defaults_message_type_to_text():
+    results = parse_inbound_text_messages(_real_captured_payload())
+    assert len(results) == 1
+    assert results[0].message_type == "text"

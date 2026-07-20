@@ -42,6 +42,10 @@ class WhatsAppInboundMessage:
     timestamp: int | None
     text_body: str
     contact: WhatsAppContact | None
+    # "text" | "image". Defaults to "text" so every existing construction
+    # site (this Meta parser included — it never emits "image" yet) keeps
+    # working unchanged. See conversation-image-upload-prd.md.
+    message_type: str = "text"
 
 
 def parse_inbound_text_messages(payload: object) -> list[WhatsAppInboundMessage]:
@@ -119,12 +123,8 @@ def parse_status_updates(payload: object) -> list[WhatsAppStatusUpdate]:
 
                 conv_block = status_obj.get("conversation") or {}
                 conv_id = conv_block.get("id") if isinstance(conv_block, dict) else None
-                origin = (
-                    conv_block.get("origin") if isinstance(conv_block, dict) else None
-                )
-                conv_origin_type = (
-                    origin.get("type") if isinstance(origin, dict) else None
-                )
+                origin = conv_block.get("origin") if isinstance(conv_block, dict) else None
+                conv_origin_type = origin.get("type") if isinstance(origin, dict) else None
 
                 pricing_block = status_obj.get("pricing") or {}
                 pricing_category: str | None = None

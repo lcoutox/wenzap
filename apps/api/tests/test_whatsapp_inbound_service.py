@@ -69,6 +69,7 @@ def _make_whatsapp_channel(
     phone_number_id: str = "PHONE_ID_001",
     status: str = "active",
     auto_reply_enabled: bool = False,
+    provider: str = "meta_cloud_api",
 ) -> Channel:
     ch = Channel(
         workspace_id=workspace_id,
@@ -78,7 +79,7 @@ def _make_whatsapp_channel(
         public_key=f"wap_{uuid.uuid4().hex[:24]}",
         status=status,
         config_json={
-            "provider": "meta_cloud_api",
+            "provider": provider,
             "onboarding_type": "manual",
             "waba_id": "9999000011112222",
             "phone_number_id": phone_number_id,
@@ -105,6 +106,7 @@ def _make_msg(
     text_body: str = "Olá",
     profile_name: str | None = "Lucas",
     timestamp: int = 1710000000,
+    message_type: str = "text",
 ) -> WhatsAppInboundMessage:
     return WhatsAppInboundMessage(
         phone_number_id=phone_number_id,
@@ -113,6 +115,7 @@ def _make_msg(
         timestamp=timestamp,
         text_body=text_body,
         contact=WhatsAppContact(wa_id=wa_id, profile_name=profile_name),
+        message_type=message_type,
     )
 
 
@@ -160,9 +163,7 @@ def _make_existing_conversation(
 
 
 class TestContactCreation:
-    def test_creates_new_contact_by_wa_id(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_creates_new_contact_by_wa_id(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         msg = _make_msg(wa_id="5537222222222")
@@ -178,18 +179,14 @@ class TestContactCreation:
         assert contact is not None
         assert contact.phone == "+5537222222222"
 
-    def test_contact_name_set_to_profile_name(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_contact_name_set_to_profile_name(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         msg = _make_msg(wa_id="5537333333333", profile_name="Maria Silva")
 
         process_inbound_message(db, msg)
 
-        contact = db.scalar(
-            select(Contact).where(Contact.external_id == "whatsapp:5537333333333")
-        )
+        contact = db.scalar(select(Contact).where(Contact.external_id == "whatsapp:5537333333333"))
         assert contact is not None
         assert contact.name == "Maria Silva"
 
@@ -202,15 +199,11 @@ class TestContactCreation:
 
         process_inbound_message(db, msg)
 
-        contact = db.scalar(
-            select(Contact).where(Contact.external_id == "whatsapp:5537444444444")
-        )
+        contact = db.scalar(select(Contact).where(Contact.external_id == "whatsapp:5537444444444"))
         assert contact is not None
         assert contact.name == "5537444444444"
 
-    def test_reuses_existing_contact_with_same_wa_id(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_reuses_existing_contact_with_same_wa_id(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         wa_id = "5537555555555"
@@ -242,9 +235,7 @@ class TestContactCreation:
         msg = _make_msg(wa_id=wa_id, profile_name="Clara Costa", wamid="wamid.UPDATE1")
         process_inbound_message(db, msg)
 
-        contact = db.scalar(
-            select(Contact).where(Contact.external_id == f"whatsapp:{wa_id}")
-        )
+        contact = db.scalar(select(Contact).where(Contact.external_id == f"whatsapp:{wa_id}"))
         assert contact is not None
         assert contact.name == "Clara Costa"
 
@@ -259,9 +250,7 @@ class TestContactCreation:
         msg = _make_msg(wa_id=wa_id, profile_name="Outro Nome", wamid="wamid.NOUPDATE")
         process_inbound_message(db, msg)
 
-        contact = db.scalar(
-            select(Contact).where(Contact.external_id == f"whatsapp:{wa_id}")
-        )
+        contact = db.scalar(select(Contact).where(Contact.external_id == f"whatsapp:{wa_id}"))
         # Name should not change because it was already a real name (not the wa_id fallback)
         assert contact is not None
         assert contact.name == "Pedro Alves"
@@ -302,18 +291,14 @@ class TestContactCreation:
         assert len(contacts_b) == 1
         assert contacts_a[0].id != contacts_b[0].id
 
-    def test_contact_metadata_contains_whatsapp_source(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_contact_metadata_contains_whatsapp_source(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         msg = _make_msg(wa_id="5537900000001", profile_name="Test User")
 
         process_inbound_message(db, msg)
 
-        contact = db.scalar(
-            select(Contact).where(Contact.external_id == "whatsapp:5537900000001")
-        )
+        contact = db.scalar(select(Contact).where(Contact.external_id == "whatsapp:5537900000001"))
         assert contact is not None
         assert contact.metadata_json is not None
         assert contact.metadata_json["source"] == "whatsapp"
@@ -337,9 +322,7 @@ class TestConversationCreation:
         assert conv is not None
         assert conv.channel_type == "whatsapp"
 
-    def test_creates_conversation_with_ai_enabled_false(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_creates_conversation_with_ai_enabled_false(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -349,9 +332,7 @@ class TestConversationCreation:
         assert conv is not None
         assert conv.ai_enabled is False
 
-    def test_creates_conversation_with_status_open(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_creates_conversation_with_status_open(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -361,9 +342,7 @@ class TestConversationCreation:
         assert conv is not None
         assert conv.status == "open"
 
-    def test_agent_id_comes_from_channel(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_agent_id_comes_from_channel(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -373,9 +352,7 @@ class TestConversationCreation:
         assert conv is not None
         assert conv.agent_id == agent.id
 
-    def test_reuses_open_conversation_for_same_contact(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_reuses_open_conversation_for_same_contact(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         wa_id = "5537100000001"
@@ -394,9 +371,7 @@ class TestConversationCreation:
         assert len(all_convs) == 1
         assert all_convs[0].id == existing_conv.id
 
-    def test_reuses_pending_conversation(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_reuses_pending_conversation(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         wa_id = "5537100000002"
@@ -446,9 +421,7 @@ class TestConversationCreation:
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
         wa_id = "5537100000004"
         contact = _make_existing_contact(db, workspace_a.id, wa_id)
-        _make_existing_conversation(
-            db, workspace_a.id, contact.id, agent.id, status="archived"
-        )
+        _make_existing_conversation(db, workspace_a.id, contact.id, agent.id, status="archived")
 
         process_inbound_message(db, _make_msg(wa_id=wa_id, wamid="wamid.ARCHIVED1"))
 
@@ -464,27 +437,21 @@ class TestConversationCreation:
 
 
 class TestMessageCreation:
-    def test_creates_inbound_customer_message(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_creates_inbound_customer_message(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
         process_inbound_message(db, _make_msg(wamid="wamid.MSG_CREATE"))
 
         msg = db.scalar(
-            select(ConversationMessage).where(
-                ConversationMessage.workspace_id == workspace_a.id
-            )
+            select(ConversationMessage).where(ConversationMessage.workspace_id == workspace_a.id)
         )
         assert msg is not None
         assert msg.direction == "inbound"
         assert msg.sender_type == "customer"
         assert msg.content_type == "text"
 
-    def test_message_content_is_text_body(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_message_content_is_text_body(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -493,32 +460,24 @@ class TestMessageCreation:
         )
 
         msg = db.scalar(
-            select(ConversationMessage).where(
-                ConversationMessage.workspace_id == workspace_a.id
-            )
+            select(ConversationMessage).where(ConversationMessage.workspace_id == workspace_a.id)
         )
         assert msg is not None
         assert msg.content == "Quero saber sobre planos"
 
-    def test_external_message_id_is_wamid(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_external_message_id_is_wamid(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
         process_inbound_message(db, _make_msg(wamid="wamid.UNIQUE_ID_XYZ"))
 
         msg = db.scalar(
-            select(ConversationMessage).where(
-                ConversationMessage.workspace_id == workspace_a.id
-            )
+            select(ConversationMessage).where(ConversationMessage.workspace_id == workspace_a.id)
         )
         assert msg is not None
         assert msg.external_message_id == "wamid.UNIQUE_ID_XYZ"
 
-    def test_metadata_contains_timestamp_and_wa_id(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_metadata_contains_timestamp_and_wa_id(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -548,16 +507,12 @@ class TestMessageCreation:
 
         messages = list(
             db.scalars(
-                select(ConversationMessage).where(
-                    ConversationMessage.external_message_id == wamid
-                )
+                select(ConversationMessage).where(ConversationMessage.external_message_id == wamid)
             ).all()
         )
         assert len(messages) == 1
 
-    def test_different_wamids_create_different_messages(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_different_wamids_create_different_messages(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -573,23 +528,17 @@ class TestMessageCreation:
         )
         assert len(messages) == 2
 
-    def test_conversation_last_message_at_updated(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_conversation_last_message_at_updated(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
         process_inbound_message(db, _make_msg(wamid="wamid.LMA1"))
 
-        conv = db.scalar(
-            select(Conversation).where(Conversation.workspace_id == workspace_a.id)
-        )
+        conv = db.scalar(select(Conversation).where(Conversation.workspace_id == workspace_a.id))
         assert conv is not None
         assert conv.last_message_at is not None
 
-    def test_process_returns_conversation_message(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_process_returns_conversation_message(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -598,9 +547,7 @@ class TestMessageCreation:
         assert result is not None
         assert isinstance(result, ConversationMessage)
 
-    def test_process_returns_existing_on_duplicate_wamid(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_process_returns_existing_on_duplicate_wamid(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(db, workspace_a.id, agent.id)
 
@@ -616,23 +563,17 @@ class TestMessageCreation:
 
 
 class TestChannelNotFound:
-    def test_unknown_phone_number_id_returns_none(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_unknown_phone_number_id_returns_none(self, db: Session, workspace_a: Workspace):
         msg = _make_msg(phone_number_id="NONEXISTENT_PID")
         result = process_inbound_message(db, msg)
         assert result is None
 
-    def test_unknown_phone_number_id_does_not_raise(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_unknown_phone_number_id_does_not_raise(self, db: Session, workspace_a: Workspace):
         msg = _make_msg(phone_number_id="NONEXISTENT_PID_2")
         # Must not raise
         process_inbound_message(db, msg)
 
-    def test_archived_channel_returns_none(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_archived_channel_returns_none(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
             db, workspace_a.id, agent.id, phone_number_id="ARCH_PID", status="archived"
@@ -640,15 +581,11 @@ class TestChannelNotFound:
         result = process_inbound_message(db, _make_msg(phone_number_id="ARCH_PID"))
         assert result is None
 
-    def test_no_contact_created_when_channel_not_found(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_no_contact_created_when_channel_not_found(self, db: Session, workspace_a: Workspace):
         msg = _make_msg(phone_number_id="NO_CHANNEL_PID", wa_id="5537000000000")
         process_inbound_message(db, msg)
 
-        contact = db.scalar(
-            select(Contact).where(Contact.external_id == "whatsapp:5537000000000")
-        )
+        contact = db.scalar(select(Contact).where(Contact.external_id == "whatsapp:5537000000000"))
         assert contact is None
 
 
@@ -663,7 +600,9 @@ class TestAutoReplyEnabled:
     ):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_OFF",
             auto_reply_enabled=False,
         )
@@ -685,7 +624,9 @@ class TestAutoReplyEnabled:
     ):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_ON",
             auto_reply_enabled=True,
         )
@@ -700,12 +641,12 @@ class TestAutoReplyEnabled:
         assert conv is not None
         assert conv.ai_enabled is True
 
-    def test_auto_reply_enabled_dispatches_agent_reply(
-        self, db: Session, workspace_a: Workspace
-    ):
+    def test_auto_reply_enabled_dispatches_agent_reply(self, db: Session, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_DISPATCH",
             auto_reply_enabled=True,
         )
@@ -724,7 +665,9 @@ class TestAutoReplyEnabled:
     ):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_DUP",
             auto_reply_enabled=True,
         )
@@ -743,7 +686,9 @@ class TestAutoReplyEnabled:
     ):
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_NODISPATCH",
             auto_reply_enabled=False,
         )
@@ -763,7 +708,9 @@ class TestAutoReplyEnabled:
         """Human takeover (assigned_user_id set) prevents AI re-enabling on next message."""
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_TAKEOVER",
             auto_reply_enabled=True,
         )
@@ -809,7 +756,9 @@ class TestAutoReplyEnabled:
         agent = _make_agent(db, workspace_a.id)
         # Channel starts with auto_reply_enabled=False.
         ch = _make_whatsapp_channel(
-            db, workspace_a.id, agent.id,
+            db,
+            workspace_a.id,
+            agent.id,
             phone_number_id="AR_PID_SYNC",
             auto_reply_enabled=False,
         )
@@ -841,3 +790,155 @@ class TestAutoReplyEnabled:
         mock_reply.assert_called_once()
         db.refresh(conv)
         assert conv.ai_enabled is True
+
+
+# ── Image messages (conversation-image-upload-prd.md) ──────────────────────────
+
+
+class TestImageMessage:
+    def test_evolution_channel_image_downloaded_and_stored(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-instance",
+            provider="evolution_api",
+        )
+
+        with patch(
+            "app.services.evolution_media_service.download_and_store_inbound_image",
+            return_value=("conversation-media/ws/abc123.jpg", "image/jpeg"),
+        ) as mock_download:
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-instance",
+                    wamid="wamid.IMG001",
+                    text_body="Olha essa foto",
+                    message_type="image",
+                ),
+            )
+
+        mock_download.assert_called_once()
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.IMG001"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "image"
+        assert msg.content == "Olha essa foto"
+        assert msg.media_url == "conversation-media/ws/abc123.jpg"
+        assert msg.metadata_json["media_mime_type"] == "image/jpeg"
+
+    def test_image_without_caption_gets_placeholder_content(
+        self, db: Session, workspace_a: Workspace
+    ):
+        """Empty content would be silently excluded from LLM history — must never happen."""
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-instance2",
+            provider="evolution_api",
+        )
+
+        with patch(
+            "app.services.evolution_media_service.download_and_store_inbound_image",
+            return_value=("conversation-media/ws/nocap.jpg", "image/jpeg"),
+        ):
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-instance2",
+                    wamid="wamid.IMG002",
+                    text_body="",
+                    message_type="image",
+                ),
+            )
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.IMG002"
+            )
+        )
+        assert msg is not None
+        assert msg.content == "[Imagem]"
+        assert msg.content != ""
+
+    def test_download_failure_still_creates_message_without_media_url(
+        self, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-instance3",
+            provider="evolution_api",
+        )
+
+        with patch(
+            "app.services.evolution_media_service.download_and_store_inbound_image",
+            return_value=None,
+        ):
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-instance3",
+                    wamid="wamid.IMG003",
+                    text_body="Sem sorte",
+                    message_type="image",
+                ),
+            )
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.IMG003"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "image"
+        assert msg.media_url is None
+        assert "media_mime_type" not in msg.metadata_json
+
+    def test_meta_channel_image_message_skips_download(self, db: Session, workspace_a: Workspace):
+        """Meta Cloud API media download is out of scope for this PRD slice —
+        the message is still persisted (content_type=image) but with no
+        media_url, since whatsapp_webhook_parser.py never emits message_type
+        ="image" yet, this only exercises the defensive provider check."""
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="meta-instance",
+            provider="meta_cloud_api",
+        )
+
+        with patch(
+            "app.services.evolution_media_service.download_and_store_inbound_image"
+        ) as mock_download:
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="meta-instance",
+                    wamid="wamid.IMG004",
+                    text_body="foto",
+                    message_type="image",
+                ),
+            )
+
+        mock_download.assert_not_called()
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.IMG004"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "image"
+        assert msg.media_url is None

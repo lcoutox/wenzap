@@ -51,6 +51,9 @@ class ConversationMessage(Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(32), nullable=False, default="text")
+    # Storage key for the media file (image today; other content_types later).
+    # Resolved via StorageProvider at read time — not a public URL by itself.
+    media_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     # Identifier from the external channel (e.g. WhatsApp message id).
     external_message_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
