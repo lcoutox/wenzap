@@ -33,6 +33,7 @@ import { indentWithTab } from "@codemirror/commands";
 import { EditorView, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { api, ApiError } from "@/lib/api";
+import { useToast } from "@/contexts/ToastContext";
 import type {
   AgentCatalogScope,
   AgentFollowUpSettings,
@@ -163,6 +164,7 @@ function KbConfigModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -191,12 +193,15 @@ function KbConfigModal({
         if (existing) return prev.map((c) => (c.knowledge_base_id === kbId ? conn : c));
         return [...prev, conn];
       });
+      showToast("success", "Base de conhecimento conectada.");
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         const refreshed = await api.agents.knowledgeBases.list(agentId).catch(() => null);
         if (refreshed) setConnections(refreshed);
       } else {
-        setActionErrors((p) => ({ ...p, [kbId]: e instanceof Error ? e.message : "Erro ao conectar." }));
+        const msg = e instanceof Error ? e.message : "Erro ao conectar.";
+        setActionErrors((p) => ({ ...p, [kbId]: msg }));
+        showToast("error", msg);
       }
     } finally {
       setBusy((p) => ({ ...p, [kbId]: false }));
@@ -209,8 +214,11 @@ function KbConfigModal({
     try {
       await api.agents.knowledgeBases.disconnect(agentId, kbId);
       setConnections((prev) => prev.filter((c) => c.knowledge_base_id !== kbId));
+      showToast("success", "Base de conhecimento desconectada.");
     } catch (e) {
-      setActionErrors((p) => ({ ...p, [kbId]: e instanceof Error ? e.message : "Erro ao desconectar." }));
+      const msg = e instanceof Error ? e.message : "Erro ao desconectar.";
+      setActionErrors((p) => ({ ...p, [kbId]: msg }));
+      showToast("error", msg);
     } finally {
       setBusy((p) => ({ ...p, [kbId]: false }));
     }
@@ -436,6 +444,7 @@ function CatalogConfigModal({
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -457,8 +466,10 @@ function CatalogConfigModal({
         category_ids: next.category_ids,
       });
       setScope(saved);
+      showToast("success", "Configuração do Catálogo salva.");
     } catch {
       setSaveError("Erro ao salvar configuração do Catálogo.");
+      showToast("error", "Erro ao salvar configuração do Catálogo.");
     } finally {
       setSaving(false);
     }
@@ -1350,6 +1361,7 @@ function HttpToolFormModal({
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<HttpToolTestResult | null>(null);
+  const { showToast } = useToast();
 
   const pathVars = extractPathVars(url);
   const urlQueryPairs = parseUrlQueryPairs(url);
@@ -1548,9 +1560,12 @@ function HttpToolFormModal({
         await api.agents.httpTools.create(agentId, payload);
       }
       onSaved();
+      showToast("success", "Ferramenta HTTP salva.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -1907,6 +1922,7 @@ function HttpToolsListModal({
   const [formOpen, setFormOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<HttpAgentTool | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const { showToast } = useToast();
 
   const writeAllowed = canWrite(role);
 
@@ -1944,7 +1960,9 @@ function HttpToolsListModal({
     try {
       await api.agents.httpTools.delete(agentId, tool.id);
       setTools((prev) => prev.filter((t) => t.id !== tool.id));
-    } catch {
+      showToast("success", "Ferramenta HTTP removida.");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "Erro ao remover ferramenta.");
       setBusy((p) => ({ ...p, [tool.id]: false }));
     }
   }
@@ -2075,6 +2093,7 @@ function RequestHumanConfigModal({
   const [description, setDescription] = useState(DEFAULT_REQUEST_HUMAN_DESCRIPTION);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -2104,9 +2123,12 @@ function RequestHumanConfigModal({
         };
         await api.agents.requestHumanTool.create(agentId, payload);
       }
+      showToast("success", "Ferramenta 'Solicitar humano' salva.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2118,9 +2140,12 @@ function RequestHumanConfigModal({
     setError(null);
     try {
       await api.agents.requestHumanTool.update(agentId, tool.id, { is_enabled: false });
+      showToast("success", "Ferramenta 'Solicitar humano' desativada.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2207,6 +2232,7 @@ function MarkResolvedConfigModal({
   const [description, setDescription] = useState(DEFAULT_MARK_RESOLVED_DESCRIPTION);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -2236,9 +2262,12 @@ function MarkResolvedConfigModal({
         };
         await api.agents.markResolvedTool.create(agentId, payload);
       }
+      showToast("success", "Ferramenta 'Marcar como resolvido' salva.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2250,9 +2279,12 @@ function MarkResolvedConfigModal({
     setError(null);
     try {
       await api.agents.markResolvedTool.update(agentId, tool.id, { is_enabled: false });
+      showToast("success", "Ferramenta 'Marcar como resolvido' desativada.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2432,6 +2464,7 @@ function CaptureContactDataConfigModal({
   const [fields, setFields] = useState<ContactDataField[]>([{ key: "", description: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -2484,9 +2517,12 @@ function CaptureContactDataConfigModal({
         };
         await api.agents.captureContactDataTool.create(agentId, payload);
       }
+      showToast("success", "Ferramenta 'Capturar dados do cliente' salva.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2498,9 +2534,12 @@ function CaptureContactDataConfigModal({
     setError(null);
     try {
       await api.agents.captureContactDataTool.update(agentId, tool.id, { is_enabled: false });
+      showToast("success", "Ferramenta 'Capturar dados do cliente' desativada.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2638,6 +2677,7 @@ function PipelineActionConfigModal({
   const [loadingStages, setLoadingStages] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -2696,9 +2736,12 @@ function PipelineActionConfigModal({
           })
         );
       }
+      showToast("success", "Ferramenta 'Mover card no pipeline' salva.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2710,9 +2753,12 @@ function PipelineActionConfigModal({
     setError(null);
     try {
       await api.agents.pipelineActionTool.update(agentId, tool.id, { is_enabled: false });
+      showToast("success", "Ferramenta 'Mover card no pipeline' desativada.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2850,6 +2896,7 @@ function AssignOperatorConfigModal({
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -2894,9 +2941,12 @@ function AssignOperatorConfigModal({
           })
         );
       }
+      showToast("success", "Ferramenta 'Atribuir a operador' salva.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -2908,9 +2958,12 @@ function AssignOperatorConfigModal({
     setError(null);
     try {
       await api.agents.assignOperatorTool.update(agentId, tool.id, { is_enabled: false });
+      showToast("success", "Ferramenta 'Atribuir a operador' desativada.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao desativar ferramenta.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
@@ -3018,6 +3071,7 @@ function PipelineActionListModal({
   const [formOpen, setFormOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<PipelineActionAgentTool | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const { showToast } = useToast();
 
   const writeAllowed = canWrite(role);
 
@@ -3056,7 +3110,9 @@ function PipelineActionListModal({
     try {
       await api.agents.pipelineActionTool.delete(agentId, tool.id);
       setTools((prev) => prev.filter((t) => t.id !== tool.id));
-    } catch {
+      showToast("success", "Ferramenta removida.");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "Erro ao remover ferramenta.");
       setBusy((p) => ({ ...p, [tool.id]: false }));
     }
   }
@@ -3183,6 +3239,7 @@ function AssignOperatorListModal({
   const [formOpen, setFormOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<AssignOperatorAgentTool | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const { showToast } = useToast();
 
   const writeAllowed = canWrite(role);
 
@@ -3221,7 +3278,9 @@ function AssignOperatorListModal({
     try {
       await api.agents.assignOperatorTool.delete(agentId, tool.id);
       setTools((prev) => prev.filter((t) => t.id !== tool.id));
-    } catch {
+      showToast("success", "Ferramenta removida.");
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "Erro ao remover ferramenta.");
       setBusy((p) => ({ ...p, [tool.id]: false }));
     }
   }
@@ -3415,6 +3474,7 @@ function FollowUpConfigModal({
   ]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -3459,9 +3519,12 @@ function FollowUpConfigModal({
         })),
       });
       onSaved(updated);
+      showToast("success", nextEnabled ? "Follow-up automático salvo." : "Follow-up automático desativado.");
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar follow-up.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar follow-up.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }

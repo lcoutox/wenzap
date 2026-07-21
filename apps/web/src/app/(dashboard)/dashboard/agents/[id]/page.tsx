@@ -3,6 +3,7 @@
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { useToast } from "@/contexts/ToastContext";
 import type {
   Agent,
   AgentStatus,
@@ -96,6 +97,7 @@ export default function AgentWorkspacePage() {
   const router   = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { showToast } = useToast();
 
   // Remote state
   const [agent,    setAgent]   = useState<Agent | null>(null);
@@ -227,9 +229,12 @@ export default function AgentWorkspacePage() {
       });
       setAgent(updated);
       setSaveSuccess(true);
+      showToast("success", "Configuração do agente salva.");
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Erro ao salvar.");
+      const msg = e instanceof Error ? e.message : "Erro ao salvar.";
+      setSaveError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }

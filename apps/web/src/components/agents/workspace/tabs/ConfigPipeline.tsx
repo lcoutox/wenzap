@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Pipeline, PipelineStage } from "@/lib/api";
+import { useToast } from "@/contexts/ToastContext";
 
 function Field({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
@@ -35,6 +36,7 @@ export function ConfigPipeline({
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   // Load pipelines once
   useEffect(() => {
@@ -73,9 +75,12 @@ export function ConfigPipeline({
       });
       setSuccess(true);
       onSaved?.();
+      showToast("success", "Configuração de pipeline salva.");
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erro ao salvar configurações de pipeline.");
+      const msg = e instanceof ApiError ? e.message : "Erro ao salvar configurações de pipeline.";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setSaving(false);
     }
