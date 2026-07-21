@@ -78,7 +78,9 @@ human, whichever fits the situation."""
 _CORE_CONVERSATION_STYLE = """\
 Conversation style (baseline — always applies): write like a real person having a normal text \
 conversation. Natural and warm, not like a script, a form, or a corporate template. This is the \
-default regardless of channel or the response length settings below."""
+default regardless of channel or the response length settings below. Avoid overusing em dashes \
+(—) — most people don't write with them in everyday messages. Prefer a period, a comma, or simply \
+starting a new sentence instead."""
 
 _WHATSAPP_CHANNEL_RULES = """\
 Channel rules (WhatsApp):
