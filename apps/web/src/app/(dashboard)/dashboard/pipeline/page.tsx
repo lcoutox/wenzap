@@ -673,7 +673,7 @@ function EntryCard({
         {...listeners}
         {...attributes}
         className={`group relative bg-nb-surface border border-nb-border rounded-xl p-3 hover:border-nb-primary/30 hover:shadow-sm transition-all cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
-        onClick={() => router.push(`/dashboard/inbox?conversationId=${entry.conversation_id}`)}
+        onClick={() => router.push(`/dashboard/inbox?conv=${entry.conversation_id}`)}
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-2 mb-2">
