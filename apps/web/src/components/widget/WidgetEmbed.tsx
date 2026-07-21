@@ -316,6 +316,14 @@ export function WidgetEmbed({ publicKey }: { publicKey: string }) {
     if (open) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
+  // The send lock is brief (just the POST) — as soon as it clears, return
+  // focus to the input. Without this, pressing Enter to send drops focus
+  // (the textarea is disabled for that instant) and never gets it back,
+  // forcing a re-click before typing a quick follow-up message.
+  useEffect(() => {
+    if (!sending && open) inputRef.current?.focus();
+  }, [sending, open]);
+
   // ── Send message ────────────────────────────────────────────────────────────
 
   const handleSend = useCallback(async () => {
