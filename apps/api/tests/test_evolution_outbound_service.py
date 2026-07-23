@@ -55,10 +55,12 @@ def _conversation(
     )
 
 
-def _message(content: str = "Olá", metadata_json: dict | None = None) -> SimpleNamespace:
+def _message(
+    content: str = "Olá", metadata_json: dict | None = None, content_type: str = "text"
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid.uuid4(), workspace_id=uuid.uuid4(), content=content,
-        direction="outbound", sender_type="human",
+        direction="outbound", sender_type="human", content_type=content_type,
         external_message_id=None, metadata_json=metadata_json,
     )
 
@@ -260,6 +262,88 @@ def test_unexpected_exception_does_not_raise():
     conv = _conversation(channel_id=uuid.uuid4())
     _PROVIDER.deliver(db, msg, conv)  # must not raise
     assert msg.metadata_json["delivery"]["error_type"] == "unexpected_error"
+
+
+# ── deliver_media (whatsapp-voice-groq-elevenlabs-prd.md) ──────────────────────
+
+
+def _patched_storage(data: bytes = b"fake-media-bytes"):
+    fake_storage = SimpleNamespace(get_file=lambda key: data)  # noqa: ARG005
+    return patch(
+        "app.services.storage.factory.get_storage_provider", return_value=fake_storage
+    )
+
+
+def test_deliver_media_audio_calls_send_whatsapp_audio(monkeypatch):
+    monkeypatch.setenv("EVOLUTION_TEST_API_KEY", "fake-key")
+    channel = _channel(base_url="https://api.wenzap.com.br", instance_name="cliente-teste")
+    contact = _contact(external_id="whatsapp:5537999999999")
+    db = _FakeDB(channel=channel, contact=contact)
+    msg = _message(content_type="audio")
+    conv = _conversation(channel_id=channel.id, contact_id=contact.id)
+
+    resp = _meta_response({"key": {"id": "EVO_AUDIO_1"}})
+    with _patched_storage(), patch(_HTTP_POST, return_value=resp) as mock_post:
+        _PROVIDER.deliver_media(
+            db, msg, conv, storage_key="conversation-media/ws/voice.ogg", mime_type="audio/ogg"
+        )
+
+    call_args = mock_post.call_args
+    assert call_args.args[0] == "https://api.wenzap.com.br/message/sendWhatsAppAudio/cliente-teste"
+    assert call_args.kwargs["json"]["number"] == "5537999999999"
+    assert call_args.kwargs["json"]["encoding"] is True
+    assert msg.metadata_json["delivery"]["status"] == "sent"
+    assert msg.metadata_json["delivery"]["external_message_id"] == "EVO_AUDIO_1"
+
+
+def test_deliver_media_image_calls_send_media_with_caption(monkeypatch):
+    monkeypatch.setenv("EVOLUTION_TEST_API_KEY", "fake-key")
+    channel = _channel(base_url="https://api.wenzap.com.br", instance_name="cliente-teste")
+    contact = _contact(external_id="whatsapp:5537999999999")
+    db = _FakeDB(channel=channel, contact=contact)
+    msg = _message(content_type="image")
+    conv = _conversation(channel_id=channel.id, contact_id=contact.id)
+
+    resp = _meta_response({"key": {"id": "EVO_IMG_1"}})
+    with _patched_storage(), patch(_HTTP_POST, return_value=resp) as mock_post:
+        _PROVIDER.deliver_media(
+            db, msg, conv,
+            storage_key="conversation-media/ws/img.jpg", mime_type="image/jpeg",
+            caption="Toyota Corolla — R$ 88.900,00",
+        )
+
+    call_args = mock_post.call_args
+    assert call_args.args[0] == "https://api.wenzap.com.br/message/sendMedia/cliente-teste"
+    payload = call_args.kwargs["json"]
+    assert payload["mediatype"] == "image"
+    assert payload["mimetype"] == "image/jpeg"
+    assert payload["caption"] == "Toyota Corolla — R$ 88.900,00"
+    assert msg.metadata_json["delivery"]["status"] == "sent"
+
+
+def test_deliver_media_storage_fetch_failure_saves_failure(monkeypatch):
+    monkeypatch.setenv("EVOLUTION_TEST_API_KEY", "fake-key")
+    channel = _channel()
+    contact = _contact()
+    db = _FakeDB(channel=channel, contact=contact)
+    msg = _message(content_type="audio")
+    conv = _conversation(channel_id=channel.id, contact_id=contact.id)
+
+    fake_storage = SimpleNamespace(get_file=lambda key: (_ for _ in ()).throw(RuntimeError("nope")))
+    with patch("app.services.storage.factory.get_storage_provider", return_value=fake_storage):
+        _PROVIDER.deliver_media(
+            db, msg, conv, storage_key="conversation-media/ws/voice.ogg", mime_type="audio/ogg"
+        )
+
+    assert msg.metadata_json["delivery"]["error_type"] == "storage_fetch_failed"
+
+
+def test_deliver_media_channel_not_found_saves_failure():
+    db = _FakeDB(channel=None)
+    msg = _message(content_type="audio")
+    conv = _conversation(channel_id=None)
+    _PROVIDER.deliver_media(db, msg, conv, storage_key="x", mime_type="audio/ogg")
+    assert msg.metadata_json["delivery"]["error_type"] == "channel_not_found"
 
 
 if __name__ == "__main__":

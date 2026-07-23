@@ -28,7 +28,7 @@ from app.services.context_tier_service import plan_allows_context_tier, validate
 _PROMPT_FIELDS = {"system_prompt", "persona", "response_style", "language_mode",
                   "knowledge_only", "show_sources", "knowledge_fallback",
                   "instructions_mode", "guided_config", "advanced_prompt",
-                  "reply_delay_seconds"}
+                  "reply_delay_seconds", "voice_reply_enabled", "elevenlabs_voice_id"}
 
 _VALID_REPLY_DELAYS: frozenset[int] = frozenset([0, 3, 5, 8, 15])
 
@@ -36,7 +36,10 @@ _VALID_REPLY_DELAYS: frozenset[int] = frozenset([0, 3, 5, 8, 15])
 _MODEL_FIELDS = {"ai_model_id", "temperature", "context_tier"}
 
 # Fields that can be explicitly cleared to None via PATCH
-_CLEARABLE_FIELDS = {"description", "persona", "system_prompt", "guided_config", "advanced_prompt"}
+_CLEARABLE_FIELDS = {
+    "description", "persona", "system_prompt", "guided_config", "advanced_prompt",
+    "elevenlabs_voice_id",
+}
 
 # Valid status transitions
 _VALID_TRANSITIONS: dict[AgentStatus, set[AgentStatus]] = {
@@ -134,6 +137,8 @@ def _build_agent_out(
         advanced_prompt=prompt.advanced_prompt if prompt else None,
         context_tier=(model_cfg.context_window_tier or "standard") if model_cfg else "standard",
         reply_delay_seconds=int(prompt.reply_delay_seconds) if prompt else 0,
+        voice_reply_enabled=bool(prompt.voice_reply_enabled) if prompt else False,
+        elevenlabs_voice_id=prompt.elevenlabs_voice_id if prompt else None,
         avatar_url=get_avatar_url(agent),
         avatar_mime_type=agent.avatar_mime_type,
         avatar_updated_at=agent.avatar_updated_at,
@@ -352,7 +357,8 @@ def update_agent(
     # ── Handle prompt fields ──────────────────────────────────────────────────
     for field in ("system_prompt", "persona", "response_style", "language_mode",
                   "knowledge_only", "show_sources",
-                  "instructions_mode", "guided_config", "advanced_prompt"):
+                  "instructions_mode", "guided_config", "advanced_prompt",
+                  "voice_reply_enabled", "elevenlabs_voice_id"):
         if field not in update_data:
             continue
         value = update_data.pop(field)

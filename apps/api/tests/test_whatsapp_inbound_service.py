@@ -809,7 +809,7 @@ class TestImageMessage:
         )
 
         with patch(
-            "app.services.evolution_media_service.download_and_store_inbound_image",
+            "app.services.evolution_media_service.download_and_store_inbound_media",
             return_value=("conversation-media/ws/abc123.jpg", "image/jpeg"),
         ) as mock_download:
             process_inbound_message(
@@ -848,7 +848,7 @@ class TestImageMessage:
         )
 
         with patch(
-            "app.services.evolution_media_service.download_and_store_inbound_image",
+            "app.services.evolution_media_service.download_and_store_inbound_media",
             return_value=("conversation-media/ws/nocap.jpg", "image/jpeg"),
         ):
             process_inbound_message(
@@ -883,7 +883,7 @@ class TestImageMessage:
         )
 
         with patch(
-            "app.services.evolution_media_service.download_and_store_inbound_image",
+            "app.services.evolution_media_service.download_and_store_inbound_media",
             return_value=None,
         ):
             process_inbound_message(
@@ -921,7 +921,7 @@ class TestImageMessage:
         )
 
         with patch(
-            "app.services.evolution_media_service.download_and_store_inbound_image"
+            "app.services.evolution_media_service.download_and_store_inbound_media"
         ) as mock_download:
             process_inbound_message(
                 db,
@@ -942,3 +942,171 @@ class TestImageMessage:
         assert msg is not None
         assert msg.content_type == "image"
         assert msg.media_url is None
+
+
+# ── Audio messages (whatsapp-voice-groq-elevenlabs-prd.md) ─────────────────────
+
+
+class TestAudioMessage:
+    def test_transcribed_when_groq_key_configured(self, db: Session, workspace_a: Workspace):
+        from app.services.workspace_credentials_service import set_workspace_credential
+
+        set_workspace_credential(db, workspace_a.id, "groq", "gsk_test_key")
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-audio-1",
+            provider="evolution_api",
+        )
+
+        with (
+            patch(
+                "app.services.evolution_media_service.download_and_store_inbound_media",
+                return_value=("conversation-media/ws/voice1.ogg", "audio/ogg"),
+            ),
+            patch(
+                "app.services.storage.factory.get_storage_provider",
+            ) as mock_get_storage,
+            patch(
+                "app.services.groq_transcription_service.transcribe_audio",
+                return_value="Oi, queria saber o preço do apartamento",
+            ) as mock_transcribe,
+        ):
+            mock_get_storage.return_value.get_file.return_value = b"fake-audio-bytes"
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-audio-1",
+                    wamid="wamid.AUD001",
+                    text_body="",
+                    message_type="audio",
+                ),
+            )
+
+        mock_transcribe.assert_called_once()
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.AUD001"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "audio"
+        assert msg.content == "Oi, queria saber o preço do apartamento"
+        assert msg.media_url == "conversation-media/ws/voice1.ogg"
+
+    def test_placeholder_when_no_groq_key_configured(self, db: Session, workspace_a: Workspace):
+        """No workspace_credential row at all — must not invent a transcript."""
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-audio-2",
+            provider="evolution_api",
+        )
+
+        with patch(
+            "app.services.evolution_media_service.download_and_store_inbound_media",
+            return_value=("conversation-media/ws/voice2.ogg", "audio/ogg"),
+        ):
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-audio-2",
+                    wamid="wamid.AUD002",
+                    text_body="",
+                    message_type="audio",
+                ),
+            )
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.AUD002"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "audio"
+        assert "transcrição não configurada" in msg.content
+        assert msg.media_url == "conversation-media/ws/voice2.ogg"
+
+    def test_placeholder_when_download_fails(self, db: Session, workspace_a: Workspace):
+        from app.services.workspace_credentials_service import set_workspace_credential
+
+        set_workspace_credential(db, workspace_a.id, "groq", "gsk_test_key")
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-audio-3",
+            provider="evolution_api",
+        )
+
+        with patch(
+            "app.services.evolution_media_service.download_and_store_inbound_media",
+            return_value=None,
+        ):
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-audio-3",
+                    wamid="wamid.AUD003",
+                    text_body="",
+                    message_type="audio",
+                ),
+            )
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.AUD003"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "audio"
+        assert msg.media_url is None
+        assert "não foi possível baixar" in msg.content
+
+    def test_placeholder_when_transcription_fails(self, db: Session, workspace_a: Workspace):
+        from app.services.workspace_credentials_service import set_workspace_credential
+
+        set_workspace_credential(db, workspace_a.id, "groq", "gsk_test_key")
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="wenzap-audio-4",
+            provider="evolution_api",
+        )
+
+        with (
+            patch(
+                "app.services.evolution_media_service.download_and_store_inbound_media",
+                return_value=("conversation-media/ws/voice4.ogg", "audio/ogg"),
+            ),
+            patch("app.services.storage.factory.get_storage_provider") as mock_get_storage,
+            patch(
+                "app.services.groq_transcription_service.transcribe_audio",
+                return_value=None,
+            ),
+        ):
+            mock_get_storage.return_value.get_file.return_value = b"fake-audio-bytes"
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="wenzap-audio-4",
+                    wamid="wamid.AUD004",
+                    text_body="",
+                    message_type="audio",
+                ),
+            )
+
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.AUD004"
+            )
+        )
+        assert msg is not None
+        assert "transcrição falhou" in msg.content

@@ -1,9 +1,12 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.enums import WorkspaceStatus
+
+IntegrationProvider = Literal["groq", "elevenlabs"]
 
 _SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
@@ -36,3 +39,14 @@ class WorkspaceUpdate(BaseModel):
         if len(v) < 3 or len(v) > 63:
             raise ValueError("Slug must be between 3 and 63 characters.")
         return v
+
+
+class WorkspaceIntegrationsOut(BaseModel):
+    """Never includes the actual key values — configured/not-configured only."""
+
+    groq_configured: bool
+    elevenlabs_configured: bool
+
+
+class WorkspaceIntegrationKeyInput(BaseModel):
+    api_key: str = Field(min_length=1, max_length=500)

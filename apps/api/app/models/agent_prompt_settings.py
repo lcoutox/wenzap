@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +28,11 @@ class AgentPromptSettings(Base):
     guided_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     advanced_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     reply_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # whatsapp-voice-groq-elevenlabs-prd.md — reply with synthesized voice when
+    # the triggering inbound message was itself a voice note. Requires the
+    # workspace to have an ElevenLabs key configured; otherwise ignored.
+    voice_reply_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    elevenlabs_voice_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

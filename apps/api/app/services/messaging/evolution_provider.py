@@ -14,6 +14,7 @@ Design notes (mirrors whatsapp_outbound_service's contract):
   fully trusting delivery in production (see plano-evolution-api.md).
 """
 
+import base64
 import logging
 from datetime import datetime, timezone
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDER_KEY = "evolution_api"
 _TIMEOUT = 10.0
+_MEDIA_TIMEOUT = 20.0  # media uploads take longer than a plain text send
 
 
 class EvolutionOutboundProvider:
@@ -56,6 +58,32 @@ class EvolutionOutboundProvider:
                 db, message,
                 error_type="unexpected_error",
                 error_message="An unexpected error occurred during delivery.",
+                instance_name=None,
+                recipient=None,
+            )
+
+    def deliver_media(
+        self,
+        db: Session,
+        message: ConversationMessage,
+        conversation: Conversation,
+        *,
+        storage_key: str,
+        mime_type: str,
+        caption: str | None = None,
+    ) -> None:
+        try:
+            _deliver_media(db, message, conversation, storage_key=storage_key, mime_type=mime_type, caption=caption)
+        except Exception:
+            logger.exception(
+                "evolution_outbound_media unexpected error message_id=%s conversation_id=%s",
+                message.id,
+                conversation.id,
+            )
+            _save_delivery_failure(
+                db, message,
+                error_type="unexpected_error",
+                error_message="An unexpected error occurred during media delivery.",
                 instance_name=None,
                 recipient=None,
             )
@@ -208,6 +236,186 @@ def _deliver(
     logger.info(
         "evolution_outbound delivered message_id=%s external_id=%s", message.id, external_id
     )
+
+
+def _deliver_media(
+    db: Session,
+    message: ConversationMessage,
+    conversation: Conversation,
+    *,
+    storage_key: str,
+    mime_type: str,
+    caption: str | None,
+) -> None:
+    channel = _find_whatsapp_channel(db, conversation)
+    config = (channel.config_json or {}) if channel else {}
+    base_url = config.get("base_url")
+    instance_name = config.get("instance_name")
+
+    if channel is None:
+        logger.warning("evolution_outbound_media channel not found conversation_id=%s", conversation.id)
+        _save_delivery_failure(
+            db, message,
+            error_type="channel_not_found",
+            error_message="No active WhatsApp channel found for this conversation.",
+            instance_name=None,
+            recipient=None,
+        )
+        return
+
+    contact = _load_contact(db, conversation)
+    recipient = normalize_whatsapp_to(contact) if contact else None
+    if not recipient:
+        _save_delivery_failure(
+            db, message,
+            error_type="missing_recipient",
+            error_message="Contact has no usable WhatsApp number.",
+            instance_name=instance_name,
+            recipient=None,
+        )
+        return
+
+    if not base_url or not instance_name:
+        _save_delivery_failure(
+            db, message,
+            error_type="missing_instance_config",
+            error_message="Evolution base_url or instance_name not configured for this channel.",
+            instance_name=instance_name,
+            recipient=recipient,
+        )
+        return
+
+    api_key = _resolve_api_key(db, channel, config.get("api_key_ref"))
+    if not api_key:
+        _save_delivery_failure(
+            db, message,
+            error_type="missing_api_key",
+            error_message="Evolution API key not configured for this channel.",
+            instance_name=instance_name,
+            recipient=recipient,
+        )
+        return
+
+    from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+    try:
+        data = get_storage_provider().get_file(storage_key)
+    except Exception as exc:
+        logger.exception("evolution_outbound_media storage fetch failed key=%s", storage_key)
+        _save_delivery_failure(
+            db, message,
+            error_type="storage_fetch_failed",
+            error_message=str(exc)[:300],
+            instance_name=instance_name,
+            recipient=recipient,
+        )
+        return
+
+    encoded = base64.b64encode(data).decode("ascii")
+
+    try:
+        if message.content_type == "audio":
+            response = _call_evolution_send_audio(
+                base_url=base_url, instance_name=instance_name, to=recipient,
+                audio_base64=encoded, api_key=api_key,
+            )
+        else:
+            response = _call_evolution_send_media(
+                base_url=base_url, instance_name=instance_name, to=recipient,
+                media_base64=encoded, mime_type=mime_type, caption=caption, api_key=api_key,
+            )
+    except httpx.TimeoutException:
+        _save_delivery_failure(
+            db, message,
+            error_type="timeout",
+            error_message="Evolution API media request timed out.",
+            instance_name=instance_name,
+            recipient=recipient,
+        )
+        return
+    except httpx.HTTPStatusError as exc:
+        _save_delivery_failure(
+            db, message,
+            error_type="http_error",
+            error_status=exc.response.status_code,
+            error_message=_safe_error_message(exc),
+            instance_name=instance_name,
+            recipient=recipient,
+        )
+        return
+    except httpx.RequestError as exc:
+        _save_delivery_failure(
+            db, message,
+            error_type="request_error",
+            error_message=type(exc).__name__,
+            instance_name=instance_name,
+            recipient=recipient,
+        )
+        return
+
+    external_id = _extract_message_id(response)
+    _save_delivery_success(
+        db, message, external_id=external_id, instance_name=instance_name, recipient=recipient
+    )
+    logger.info(
+        "evolution_outbound_media delivered message_id=%s external_id=%s content_type=%s",
+        message.id, external_id, message.content_type,
+    )
+
+
+def _call_evolution_send_audio(
+    base_url: str,
+    instance_name: str,
+    to: str,
+    audio_base64: str,
+    api_key: str,
+) -> dict:
+    """POST {base_url}/message/sendWhatsAppAudio/{instance_name} (Evolution API v2 shape).
+
+    ⚠️ Not yet smoke-tested against a live Evolution instance.
+    """
+    url = f"{base_url.rstrip('/')}/message/sendWhatsAppAudio/{instance_name}"
+    response = httpx.post(
+        url,
+        json={"number": to, "audio": audio_base64, "encoding": True},
+        headers={"apikey": api_key, "Content-Type": "application/json"},
+        timeout=_MEDIA_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _call_evolution_send_media(
+    base_url: str,
+    instance_name: str,
+    to: str,
+    media_base64: str,
+    mime_type: str,
+    caption: str | None,
+    api_key: str,
+) -> dict:
+    """POST {base_url}/message/sendMedia/{instance_name} (Evolution API v2 shape).
+
+    Used for images (catalog delivery). ⚠️ Not yet smoke-tested against a
+    live Evolution instance.
+    """
+    url = f"{base_url.rstrip('/')}/message/sendMedia/{instance_name}"
+    payload: dict = {
+        "number": to,
+        "mediatype": "image",
+        "mimetype": mime_type,
+        "media": media_base64,
+    }
+    if caption:
+        payload["caption"] = caption
+    response = httpx.post(
+        url,
+        json=payload,
+        headers={"apikey": api_key, "Content-Type": "application/json"},
+        timeout=_MEDIA_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def _resolve_api_key(db: Session, channel: Channel, ref: str | None) -> str | None:

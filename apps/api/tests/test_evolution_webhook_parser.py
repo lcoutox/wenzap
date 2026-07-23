@@ -120,9 +120,19 @@ def test_missing_remote_jid_returns_empty():
 
 def test_unsupported_message_type_is_skipped():
     payload = _real_captured_payload()
+    payload["data"]["messageType"] = "documentMessage"
+    payload["data"]["message"] = {"documentMessage": {"mimetype": "application/pdf"}}
+    assert parse_inbound_text_messages(payload) == []
+
+
+def test_audio_message_is_parsed_with_no_body_required():
+    payload = _real_captured_payload()
     payload["data"]["messageType"] = "audioMessage"
     payload["data"]["message"] = {"audioMessage": {"mimetype": "audio/ogg"}}
-    assert parse_inbound_text_messages(payload) == []
+    results = parse_inbound_text_messages(payload)
+    assert len(results) == 1
+    assert results[0].message_type == "audio"
+    assert results[0].text_body == ""
 
 
 def test_empty_text_body_is_skipped():

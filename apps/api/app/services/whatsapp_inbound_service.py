@@ -284,9 +284,17 @@ def _create_message_idempotent(
         content_type = "image"
         content = msg.text_body or "[Imagem]"
 
-    media_key = _download_inbound_media(db, channel, msg) if msg.message_type == "image" else None
+    media_key = (
+        _download_inbound_media(db, channel, msg)
+        if msg.message_type in ("image", "audio")
+        else None
+    )
     if media_key is not None:
         metadata_json["media_mime_type"] = media_key[1]
+
+    if msg.message_type == "audio":
+        content_type = "audio"
+        content = _transcribe_or_placeholder(db, workspace_id, media_key)
 
     message = ConversationMessage(
         workspace_id=workspace_id,
@@ -324,18 +332,20 @@ def _download_inbound_media(
     msg: WhatsAppInboundMessage,
 ) -> tuple[str, str] | None:
     """
-    Best-effort download of an inbound image via the channel's provider.
+    Best-effort download of inbound media (image or audio) via the channel's
+    provider.
 
     Returns (storage_key, mime_type), or None if the provider isn't
     Evolution API (only provider supported so far — conversation-image-
-    upload-prd.md scoped Meta Cloud API's own media download as future work)
-    or the download failed for any reason. Never raises: a media download
-    failure must not prevent the text/caption message from being persisted.
+    upload-prd.md / whatsapp-voice-groq-elevenlabs-prd.md scoped Meta Cloud
+    API's own media download as future work) or the download failed for any
+    reason. Never raises: a media download failure must not prevent the
+    text/caption/transcript message from being persisted.
     """
     provider = (channel.config_json or {}).get("provider")
     if provider != "evolution_api":
         logger.info(
-            "whatsapp_inbound image download skipped provider=%s wamid=%s "
+            "whatsapp_inbound media download skipped provider=%s wamid=%s "
             "(only evolution_api is supported today)",
             provider,
             msg.wamid,
@@ -343,14 +353,57 @@ def _download_inbound_media(
         return None
 
     from app.services.evolution_media_service import (  # noqa: PLC0415
-        download_and_store_inbound_image,
+        download_and_store_inbound_media,
     )
     from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
 
     storage = get_storage_provider()
-    return download_and_store_inbound_image(
-        db, channel, storage, wamid=msg.wamid, from_wa_id=msg.from_wa_id
+    media_kind = "audio" if msg.message_type == "audio" else "image"
+    return download_and_store_inbound_media(
+        db, channel, storage, wamid=msg.wamid, from_wa_id=msg.from_wa_id, media_kind=media_kind
     )
+
+
+def _transcribe_or_placeholder(
+    db: Session,
+    workspace_id: uuid.UUID,
+    media_key: tuple[str, str] | None,
+) -> str:
+    """
+    Transcribe a downloaded voice note via the workspace's own Groq key.
+
+    Falls back to an explanatory placeholder (never empty, never invented
+    content) when: the audio couldn't be downloaded, the workspace has no
+    Groq key configured, or the transcription call itself failed.
+    """
+    if media_key is None:
+        return "[Áudio recebido — não foi possível baixar o arquivo]"
+
+    from app.services.workspace_credentials_service import (  # noqa: PLC0415
+        get_workspace_credential,
+    )
+
+    groq_key = get_workspace_credential(db, workspace_id, "groq")
+    if not groq_key:
+        return (
+            "[Áudio recebido — transcrição não configurada. "
+            "Configure sua chave Groq em Configurações > Integrações.]"
+        )
+
+    from app.services.groq_transcription_service import transcribe_audio  # noqa: PLC0415
+    from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+    storage_key, mime_type = media_key
+    try:
+        audio_bytes = get_storage_provider().get_file(storage_key)
+    except Exception:
+        logger.exception("whatsapp_inbound audio fetch for transcription failed key=%s", storage_key)
+        return "[Áudio recebido — não foi possível ler o arquivo para transcrever]"
+
+    transcript = transcribe_audio(groq_key, audio_bytes, content_type=mime_type)
+    if not transcript:
+        return "[Áudio recebido — a transcrição falhou]"
+    return transcript
 
 
 def _trigger_agent_reply(

@@ -144,6 +144,8 @@ class AgentUpdate(BaseModel):
     advanced_prompt: str | None = Field(default=None, max_length=20000)
     context_tier: ContextTier | None = None
     reply_delay_seconds: int | None = None
+    voice_reply_enabled: bool | None = None
+    elevenlabs_voice_id: str | None = Field(default=None, max_length=100)
 
     @field_validator("reply_delay_seconds")
     @classmethod
@@ -212,6 +214,8 @@ class AgentOut(BaseModel):
     advanced_prompt: str | None
     context_tier: str
     reply_delay_seconds: int
+    voice_reply_enabled: bool
+    elevenlabs_voice_id: str | None
     avatar_url: str | None
     avatar_mime_type: str | None
     avatar_updated_at: datetime | None

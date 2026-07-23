@@ -1,12 +1,15 @@
 """
-Evolution API inbound media download — conversation-image-upload-prd.md.
+Evolution API inbound media download — conversation-image-upload-prd.md,
+extended to audio by whatsapp-voice-groq-elevenlabs-prd.md.
 
-Downloads inbound WhatsApp media (images) via Evolution API's own
+Downloads inbound WhatsApp media (images, audio) via Evolution API's own
 `getBase64FromMediaMessage` endpoint, which handles the Baileys media
 decryption internally so this codebase never has to implement that crypto
-itself (the raw `message.imageMessage.url` field is an encrypted WhatsApp
-CDN URL — not directly downloadable without the message's mediaKey).
-Uploads the decoded bytes to the configured StorageProvider.
+itself (the raw `message.imageMessage.url`/`message.audioMessage.url` field
+is an encrypted WhatsApp CDN URL — not directly downloadable without the
+message's mediaKey). The endpoint is the same regardless of media type —
+Evolution resolves and decrypts whatever the message actually is. Uploads
+the decoded bytes to the configured StorageProvider.
 
 ⚠️ Not yet smoke-tested against a live Evolution instance — same caveat as
 evolution_provider.py's _call_evolution_send_text. Confirm the request/
@@ -29,19 +32,27 @@ from app.services.storage.base import StorageProvider
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15.0
-_DEFAULT_MIME_TYPE = "image/jpeg"
+_DEFAULT_MIME_TYPE_BY_KIND = {
+    "image": "image/jpeg",
+    "audio": "audio/ogg",
+}
 
 
-def download_and_store_inbound_image(
+def download_and_store_inbound_media(
     db: Session,
     channel: Channel,
     storage: StorageProvider,
     *,
     wamid: str,
     from_wa_id: str,
+    media_kind: str = "image",
 ) -> tuple[str, str] | None:
     """
-    Download an inbound image from Evolution API and store it via *storage*.
+    Download inbound media (image or audio) from Evolution API and store it.
+
+    *media_kind* only picks the fallback mime type used if Evolution's
+    response doesn't include one — the download request itself is identical
+    for any media type.
 
     Returns (storage_key, mime_type) on success, or None on any failure.
     Never raises — mirrors whatsapp_inbound_service's error-tolerant design;
@@ -83,7 +94,7 @@ def download_and_store_inbound_image(
         )
         return None
 
-    mime_type = _DEFAULT_MIME_TYPE
+    mime_type = _DEFAULT_MIME_TYPE_BY_KIND.get(media_kind, "application/octet-stream")
     if isinstance(payload, dict) and isinstance(payload.get("mimetype"), str):
         mime_type = payload["mimetype"]
 
@@ -109,6 +120,34 @@ def download_and_store_inbound_image(
         len(data),
     )
     return key, mime_type
+
+
+def download_and_store_inbound_image(
+    db: Session,
+    channel: Channel,
+    storage: StorageProvider,
+    *,
+    wamid: str,
+    from_wa_id: str,
+) -> tuple[str, str] | None:
+    """Back-compat wrapper — see download_and_store_inbound_media."""
+    return download_and_store_inbound_media(
+        db, channel, storage, wamid=wamid, from_wa_id=from_wa_id, media_kind="image"
+    )
+
+
+def download_and_store_inbound_audio(
+    db: Session,
+    channel: Channel,
+    storage: StorageProvider,
+    *,
+    wamid: str,
+    from_wa_id: str,
+) -> tuple[str, str] | None:
+    """whatsapp-voice-groq-elevenlabs-prd.md — same download path as images."""
+    return download_and_store_inbound_media(
+        db, channel, storage, wamid=wamid, from_wa_id=from_wa_id, media_kind="audio"
+    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

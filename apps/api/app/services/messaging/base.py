@@ -28,3 +28,22 @@ class OutboundProvider(Protocol):
         message: ConversationMessage,
         conversation: Conversation,
     ) -> None: ...
+
+    def deliver_media(
+        self,
+        db: Session,
+        message: ConversationMessage,
+        conversation: Conversation,
+        *,
+        storage_key: str,
+        mime_type: str,
+        caption: str | None = None,
+    ) -> None:
+        """
+        Deliver a media message (image, audio, ...) already persisted as
+        *message* (content_type set accordingly). *storage_key* is resolved
+        via StorageProvider by each implementation however it needs to (a
+        presigned URL for link-based APIs, raw bytes/base64 for others) —
+        whatsapp-voice-groq-elevenlabs-prd.md.
+        """
+        ...

@@ -36,6 +36,11 @@ the encrypted `message.imageMessage.url`). ⚠️ The exact shape of
 `message.imageMessage` (caption field name, presence of a mimetype hint)
 has NOT been confirmed against a live payload the way the text shape above
 was — verify against a real image message before fully trusting this.
+
+Audio messages (whatsapp-voice-groq-elevenlabs-prd.md, 2026-07-23): same
+principle, `messageType == "audioMessage"`. Unlike images, a voice note
+never carries a caption — it is always accepted regardless of body, since
+there is no "empty audio" concept the way there's an "empty text" one.
 """
 
 import logging
@@ -47,10 +52,12 @@ logger = logging.getLogger(__name__)
 # Message types that carry plain, extractable text.
 _TEXT_MESSAGE_TYPES = {"conversation", "extendedTextMessage"}
 
-# Image message type (Baileys/Evolution naming). Other media types (document,
-# audio, video, sticker) are still ignored — see novas-funcionalidades-chatvolt.md
-# in NexBrain for that broader (not yet built) scope.
+# Image and audio message types (Baileys/Evolution naming). Other media types
+# (document, video, sticker) are still ignored — see
+# novas-funcionalidades-chatvolt.md in NexBrain for that broader (not yet
+# built) scope.
 _IMAGE_MESSAGE_TYPE = "imageMessage"
+_AUDIO_MESSAGE_TYPE = "audioMessage"
 
 
 def parse_inbound_text_messages(payload: object) -> list[WhatsAppInboundMessage]:
@@ -107,7 +114,8 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
 
     message_type = data.get("messageType")
     is_image = message_type == _IMAGE_MESSAGE_TYPE
-    if message_type not in _TEXT_MESSAGE_TYPES and not is_image:
+    is_audio = message_type == _AUDIO_MESSAGE_TYPE
+    if message_type not in _TEXT_MESSAGE_TYPES and not is_image and not is_audio:
         logger.info(
             "evolution_parser skipping unsupported messageType=%s wamid=%s",
             message_type,
@@ -116,9 +124,10 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
         return None
 
     text_body = _extract_text(data.get("message"))
-    # An image with no caption is still valid business data — only plain
-    # text messages require a non-empty body to be worth persisting.
-    if not is_image and not text_body:
+    # An image with no caption is still valid business data, and a voice note
+    # never has a text body at all — only plain text messages require a
+    # non-empty body to be worth persisting.
+    if not is_image and not is_audio and not text_body:
         logger.info("evolution_parser skipping message with empty body wamid=%s", wamid)
         return None
 
@@ -131,6 +140,13 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
     profile_name = data.get("pushName")
     contact = WhatsAppContact(wa_id=from_wa_id, profile_name=profile_name)
 
+    if is_image:
+        resolved_type = "image"
+    elif is_audio:
+        resolved_type = "audio"
+    else:
+        resolved_type = "text"
+
     return WhatsAppInboundMessage(
         phone_number_id=instance_name,
         wamid=str(wamid),
@@ -138,7 +154,7 @@ def _parse_single_message(instance_name: str, data: object) -> WhatsAppInboundMe
         timestamp=timestamp,
         text_body=text_body,
         contact=contact,
-        message_type="image" if is_image else "text",
+        message_type=resolved_type,
     )
 
 

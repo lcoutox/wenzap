@@ -1,6 +1,6 @@
 [project]
 name = "nexbrain-api"
-version = "0.3.28"
+version = "0.3.29"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115",

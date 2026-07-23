@@ -284,7 +284,8 @@ class TestDecideCatalogMediaDelivery:
         agent = _make_agent_in_db(db, ws.id)
         db.commit()
 
-        # Simulate a prior sent message with this media_id
+        # Simulate a prior sent message with this media_id — "sent" now lives
+        # on the provider-agnostic "delivery" block, not catalog_media_delivery.
         prior_msg = ConversationMessage(
             workspace_id=ws.id,
             conversation_id=conv.id,
@@ -294,10 +295,8 @@ class TestDecideCatalogMediaDelivery:
             content="[Imagem]",
             content_type="image",
             metadata_json={
-                "catalog_media_delivery": {
-                    "sent": True,
-                    "media_id": str(media.id),
-                }
+                "catalog_media_delivery": {"media_id": str(media.id)},
+                "delivery": {"status": "sent"},
             },
         )
         db.add(prior_msg)
@@ -333,15 +332,23 @@ class TestDeliverCatalogMediaImage:
             reason="single_recommended_item_with_primary_image",
             item_id=item_id or uuid.uuid4(),
             media_id=media_id or uuid.uuid4(),
+            file_key="catalog-media/ws/img.jpg",
+            mime_type="image/jpeg",
             media_url="https://cdn.example.com/img.jpg",
             caption="Toyota Corolla XEI 2021 — R$ 88.900,00",
         )
 
-    def _make_channel(self, phone_number_id="555000111"):
-        return SimpleNamespace(
-            id=uuid.uuid4(),
-            config_json={"phone_number_id": phone_number_id},
-        )
+    @staticmethod
+    def _fake_success(db, message, conversation, *, storage_key, mime_type, caption=None):
+        existing = message.metadata_json or {}
+        message.metadata_json = {**existing, "delivery": {"status": "sent", "wamid": "wamid.test123"}}
+        db.commit()
+
+    @staticmethod
+    def _fake_failure(db, message, conversation, *, storage_key, mime_type, caption=None):
+        existing = message.metadata_json or {}
+        message.metadata_json = {**existing, "delivery": {"status": "failed", "error": "provider unavailable"}}
+        db.commit()
 
     def test_sends_image_and_creates_message(self, db: Session):
         owner = _make_user(db, f"dv1-{uuid.uuid4().hex[:6]}@t.com", "DV1")
@@ -352,27 +359,28 @@ class TestDeliverCatalogMediaImage:
         decision = self._make_decision()
 
         with patch(
-            "app.services.catalog_media_delivery_service._call_meta_image_api",
-            return_value={"messages": [{"id": "wamid.test123"}]},
-        ):
+            "app.services.messaging.deliver_media_message",
+            side_effect=self._fake_success,
+        ) as mock_deliver:
             msg = deliver_catalog_media_image(
                 db=db,
                 workspace_id=ws.id,
                 conversation=conv,
                 decision=decision,
                 agent_id=agent.id,
-                channel=self._make_channel(),
-                contact_recipient="5537999999999",
-                access_token="fake_token",
             )
 
         assert msg is not None
         assert msg.content_type == "image"
-        delivery = msg.metadata_json["catalog_media_delivery"]
-        assert delivery["sent"] is True
-        assert delivery["wamid"] == "wamid.test123"
-        assert delivery["item_id"] == str(decision.item_id)
-        assert delivery["media_id"] == str(decision.media_id)
+        assert msg.media_url == decision.file_key
+        mock_deliver.assert_called_once()
+        _, kwargs = mock_deliver.call_args
+        assert kwargs["storage_key"] == decision.file_key
+        assert kwargs["mime_type"] == decision.mime_type
+        assert msg.metadata_json["delivery"]["status"] == "sent"
+        catalog_meta = msg.metadata_json["catalog_media_delivery"]
+        assert catalog_meta["item_id"] == str(decision.item_id)
+        assert catalog_meta["media_id"] == str(decision.media_id)
 
     def test_api_failure_creates_failed_message(self, db: Session):
         owner = _make_user(db, f"dv2-{uuid.uuid4().hex[:6]}@t.com", "DV2")
@@ -383,8 +391,8 @@ class TestDeliverCatalogMediaImage:
         decision = self._make_decision()
 
         with patch(
-            "app.services.catalog_media_delivery_service._call_meta_image_api",
-            side_effect=Exception("Meta API unavailable"),
+            "app.services.messaging.deliver_media_message",
+            side_effect=Exception("Provider unavailable"),
         ):
             msg = deliver_catalog_media_image(
                 db=db,
@@ -392,17 +400,16 @@ class TestDeliverCatalogMediaImage:
                 conversation=conv,
                 decision=decision,
                 agent_id=agent.id,
-                channel=self._make_channel(),
-                contact_recipient="5537999999999",
-                access_token="fake_token",
             )
 
         assert msg is not None
         delivery = msg.metadata_json["catalog_media_delivery"]
         assert delivery["sent"] is False
-        assert "Meta API unavailable" in delivery["error"]
+        assert "Provider unavailable" in delivery["error"]
 
-    def test_missing_wamid_marks_failed(self, db: Session):
+    def test_provider_records_failure_without_raising(self, db: Session):
+        """A provider that handles its own errors (never raises) still leaves
+        the message correctly marked as failed via its own delivery block."""
         owner = _make_user(db, f"dv3-{uuid.uuid4().hex[:6]}@t.com", "DV3")
         ws = _make_workspace(db, owner, f"ws-{uuid.uuid4().hex[:6]}", "W")
         conv = _make_conversation(db, workspace_id=ws.id)
@@ -411,8 +418,8 @@ class TestDeliverCatalogMediaImage:
         decision = self._make_decision()
 
         with patch(
-            "app.services.catalog_media_delivery_service._call_meta_image_api",
-            return_value={"messages": []},  # empty messages — no wamid
+            "app.services.messaging.deliver_media_message",
+            side_effect=self._fake_failure,
         ):
             msg = deliver_catalog_media_image(
                 db=db,
@@ -420,14 +427,10 @@ class TestDeliverCatalogMediaImage:
                 conversation=conv,
                 decision=decision,
                 agent_id=agent.id,
-                channel=self._make_channel(),
-                contact_recipient="5537999999999",
-                access_token="fake_token",
             )
 
         assert msg is not None
-        delivery = msg.metadata_json["catalog_media_delivery"]
-        assert delivery["sent"] is False
+        assert msg.metadata_json["delivery"]["status"] == "failed"
 
     def test_should_send_false_returns_none(self, db: Session):
         owner = _make_user(db, f"dv4-{uuid.uuid4().hex[:6]}@t.com", "DV4")
@@ -444,9 +447,6 @@ class TestDeliverCatalogMediaImage:
             conversation=conv,
             decision=decision,
             agent_id=agent.id,
-            channel=SimpleNamespace(config_json={}),
-            contact_recipient="5537999999999",
-            access_token="fake_token",
         )
         assert msg is None
 

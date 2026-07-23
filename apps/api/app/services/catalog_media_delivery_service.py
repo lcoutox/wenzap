@@ -22,7 +22,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,11 +34,9 @@ from app.services.storage.base import StorageProvider
 
 logger = logging.getLogger(__name__)
 
-_META_API_BASE = "https://graph.facebook.com/v21.0"
-_META_API_TIMEOUT = 10.0
 _MIN_SCORE = 0.65
 _SPAM_WINDOW_MINUTES = 30
-_SIGNED_URL_EXPIRY = 3600  # 1 hour — enough for Meta to fetch
+_SIGNED_URL_EXPIRY = 3600  # 1 hour — enough for a link-based provider (Meta) to fetch
 
 
 # ── Decision result ───────────────────────────────────────────────────────────
@@ -50,6 +47,11 @@ class MediaDeliveryDecision:
     reason: str
     item_id: uuid.UUID | None = None
     media_id: uuid.UUID | None = None
+    # Storage key (not a public URL) — resolved by whichever OutboundProvider
+    # ends up delivering it (whatsapp-voice-groq-elevenlabs-prd.md fixed this
+    # to go through the provider registry instead of a Meta-only hardcode).
+    file_key: str | None = None
+    mime_type: str | None = None
     media_url: str | None = None
     caption: str | None = None
 
@@ -133,6 +135,8 @@ def decide_catalog_media_delivery(
         reason="single_recommended_item_with_primary_image",
         item_id=item_result.id,
         media_id=media.id,
+        file_key=media.file_key,
+        mime_type=media.mime_type,
         media_url=url,
         caption=caption,
     )
@@ -144,24 +148,23 @@ def deliver_catalog_media_image(
     conversation: Conversation,
     decision: MediaDeliveryDecision,
     agent_id: uuid.UUID,
-    channel: object,
-    contact_recipient: str,
-    access_token: str,
 ) -> ConversationMessage | None:
     """
     Send the catalog image via WhatsApp and persist a ConversationMessage record.
 
-    Returns the created ConversationMessage, or None if delivery was skipped/failed.
+    Delivery itself goes through the provider-agnostic
+    ``messaging.deliver_media_message`` — whatsapp-voice-groq-elevenlabs-prd.md
+    fixed this from a Meta-only hardcode (which silently never worked for the
+    Evolution API channels that are actually in production use).
+
+    Returns the created ConversationMessage, or None if delivery was skipped.
     Never raises — all errors are caught, logged, and recorded in metadata_json.
     """
     if not decision.should_send:
         return None
 
-    phone_number_id = (
-        getattr(channel, "config_json", None) or {}
-    ).get("phone_number_id")
-
-    # Persist message record first (outbound, content_type=image).
+    # Persist message record first (outbound, content_type=image). media_url
+    # is the real storage key — same convention as inbound image/audio.
     media_msg = ConversationMessage(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
@@ -170,6 +173,7 @@ def deliver_catalog_media_image(
         agent_id=agent_id,
         content=f"[Imagem: {decision.caption or 'Produto do catálogo'}]",
         content_type="image",
+        media_url=decision.file_key,
         metadata_json={
             "catalog_media_delivery": {
                 "attempted": True,
@@ -177,7 +181,6 @@ def deliver_catalog_media_image(
                 "item_id": str(decision.item_id),
                 "media_id": str(decision.media_id),
                 "caption": decision.caption,
-                "media_url": decision.media_url,
                 "reason": decision.reason,
             }
         },
@@ -186,49 +189,21 @@ def deliver_catalog_media_image(
     db.flush()
 
     try:
-        response = _call_meta_image_api(
-            phone_number_id=phone_number_id,
-            to=contact_recipient,
-            image_url=decision.media_url,
+        from app.services.messaging import deliver_media_message  # noqa: PLC0415
+
+        deliver_media_message(
+            db, media_msg, conversation,
+            storage_key=decision.file_key, mime_type=decision.mime_type or "image/jpeg",
             caption=decision.caption,
-            token=access_token,
         )
     except Exception as exc:
         _record_delivery_failure(db, media_msg, decision, exc)
         return media_msg
 
-    messages = response.get("messages") if isinstance(response, dict) else None
-    wamid = (
-        messages[0].get("id") if isinstance(messages, list) and messages else None
-    )
-
-    if not wamid:
-        _record_delivery_failure(
-            db, media_msg, decision,
-            Exception("Meta response missing message id"),
-        )
-        return media_msg
-
-    media_msg.external_message_id = wamid
-    media_msg.metadata_json = {
-        "catalog_media_delivery": {
-            "attempted": True,
-            "sent": True,
-            "item_id": str(decision.item_id),
-            "media_id": str(decision.media_id),
-            "caption": decision.caption,
-            "reason": decision.reason,
-            "wamid": wamid,
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-            "phone_number_id": phone_number_id,
-            "recipient": contact_recipient,
-        }
-    }
-    db.commit()
-
+    delivery_status = (media_msg.metadata_json or {}).get("delivery", {}).get("status")
     logger.info(
-        "catalog_media_delivery sent item_id=%s media_id=%s wamid=%s conversation_id=%s",
-        decision.item_id, decision.media_id, wamid, conversation.id,
+        "catalog_media_delivery attempted item_id=%s media_id=%s status=%s conversation_id=%s",
+        decision.item_id, decision.media_id, delivery_status, conversation.id,
     )
     return media_msg
 
@@ -258,40 +233,15 @@ def _was_recently_sent(
         )
     ).all()
     for msg in recent:
-        delivery = (msg.metadata_json or {}).get("catalog_media_delivery", {})
-        if delivery.get("media_id") == media_id_str and delivery.get("sent") is True:
+        meta = msg.metadata_json or {}
+        catalog_meta = meta.get("catalog_media_delivery", {})
+        # "sent" lives on the provider-agnostic delivery block now (set by
+        # whichever OutboundProvider handled it), not on catalog_media_delivery
+        # itself — that key only ever tracks attempt bookkeeping.
+        was_sent = meta.get("delivery", {}).get("status") == "sent"
+        if catalog_meta.get("media_id") == media_id_str and was_sent:
             return True
     return False
-
-
-def _call_meta_image_api(
-    phone_number_id: str,
-    to: str,
-    image_url: str,
-    caption: str | None,
-    token: str,
-) -> dict:
-    url = f"{_META_API_BASE}/{phone_number_id}/messages"
-    image_payload: dict = {"link": image_url}
-    if caption:
-        image_payload["caption"] = caption
-    response = httpx.post(
-        url,
-        json={
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to,
-            "type": "image",
-            "image": image_payload,
-        },
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
-        timeout=_META_API_TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.json()
 
 
 def _record_delivery_failure(

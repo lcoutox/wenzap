@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.llm.schemas import LLMMessage, LLMProviderError, LLMRequest
 from app.models.agent import Agent
 from app.models.agent_model_settings import AgentModelSettings
+from app.models.agent_prompt_settings import AgentPromptSettings
 from app.models.agent_tool_call import AgentToolCall
 from app.models.ai_model import AiModel
 from app.models.ai_model_provider import AiModelProvider
@@ -552,45 +553,44 @@ def generate_conversation_agent_reply(
                     deliver_catalog_media_image,
                 )
                 from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
-                from app.services.whatsapp_outbound_service import (  # noqa: PLC0415
-                    _find_whatsapp_channel,
-                    _load_contact,
-                    _resolve_access_token,
-                    normalize_whatsapp_to,
+
+                decision = decide_catalog_media_delivery(
+                    db=db,
+                    workspace_id=workspace_id,
+                    conversation=conversation,
+                    catalog_items=ctx.catalog_items,
+                    catalog_retrieval_attempted=ctx.catalog_retrieval_attempted,
+                    storage=get_storage_provider(),
+                    text_message=response_msg,
                 )
-
-                storage = get_storage_provider()
-                wa_channel = _find_whatsapp_channel(db, conversation)
-                wa_contact = _load_contact(db, conversation)
-                recipient = normalize_whatsapp_to(wa_contact) if wa_contact else None
-                wa_token = _resolve_access_token(db, wa_channel) if wa_channel else None
-
-                if wa_channel and recipient and wa_token:
-                    decision = decide_catalog_media_delivery(
+                if decision.should_send:
+                    deliver_catalog_media_image(
                         db=db,
                         workspace_id=workspace_id,
                         conversation=conversation,
-                        catalog_items=ctx.catalog_items,
-                        catalog_retrieval_attempted=ctx.catalog_retrieval_attempted,
-                        storage=storage,
-                        text_message=response_msg,
+                        decision=decision,
+                        agent_id=agent.id,
                     )
-                    if decision.should_send:
-                        deliver_catalog_media_image(
-                            db=db,
-                            workspace_id=workspace_id,
-                            conversation=conversation,
-                            decision=decision,
-                            agent_id=agent.id,
-                            channel=wa_channel,
-                            contact_recipient=recipient,
-                            access_token=wa_token,
-                        )
             except Exception:
                 logger.exception(
                     "catalog_media_delivery unexpected error conversation=%s",
                     conversation.id,
                 )
+
+        # After text (+ optional catalog image) delivery: reply with a
+        # synthesized voice message when the triggering message was itself a
+        # voice note — whatsapp-voice-groq-elevenlabs-prd.md. Same
+        # "text/catalog image first, voice second" pattern; the text message
+        # always stays as the source of truth for Inbox/Auditoria, voice is
+        # an addition, never a replacement.
+        if text_delivered and getattr(trigger_message, "content_type", None) == "audio":
+            _maybe_deliver_voice_reply(
+                db,
+                workspace_id=workspace_id,
+                conversation=conversation,
+                agent=agent,
+                reply_text=reply_content,
+            )
 
     return run
 
@@ -624,6 +624,83 @@ def _build_image_content_block(trigger_message: ConversationMessage) -> dict | N
         "type": "image",
         "source": {"type": "base64", "media_type": mime_type, "data": encoded},
     }
+
+
+def _maybe_deliver_voice_reply(
+    db: Session,
+    *,
+    workspace_id: uuid.UUID,
+    conversation: Conversation,
+    agent: Agent,
+    reply_text: str,
+) -> None:
+    """
+    Synthesize the text reply as speech and deliver it as a second, separate
+    WhatsApp message — whatsapp-voice-groq-elevenlabs-prd.md.
+
+    Best-effort and silent on any missing precondition (toggle off, no voice
+    configured, no ElevenLabs key) or failure (synthesis, storage, delivery)
+    — a voice reply is always additive to the already-sent text reply, never
+    a requirement for it.
+    """
+    prompt_cfg = db.scalar(
+        select(AgentPromptSettings).where(AgentPromptSettings.agent_id == agent.id)
+    )
+    if (
+        prompt_cfg is None
+        or not prompt_cfg.voice_reply_enabled
+        or not prompt_cfg.elevenlabs_voice_id
+    ):
+        return
+
+    from app.services.workspace_credentials_service import get_workspace_credential  # noqa: PLC0415
+
+    elevenlabs_key = get_workspace_credential(db, workspace_id, "elevenlabs")
+    if not elevenlabs_key:
+        return
+
+    from app.services.elevenlabs_voice_service import synthesize_speech  # noqa: PLC0415
+
+    audio_bytes = synthesize_speech(elevenlabs_key, reply_text, prompt_cfg.elevenlabs_voice_id)
+    if not audio_bytes:
+        return
+
+    from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+    storage_key = f"conversation-media/{workspace_id}/{uuid.uuid4()}.mp3"
+    try:
+        get_storage_provider().put_file(storage_key, audio_bytes, content_type="audio/mpeg")
+    except Exception:
+        logger.exception("voice_reply storage write failed conversation=%s", conversation.id)
+        return
+
+    voice_msg = ConversationMessage(
+        workspace_id=workspace_id,
+        conversation_id=conversation.id,
+        direction="outbound",
+        sender_type="agent",
+        agent_id=agent.id,
+        content="[Mensagem de voz]",
+        content_type="audio",
+        media_url=storage_key,
+        metadata_json={"media_mime_type": "audio/mpeg"},
+    )
+    db.add(voice_msg)
+    db.commit()
+    db.refresh(voice_msg)
+
+    from app.services.messaging import deliver_media_message  # noqa: PLC0415
+
+    try:
+        deliver_media_message(
+            db, voice_msg, conversation, storage_key=storage_key, mime_type="audio/mpeg"
+        )
+    except Exception:
+        logger.exception(
+            "voice_reply delivery failed conversation=%s message=%s",
+            conversation.id,
+            voice_msg.id,
+        )
 
 
 def _save_run(

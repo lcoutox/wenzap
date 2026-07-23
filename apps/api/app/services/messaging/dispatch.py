@@ -70,3 +70,24 @@ def deliver_outbound_message(
     provider_key = _resolve_provider_key(db, conversation)
     provider = get_outbound_provider(provider_key)
     provider.deliver(db, message, conversation)
+
+
+def deliver_media_message(
+    db: Session,
+    message: ConversationMessage,
+    conversation: Conversation,
+    *,
+    storage_key: str,
+    mime_type: str,
+    caption: str | None = None,
+) -> None:
+    """Deliver a media message via the provider configured on its channel.
+
+    Single entry point for any media send (catalog images, voice replies, …)
+    — whatsapp-voice-groq-elevenlabs-prd.md. Never raises.
+    """
+    provider_key = _resolve_provider_key(db, conversation)
+    provider = get_outbound_provider(provider_key)
+    provider.deliver_media(
+        db, message, conversation, storage_key=storage_key, mime_type=mime_type, caption=caption
+    )

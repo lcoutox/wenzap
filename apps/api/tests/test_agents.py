@@ -210,6 +210,32 @@ def test_update_agent_model(db, client_a, subscription_a, ai_model):
     assert body["model_name"] == new_model.model_name
 
 
+def test_update_agent_voice_reply_fields(client_a, subscription_a, ai_model):
+    r = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = r.json()["id"]
+    assert r.json()["voice_reply_enabled"] is False
+    assert r.json()["elevenlabs_voice_id"] is None
+
+    response = client_a.patch(
+        f"/agents/{agent_id}",
+        json={"voice_reply_enabled": True, "elevenlabs_voice_id": "voice-abc123"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["voice_reply_enabled"] is True
+    assert body["elevenlabs_voice_id"] == "voice-abc123"
+
+
+def test_clear_elevenlabs_voice_id(client_a, subscription_a, ai_model):
+    r = client_a.post("/agents", json=_agent_payload(ai_model.id))
+    agent_id = r.json()["id"]
+    client_a.patch(f"/agents/{agent_id}", json={"elevenlabs_voice_id": "voice-abc123"})
+
+    response = client_a.patch(f"/agents/{agent_id}", json={"elevenlabs_voice_id": None})
+    assert response.status_code == 200
+    assert response.json()["elevenlabs_voice_id"] is None
+
+
 def test_update_archived_agent_returns_400(client_a, subscription_a, ai_model):
     r = client_a.post("/agents", json=_agent_payload(ai_model.id))
     agent_id = r.json()["id"]
