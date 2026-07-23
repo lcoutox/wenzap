@@ -6,17 +6,19 @@ import { api } from "@/lib/api";
 import type { UserMe } from "@/lib/api";
 import { MembersSettingsSection } from "@/components/settings/MembersSettingsSection";
 import { PlanUsageSettingsSection } from "@/components/settings/PlanUsageSettingsSection";
+import { IntegrationsSettingsSection } from "@/components/settings/IntegrationsSettingsSection";
 
-type Tab = "general" | "members" | "plan";
+type Tab = "general" | "members" | "plan" | "integrations";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "general", label: "Geral"       },
-  { id: "members", label: "Membros"     },
-  { id: "plan",    label: "Plano e uso" },
+  { id: "general",      label: "Geral"         },
+  { id: "members",      label: "Membros"       },
+  { id: "plan",         label: "Plano e uso"   },
+  { id: "integrations", label: "Integrações"   },
 ];
 
 function parseTab(raw: string | null): Tab {
-  if (raw === "members" || raw === "plan") return raw;
+  if (raw === "members" || raw === "plan" || raw === "integrations") return raw;
   return "general";
 }
 
@@ -149,9 +151,10 @@ function SettingsContent() {
 
       {/* Tab content */}
       <div className="pt-6">
-        {activeTab === "general" && <TabGeral />}
-        {activeTab === "members" && <MembersSettingsSection />}
-        {activeTab === "plan"    && <PlanUsageSettingsSection />}
+        {activeTab === "general"      && <TabGeral />}
+        {activeTab === "members"      && <MembersSettingsSection />}
+        {activeTab === "plan"         && <PlanUsageSettingsSection />}
+        {activeTab === "integrations" && <IntegrationsSettingsSection />}
       </div>
     </>
   );

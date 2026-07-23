@@ -21,6 +21,13 @@ export type UserMe = {
   };
 };
 
+export type IntegrationProvider = "groq" | "elevenlabs";
+
+export type WorkspaceIntegrations = {
+  groq_configured: boolean;
+  elevenlabs_configured: boolean;
+};
+
 export type Member = {
   id: string;
   user_id: string;
@@ -219,6 +226,8 @@ export type Agent = {
   advanced_prompt: string | null;
   context_tier: ContextTier;
   reply_delay_seconds: number;
+  voice_reply_enabled: boolean;
+  elevenlabs_voice_id: string | null;
   avatar_url: string | null;
   avatar_mime_type: string | null;
   avatar_updated_at: string | null;
@@ -260,6 +269,8 @@ export type AgentUpdateInput = {
   context_tier?: ContextTier;
   reply_delay_seconds?: number;
   knowledge_fallback?: string | null;
+  voice_reply_enabled?: boolean;
+  elevenlabs_voice_id?: string | null;
 };
 
 export type AgentStatusUpdateInput = {
@@ -1455,6 +1466,18 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    integrations: {
+      get: () => cookieFetch<WorkspaceIntegrations>("/workspaces/current/integrations"),
+      set: (provider: IntegrationProvider, apiKey: string) =>
+        cookieFetch<WorkspaceIntegrations>(`/workspaces/current/integrations/${provider}`, {
+          method: "PUT",
+          body: JSON.stringify({ api_key: apiKey }),
+        }),
+      remove: (provider: IntegrationProvider) =>
+        cookieFetch<void>(`/workspaces/current/integrations/${provider}`, {
+          method: "DELETE",
+        }),
+    },
   },
   members: {
     list: () => cookieFetch<Member[]>("/workspaces/current/members"),

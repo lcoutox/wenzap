@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { AgentFormSection } from "@/components/agents/AgentFormSection";
 import { SaveBar } from "@/components/agents/workspace/SaveBar";
+import { api } from "@/lib/api";
 import type { ResponseStyle, LanguageMode } from "@/lib/api";
 
 const RESPONSE_STYLE_OPTIONS: { value: ResponseStyle; label: string; description: string }[] = [
@@ -34,6 +37,8 @@ export function ConfigApresentacao({
   responseStyle,
   languageMode,
   replyDelaySeconds,
+  voiceReplyEnabled,
+  elevenlabsVoiceId,
   readonly,
   saving,
   saveError,
@@ -41,10 +46,14 @@ export function ConfigApresentacao({
   onResponseStyleChange,
   onLanguageModeChange,
   onReplyDelaySecondsChange,
+  onVoiceReplyEnabledChange,
+  onElevenlabsVoiceIdChange,
 }: {
   responseStyle: ResponseStyle;
   languageMode: LanguageMode;
   replyDelaySeconds: number;
+  voiceReplyEnabled: boolean;
+  elevenlabsVoiceId: string;
   readonly: boolean;
   saving: boolean;
   saveError: string | null;
@@ -52,7 +61,17 @@ export function ConfigApresentacao({
   onResponseStyleChange: (v: ResponseStyle) => void;
   onLanguageModeChange: (v: LanguageMode) => void;
   onReplyDelaySecondsChange: (v: number) => void;
+  onVoiceReplyEnabledChange: (v: boolean) => void;
+  onElevenlabsVoiceIdChange: (v: string) => void;
 }) {
+  const [elevenlabsConfigured, setElevenlabsConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api.workspace.integrations.get()
+      .then((r) => setElevenlabsConfigured(r.elevenlabs_configured))
+      .catch(() => setElevenlabsConfigured(null));
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Estilo de resposta */}
@@ -137,6 +156,56 @@ export function ConfigApresentacao({
             Pode responder mais rápido, mas pode gerar respostas antes do cliente terminar de digitar.
           </p>
         )}
+      </AgentFormSection>
+
+      {/* Resposta em áudio */}
+      <AgentFormSection
+        title="Resposta em áudio no WhatsApp"
+        description="Quando o cliente manda uma mensagem de voz, o agente pode responder também em áudio, além do texto."
+      >
+        <div className="space-y-3">
+          <label className={`flex items-center gap-3 ${readonly ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+            <input
+              type="checkbox"
+              checked={voiceReplyEnabled}
+              disabled={readonly}
+              onChange={(e) => onVoiceReplyEnabledChange(e.target.checked)}
+              className="h-4 w-4 rounded border-nb-border accent-nb-primary"
+            />
+            <span className="text-sm text-nb-text">Responder em áudio quando o cliente enviar áudio</span>
+          </label>
+
+          {voiceReplyEnabled && (
+            <div className="pl-7 space-y-2">
+              <div>
+                <label className="block text-xs font-medium text-nb-secondary mb-1.5">
+                  ID da voz na ElevenLabs
+                </label>
+                <input
+                  type="text"
+                  value={elevenlabsVoiceId}
+                  disabled={readonly}
+                  onChange={(e) => onElevenlabsVoiceIdChange(e.target.value)}
+                  placeholder="Ex: 21m00Tcm4TlvDq8ikWAM"
+                  className={readonly ? disabledSelect : baseSelect}
+                />
+                <p className="text-[11px] text-nb-muted mt-1">
+                  Copie o ID da voz escolhida no painel da ElevenLabs (Voices → sua voz → Voice ID).
+                </p>
+              </div>
+
+              {elevenlabsConfigured === false && (
+                <p className="text-xs text-nb-danger">
+                  Você ainda não cadastrou sua chave da ElevenLabs — sem ela, a resposta em áudio
+                  não vai funcionar.{" "}
+                  <Link href="/dashboard/settings?tab=integrations" className="underline underline-offset-2">
+                    Cadastrar chave
+                  </Link>
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </AgentFormSection>
 
       {!readonly && (

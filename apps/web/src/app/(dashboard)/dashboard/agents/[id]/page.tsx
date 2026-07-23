@@ -123,6 +123,8 @@ export default function AgentWorkspacePage() {
   const [contextTier, setContextTier] = useState<ContextTier>("standard");
   const [replyDelaySeconds, setReplyDelaySeconds] = useState<number>(5);
   const [knowledgeFallback, setKnowledgeFallback] = useState<"ask_context" | "direct_to_team" | "knowledge_general" | null>(null);
+  const [voiceReplyEnabled, setVoiceReplyEnabled] = useState(false);
+  const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState("");
 
   // UI state — initialise from ?tab= query param, fallback to "chat"
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>(
@@ -180,6 +182,8 @@ export default function AgentWorkspacePage() {
         setContextTier(agentData.context_tier ?? "standard");
         setReplyDelaySeconds(agentData.reply_delay_seconds ?? 5);
         setKnowledgeFallback((agentData.knowledge_fallback as "ask_context" | "direct_to_team" | "knowledge_general" | null) ?? null);
+        setVoiceReplyEnabled(agentData.voice_reply_enabled ?? false);
+        setElevenlabsVoiceId(agentData.elevenlabs_voice_id ?? "");
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) {
           router.push("/dashboard/agents");
@@ -226,6 +230,8 @@ export default function AgentWorkspacePage() {
         context_tier: contextTier,
         reply_delay_seconds: replyDelaySeconds,
         knowledge_fallback: knowledgeFallback,
+        voice_reply_enabled: voiceReplyEnabled,
+        elevenlabs_voice_id: elevenlabsVoiceId.trim() || null,
       });
       setAgent(updated);
       setSaveSuccess(true);
@@ -387,6 +393,8 @@ export default function AgentWorkspacePage() {
                   responseStyle={responseStyle}
                   languageMode={languageMode}
                   replyDelaySeconds={replyDelaySeconds}
+                  voiceReplyEnabled={voiceReplyEnabled}
+                  elevenlabsVoiceId={elevenlabsVoiceId}
                   readonly={readonly}
                   saving={saving}
                   saveError={saveError}
@@ -394,6 +402,8 @@ export default function AgentWorkspacePage() {
                   onResponseStyleChange={setResponseStyle}
                   onLanguageModeChange={setLanguageMode}
                   onReplyDelaySecondsChange={setReplyDelaySeconds}
+                  onVoiceReplyEnabledChange={setVoiceReplyEnabled}
+                  onElevenlabsVoiceIdChange={setElevenlabsVoiceId}
                 />
               )}
 
