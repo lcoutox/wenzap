@@ -727,7 +727,7 @@ def _try_deliver_voice_reply(
         direction="outbound",
         sender_type="agent",
         agent_id=agent.id,
-        content="[Mensagem de voz]",
+        content=reply_text,
         content_type="audio",
         media_url=storage_key,
         metadata_json={"media_mime_type": "audio/mpeg"},

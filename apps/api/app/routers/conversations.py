@@ -192,3 +192,19 @@ def retry_message_delivery(
     deliver_outbound_message(db, msg, conv)
     db.refresh(msg)
     return msg
+
+
+@router.get("/{conversation_id}/messages/{message_id}/media-url")
+def get_message_media_url(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    current_workspace: Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Resolve a message's stored image/audio into a fresh playable URL."""
+    _require_role(_READ_ROLES, db, current_workspace, current_user)
+    url = conversation_message_service.resolve_message_media_url(
+        db, current_workspace.id, conversation_id, message_id
+    )
+    return {"url": url}

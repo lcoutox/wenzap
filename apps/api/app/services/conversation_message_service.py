@@ -248,3 +248,55 @@ def create_message(
             )
 
     return msg
+
+
+_MEDIA_CONTENT_TYPES = {"image", "audio"}
+_MEDIA_URL_EXPIRY_SECONDS = 3600
+
+
+def resolve_message_media_url(
+    db: Session,
+    workspace_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+) -> str:
+    """
+    Resolve a message's stored media (image/audio) into a fresh, playable
+    URL — inbox-media-playback-prd.md.
+
+    ``ConversationMessage.media_url`` holds a storage KEY, not a browsable
+    URL (matches inbound/outbound image and the newer voice-reply audio) —
+    generated fresh on every call rather than cached, since presigned URLs
+    expire.
+    """
+    get_conversation_or_404(db, workspace_id, conversation_id)
+
+    msg = db.scalar(
+        select(ConversationMessage).where(
+            ConversationMessage.id == message_id,
+            ConversationMessage.conversation_id == conversation_id,
+            ConversationMessage.workspace_id == workspace_id,
+        )
+    )
+    if msg is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Mensagem não encontrada."
+        )
+
+    if msg.content_type not in _MEDIA_CONTENT_TYPES or not msg.media_url:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Esta mensagem não tem mídia associada.",
+        )
+
+    from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+    try:
+        return get_storage_provider().generate_presigned_url(
+            msg.media_url, expires_in=_MEDIA_URL_EXPIRY_SECONDS
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Não foi possível gerar a URL da mídia.",
+        ) from exc
