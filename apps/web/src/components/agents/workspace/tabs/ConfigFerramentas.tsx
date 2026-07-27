@@ -482,6 +482,18 @@ function CatalogConfigModal({
   }
 
   function handleScopeChange(s: "all" | "selected") {
+    if (s === "selected" && scope.category_ids.length === 0) {
+      // The backend has no separate persisted "scope" field — it infers
+      // "selected" vs "all" purely from whether the agent has any linked
+      // categories. Saving "selected" with an empty category_ids here would
+      // round-trip straight back to "all" (no categories linked yet) and
+      // hide the picker before the user can choose anything. Just reveal
+      // the picker locally; handleCategorySave persists once there's an
+      // actual non-empty selection.
+      setScope((prev) => ({ ...prev, category_scope: "selected" }));
+      setPickerOpen(true);
+      return;
+    }
     const next: AgentCatalogScope = {
       ...scope,
       category_scope: s,
