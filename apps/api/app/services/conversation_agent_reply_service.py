@@ -51,7 +51,10 @@ from app.services.agent_tool_service import (
     get_enabled_tools_for_agent,
 )
 from app.services.context_tier_service import calculate_credits
-from app.services.conversation_context_builder import build_conversation_context
+from app.services.conversation_context_builder import (
+    ConversationContext,
+    build_conversation_context,
+)
 from app.services.plan_feature_service import plan_allows_feature
 
 logger = logging.getLogger(__name__)
@@ -531,66 +534,16 @@ def generate_conversation_agent_reply(
 
     # Deliver agent reply to WhatsApp when the conversation came from that channel.
     if conversation.channel_type == "whatsapp":
-        try:
-            from app.services.messaging import deliver_outbound_message  # noqa: PLC0415
-
-            deliver_outbound_message(db, response_msg, conversation)
-        except Exception:
-            logger.exception(
-                "whatsapp_outbound agent delivery failed conversation=%s message=%s",
-                conversation.id,
-                response_msg.id,
-            )
-
-        # After text delivery: attempt catalog image delivery if eligible.
-        text_delivered = (response_msg.metadata_json or {}).get("delivery", {}).get(
-            "status"
-        ) == "sent"
-        if text_delivered and agent.catalog_enabled and ctx.catalog_retrieval_attempted:
-            try:
-                from app.services.catalog_media_delivery_service import (  # noqa: PLC0415
-                    decide_catalog_media_delivery,
-                    deliver_catalog_media_image,
-                )
-                from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
-
-                decision = decide_catalog_media_delivery(
-                    db=db,
-                    workspace_id=workspace_id,
-                    conversation=conversation,
-                    catalog_items=ctx.catalog_items,
-                    catalog_retrieval_attempted=ctx.catalog_retrieval_attempted,
-                    storage=get_storage_provider(),
-                    text_message=response_msg,
-                )
-                if decision.should_send:
-                    deliver_catalog_media_image(
-                        db=db,
-                        workspace_id=workspace_id,
-                        conversation=conversation,
-                        decision=decision,
-                        agent_id=agent.id,
-                    )
-            except Exception:
-                logger.exception(
-                    "catalog_media_delivery unexpected error conversation=%s",
-                    conversation.id,
-                )
-
-        # After text (+ optional catalog image) delivery: reply with a
-        # synthesized voice message when the triggering message was itself a
-        # voice note — whatsapp-voice-groq-elevenlabs-prd.md. Same
-        # "text/catalog image first, voice second" pattern; the text message
-        # always stays as the source of truth for Inbox/Auditoria, voice is
-        # an addition, never a replacement.
-        if text_delivered and getattr(trigger_message, "content_type", None) == "audio":
-            _maybe_deliver_voice_reply(
-                db,
-                workspace_id=workspace_id,
-                conversation=conversation,
-                agent=agent,
-                reply_text=reply_content,
-            )
+        _deliver_whatsapp_reply(
+            db,
+            workspace_id=workspace_id,
+            conversation=conversation,
+            agent=agent,
+            response_msg=response_msg,
+            trigger_message=trigger_message,
+            reply_content=reply_content,
+            ctx=ctx,
+        )
 
     return run
 
@@ -626,22 +579,116 @@ def _build_image_content_block(trigger_message: ConversationMessage) -> dict | N
     }
 
 
-def _maybe_deliver_voice_reply(
+def _deliver_whatsapp_reply(
+    db: Session,
+    *,
+    workspace_id: uuid.UUID,
+    conversation: Conversation,
+    agent: Agent,
+    response_msg: ConversationMessage,
+    trigger_message: ConversationMessage,
+    reply_content: str,
+    ctx: ConversationContext,
+) -> None:
+    """
+    Deliver the agent's reply to WhatsApp.
+
+    Voice-first when the triggering message was itself a voice note and
+    synthesis succeeds — mirrors how a person replies to a voice note with a
+    voice note, not a voice note plus a wall of text. The text message is
+    always created/persisted beforehand (source of truth for Inbox/Auditoria
+    and LLM history regardless of what actually reaches WhatsApp); when voice
+    is delivered, the text is marked "skipped" rather than sent, so the
+    customer isn't spammed with a redundant reply. If voice isn't eligible or
+    synthesis/delivery fails, falls back to the text reply — the customer
+    always gets an answer either way.
+
+    Catalog image delivery (if eligible) follows regardless of which form
+    (text or voice) actually carried the reply.
+    """
+    voice_delivered = False
+    if getattr(trigger_message, "content_type", None) == "audio":
+        voice_delivered = _try_deliver_voice_reply(
+            db,
+            workspace_id=workspace_id,
+            conversation=conversation,
+            agent=agent,
+            reply_text=reply_content,
+        )
+
+    if voice_delivered:
+        existing = response_msg.metadata_json or {}
+        response_msg.metadata_json = {
+            **existing,
+            "delivery": {"status": "skipped", "reason": "voice_reply_sent"},
+        }
+        db.commit()
+    else:
+        try:
+            from app.services.messaging import deliver_outbound_message  # noqa: PLC0415
+
+            deliver_outbound_message(db, response_msg, conversation)
+        except Exception:
+            logger.exception(
+                "whatsapp_outbound agent delivery failed conversation=%s message=%s",
+                conversation.id,
+                response_msg.id,
+            )
+
+    text_delivered = (response_msg.metadata_json or {}).get("delivery", {}).get(
+        "status"
+    ) == "sent"
+    reply_delivered = text_delivered or voice_delivered
+
+    if reply_delivered and agent.catalog_enabled and ctx.catalog_retrieval_attempted:
+        try:
+            from app.services.catalog_media_delivery_service import (  # noqa: PLC0415
+                decide_catalog_media_delivery,
+                deliver_catalog_media_image,
+            )
+            from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
+
+            decision = decide_catalog_media_delivery(
+                db=db,
+                workspace_id=workspace_id,
+                conversation=conversation,
+                catalog_items=ctx.catalog_items,
+                catalog_retrieval_attempted=ctx.catalog_retrieval_attempted,
+                storage=get_storage_provider(),
+                text_message=response_msg,
+            )
+            if decision.should_send:
+                deliver_catalog_media_image(
+                    db=db,
+                    workspace_id=workspace_id,
+                    conversation=conversation,
+                    decision=decision,
+                    agent_id=agent.id,
+                )
+        except Exception:
+            logger.exception(
+                "catalog_media_delivery unexpected error conversation=%s",
+                conversation.id,
+            )
+
+
+def _try_deliver_voice_reply(
     db: Session,
     *,
     workspace_id: uuid.UUID,
     conversation: Conversation,
     agent: Agent,
     reply_text: str,
-) -> None:
+) -> bool:
     """
-    Synthesize the text reply as speech and deliver it as a second, separate
-    WhatsApp message — whatsapp-voice-groq-elevenlabs-prd.md.
+    Synthesize the text reply as speech and deliver it as a WhatsApp voice
+    message — whatsapp-voice-groq-elevenlabs-prd.md.
 
-    Best-effort and silent on any missing precondition (toggle off, no voice
-    configured, no ElevenLabs key) or failure (synthesis, storage, delivery)
-    — a voice reply is always additive to the already-sent text reply, never
-    a requirement for it.
+    Returns True only when the voice message actually reached WhatsApp (so
+    the caller can skip the redundant text send); False on any missing
+    precondition (toggle off, no voice configured, no ElevenLabs key) or
+    failure (synthesis, storage, delivery) — callers must fall back to text
+    in that case so the customer is never left without a reply.
     """
     prompt_cfg = db.scalar(
         select(AgentPromptSettings).where(AgentPromptSettings.agent_id == agent.id)
@@ -651,19 +698,19 @@ def _maybe_deliver_voice_reply(
         or not prompt_cfg.voice_reply_enabled
         or not prompt_cfg.elevenlabs_voice_id
     ):
-        return
+        return False
 
     from app.services.workspace_credentials_service import get_workspace_credential  # noqa: PLC0415
 
     elevenlabs_key = get_workspace_credential(db, workspace_id, "elevenlabs")
     if not elevenlabs_key:
-        return
+        return False
 
     from app.services.elevenlabs_voice_service import synthesize_speech  # noqa: PLC0415
 
     audio_bytes = synthesize_speech(elevenlabs_key, reply_text, prompt_cfg.elevenlabs_voice_id)
     if not audio_bytes:
-        return
+        return False
 
     from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
 
@@ -672,7 +719,7 @@ def _maybe_deliver_voice_reply(
         get_storage_provider().put_file(storage_key, audio_bytes, content_type="audio/mpeg")
     except Exception:
         logger.exception("voice_reply storage write failed conversation=%s", conversation.id)
-        return
+        return False
 
     voice_msg = ConversationMessage(
         workspace_id=workspace_id,
@@ -701,6 +748,10 @@ def _maybe_deliver_voice_reply(
             conversation.id,
             voice_msg.id,
         )
+        return False
+
+    db.refresh(voice_msg)
+    return (voice_msg.metadata_json or {}).get("delivery", {}).get("status") == "sent"
 
 
 def _save_run(

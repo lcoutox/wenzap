@@ -108,11 +108,18 @@ Sem migration de mais nada além dessa tabela nova.
 - Condição completa pra tentar voz na resposta: agente com `voice_reply_enabled=True` E workspace
   com chave ElevenLabs configurada E mensagem-gatilho era áudio. Se qualquer uma faltar, cai pro
   comportamento atual (resposta em texto), nunca bloqueia a resposta.
-- Fluxo em `conversation_agent_reply_service.py`: depois de entregar o texto (como já acontece),
-  se as condições acima baterem, sintetiza, guarda via storage, e entrega como mensagem separada
-  `content_type="audio"` (mesmo padrão de "duas mensagens" que o Catálogo já usa pra imagem depois
-  do texto) — não substitui o texto (o texto continua sendo persistido/mostrado no Inbox e usado
-  pela Auditoria), a voz é um adicional.
+- Fluxo em `conversation_agent_reply_service.py` (`_deliver_whatsapp_reply`): **voz primeiro,
+  texto como fallback** — quando a mensagem-gatilho foi áudio, tenta sintetizar/entregar a voz
+  ANTES de decidir se manda texto pro WhatsApp. Se a voz for entregue com sucesso, o texto NÃO é
+  enviado ao cliente (fica marcado `metadata_json.delivery = {status: "skipped", reason:
+  "voice_reply_sent"}`) — evita a experiência estranha de mandar uma resposta em texto E em áudio
+  pra quem só mandou um áudio (achado em teste real: 2026-07-27, feedback do Lucas "se envia um
+  audio não deveria enviar mensagem antes"). Se a síntese/entrega de voz falhar por qualquer
+  motivo, cai pro texto normalmente — o cliente nunca fica sem resposta. O texto continua sendo
+  **criado e persistido internamente em todo turno**, independente do que chega no WhatsApp — é
+  sempre a fonte de verdade pro Inbox/Auditoria e pro histórico que o LLM lê, só a *entrega* ao
+  WhatsApp é que vira condicional. Imagem de catálogo (se elegível) segue disparando de qualquer
+  jeito, texto ou voz tendo sido a forma que efetivamente chegou ao cliente.
 
 ### 4. Configuração por agente
 
@@ -224,10 +231,40 @@ cliente real usar a funcionalidade, vale um teste manual ponta a ponta com chave
 - Verificado com `tsc --noEmit` e `next build` limpos (sem erros de tipo, build de produção passou).
   Não testado manualmente no navegador nesta sessão (sem UI test/click-through).
 
+### Smoke test real (2026-07-27) — feito, achou 3 problemas, todos corrigidos
+
+Lucas testou ponta a ponta em produção (agente real, WhatsApp real via Evolution, chaves reais de
+Groq/ElevenLabs). Achados e correções, todos commitados:
+
+1. **Toggle de "Resposta em áudio" não salvava** — a aba Apresentação nunca esteve na lista
+   `isSaveable` do frontend (`page.tsx`), então o form só fazia `preventDefault()` no submit, sem
+   chamar a API. Bug pré-existente (nem estilo de resposta/idioma/tempo de resposta salvavam por
+   ali antes) — não introduzido por esta feature, só exposto por ela. Corrigido incluindo
+   `"apresentacao"` na lista. Commit `d12803a`.
+2. **ElevenLabs 402 "Free users cannot use library voices via the API"** — não é bug do Wenzap: o
+   `voice_id` que o Lucas colou era uma voz da biblioteca compartilhada da ElevenLabs, que exige
+   plano pago (qualquer plano pago, incluindo o Starter de $6/mês — a doc da ElevenLabs não
+   distingue por tier acima disso) pra ser usada via API. `synthesize_speech` já tratava isso
+   corretamente (loga e retorna `None`, resposta em texto segue normal) — comportamento correto,
+   só faltava essa explicação de causa.
+3. **Texto + áudio juntos na mesma resposta** — feedback direto do Lucas depois do teste: "se envia
+   um audio não deveria enviar mensagem antes". Concordei — mandar um bloco de texto E uma nota de
+   voz pra quem só mandou uma nota de voz é redundante e não é como uma pessoa responderia.
+   Corrigido invertendo a ordem: agora tenta voz PRIMEIRO quando o gatilho foi áudio, e só manda
+   texto pro WhatsApp se a voz não for entregue (toggle off, sem chave, síntese/storage/entrega
+   falhou) — nunca deixa o cliente sem resposta, só evita a duplicidade quando a voz funciona.
+   Extraído `_deliver_whatsapp_reply` (orquestração texto-vs-voz + gate de imagem de catálogo,
+   agora por "alguma forma de resposta foi entregue" em vez de só texto) e `_try_deliver_voice_reply`
+   (renomeado de `_maybe_deliver_voice_reply`, agora retorna `bool` — só `True` quando a voz de fato
+   chegou no WhatsApp, não só quando foi sintetizada). Texto continua sempre criado/persistido
+   internamente (fonte de verdade pro Inbox/Auditoria/histórico do LLM), só a entrega ao WhatsApp
+   que virou condicional. Testado: 12 casos novos/reescritos em `test_voice_reply.py` cobrindo a
+   decisão voz-primeiro-texto-fallback, 2296 testes passando no total (10 falhas pré-existentes
+   sem relação, confirmadas antes desta sessão).
+
 ### Pendente
 
-- **Smoke test manual** com chaves reais de Groq/ElevenLabs e um número WhatsApp via Evolution —
-  nada foi testado contra as APIs de verdade ainda, só com mocks.
-- **Commit/push**: todo este trabalho ainda está sem commit.
 - Itens fora de escopo (tocar áudio no Inbox, seleção de voz via UI, Meta Cloud API, Playground/Web
   Widget) seguem deliberadamente não implementados — ver seção acima.
+- Nenhum smoke test cobriu ainda o caminho "voz falha → cai pro texto" em produção real (só
+  testado via mocks) — o caminho feliz (voz funciona) já foi validado ao vivo.
