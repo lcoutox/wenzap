@@ -1599,6 +1599,10 @@ export const api = {
           `/conversations/${conversationId}/messages/${messageId}/retry-delivery`,
           { method: "POST" },
         ),
+      getMediaUrl: (conversationId: string, messageId: string) =>
+        cookieFetch<{ url: string }>(
+          `/conversations/${conversationId}/messages/${messageId}/media-url`,
+        ),
     },
   },
   channels: {

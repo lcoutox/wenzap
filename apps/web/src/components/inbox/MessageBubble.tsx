@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, BookOpen, ChevronDown, ChevronUp, ImageOff, Loader2, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, BookOpen, ChevronDown, ChevronUp, ImageOff, Loader2, Mic, RotateCcw } from "lucide-react";
 import type { CatalogMediaDelivery, CatalogRetrieval, CatalogRetrievalItem, ConversationMessage, MessageDelivery } from "@/lib/api";
 import { api } from "@/lib/api";
 
@@ -229,6 +229,57 @@ function DeliveryBadge({
   return null;
 }
 
+function AudioMessageContent({ msg }: { msg: ConversationMessage }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.conversations.messages
+      .getMediaUrl(msg.conversation_id, msg.id)
+      .then((r) => { if (!cancelled) setUrl(r.url); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [msg.conversation_id, msg.id]);
+
+  const transcript = msg.content.trim();
+  const hasTranscript = transcript.length > 0;
+
+  return (
+    <div className="flex flex-col gap-1.5 min-w-[200px]">
+      <div className="flex items-center gap-2">
+        <Mic className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
+        {url ? (
+          <audio controls preload="metadata" src={url} className="h-9 w-56 max-w-full" />
+        ) : failed ? (
+          <span className="text-xs opacity-70">Áudio indisponível</span>
+        ) : (
+          <span className="text-xs opacity-70 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" /> Carregando áudio…
+          </span>
+        )}
+      </div>
+
+      {hasTranscript && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowTranscript((v) => !v)}
+            className="flex items-center gap-1 text-[10px] opacity-70 hover:opacity-100 transition-opacity"
+          >
+            {showTranscript ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            <span>{showTranscript ? "Ocultar transcrição" : "Ver transcrição"}</span>
+          </button>
+          {showTranscript && (
+            <p className="text-xs mt-1 opacity-90 break-words whitespace-pre-wrap">{transcript}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InboundBubble({ msg, contactName }: { msg: ConversationMessage; contactName: string | null }) {
   return (
     <div className="flex items-end gap-2 max-w-[75%]">
@@ -240,7 +291,7 @@ function InboundBubble({ msg, contactName }: { msg: ConversationMessage; contact
       <div className="flex flex-col gap-0.5">
         <span className="text-[10px] text-nb-muted px-1">{senderLabel(msg, contactName)}</span>
         <div className="bg-nb-elevated text-nb-text rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap">
-          {msg.content}
+          {msg.content_type === "audio" ? <AudioMessageContent msg={msg} /> : msg.content}
         </div>
         <span className="text-[10px] text-nb-muted/50 px-1">{formatTimestamp(msg.created_at)}</span>
       </div>
@@ -270,7 +321,7 @@ function OutboundBubble({
           <CatalogMediaMessageCard delivery={catalogMedia} />
         ) : (
           <div className={`rounded-2xl rounded-br-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-white ${isAgent ? "bg-nb-primary-strong" : "bg-nb-primary"}`}>
-            {msg.content}
+            {msg.content_type === "audio" ? <AudioMessageContent msg={msg} /> : msg.content}
           </div>
         )}
         <span className="text-[10px] text-nb-muted/50 px-1">{formatTimestamp(msg.created_at)}</span>
