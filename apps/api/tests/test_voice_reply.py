@@ -340,6 +340,43 @@ def test_success_creates_audio_message_and_delivers(
     mock_deliver.assert_called_once()
 
 
+def test_synthesis_uses_normalized_text_but_message_keeps_original(
+    db: Session, workspace_a: Workspace, monkeypatch
+):
+    """
+    Numbers/currency must be normalized for pronunciation before hitting
+    ElevenLabs, but the persisted ConversationMessage.content (used for the
+    Inbox transcript) must stay in the original, human-readable form.
+    """
+    monkeypatch.setattr("app.services.crypto_service.settings.app_encryption_key", _TEST_KEY)
+    set_workspace_credential(db, workspace_a.id, "elevenlabs", "el-real-key")
+    agent = _make_agent(db, workspace_a.id, enabled=True, voice_id="voice123")
+    conv = _make_conversation(db, workspace_a.id, agent)
+
+    with (
+        patch(_SYNTHESIZE, return_value=b"mp3-bytes") as mock_synth,
+        patch(_GET_STORAGE, return_value=MagicMock()),
+        patch(_DELIVER_MEDIA, side_effect=_fake_media_success),
+    ):
+        _try_deliver_voice_reply(
+            db,
+            workspace_id=workspace_a.id,
+            conversation=conv,
+            agent=agent,
+            reply_text="O valor do imóvel é R$ 564.144,00.",
+        )
+
+    mock_synth.assert_called_once_with(
+        "el-real-key",
+        "O valor do imóvel é quinhentos e sessenta e quatro mil, cento e "
+        "quarenta e quatro reais.",
+        "voice123",
+    )
+
+    voice_msg = _messages_for(db, conv.id)[0]
+    assert voice_msg.content == "O valor do imóvel é R$ 564.144,00."
+
+
 # ── _deliver_whatsapp_reply: voice-first orchestration ──────────────────────────
 
 

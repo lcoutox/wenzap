@@ -1,6 +1,7 @@
 # PRD — Áudio no WhatsApp (transcrição Groq + resposta em voz ElevenLabs)
 
-**Status: 🟢 Implementado (backend + frontend). Falta smoke test com chaves reais e commit/push.**
+**Status: 🟢 Implementado e validado em produção** (smoke test real feito, 4 bugs achados e
+corrigidos — ver "Smoke test real" abaixo).
 Pedido do Lucas: analisar como o Chatvolt faz (`docs.chatvolt.ai/agent/transcriptions-with-groq`, `docs.chatvolt.ai/agent/elevenLabs-audios`) e desenhar pro Wenzap. Retoma e substitui o item 3 de
 [novas-funcionalidades-chatvolt.md](../../../../nexbrain/negocios/wenzap/novas-funcionalidades-chatvolt.md)
 (NexBrain, 2026-07-19) — aquela análise ficou desatualizada porque a fundação de mídia mudou desde
@@ -262,9 +263,53 @@ Groq/ElevenLabs). Achados e correções, todos commitados:
    decisão voz-primeiro-texto-fallback, 2296 testes passando no total (10 falhas pré-existentes
    sem relação, confirmadas antes desta sessão).
 
+4. **Números embaralhados no áudio** (2026-07-27, feedback direto: "o audio que o bot enviou está
+   com dificuldade em falar sobre valores como 564.144,00"). Investigado e confirmado contra a doc
+   oficial da ElevenLabs: não é limitação da voz escolhida — é o normalizador de texto deles que
+   não lida bem com números no formato brasileiro (ponto como separador de milhar, vírgula como
+   decimal, o inverso da convenção americana), lendo "564.144,00" digit-a-digit em vez de por
+   extenso. A própria ElevenLabs recomenda pré-processar o texto com regex antes de enviar.
+
+   Corrigido com `app/services/voice_text_normalizer.py` (novo), usando a lib `num2words` (suporte
+   maduro a `pt_BR`, incluindo moeda e ordinais — mais confiável que reinventar as regras
+   gramaticais de extenso em português). Pedido explícito do Lucas: "Não apenas valores em dinheiro
+   [...] mas medidas também como metros quadrados [...] mapear tudo que pode causar esse tipo de
+   erro" — cobre bem mais que moeda:
+   - **Moeda**: `R$ 564.144,00` → "quinhentos e sessenta e quatro mil, cento e quarenta e quatro
+     reais" (omite centavos zerados, trata `R$ 1,00` como "um real" singular).
+   - **Medidas com unidade abreviada**: m², km², km/h, m/s, °C, ha, km, cm, mm, kg, ton, ml, m, g,
+     l — `120m²` → "cento e vinte metros quadrados". Singular/plural corretos (`1m²` → "um metro
+     quadrado"). Unidade já por extenso (`25 metros quadrados`) fica intocada — não tem ambiguidade
+     pra corrigir.
+   - **Datas** `20/07/2026` → "vinte de julho de dois mil e vinte e seis" (com ou sem ano, ano de 2
+     dígitos vira 20XX). Padrões que não são data de verdade (dia/mês inválido) ficam intocados.
+   - **Horários** `14:30` → "catorze horas e trinta minutos" (`9:00` → "nove horas").
+   - **Porcentagens** `12,5%` → "doze vírgula cinco por cento".
+   - **Ordinais** `3º`/`1ª` → "terceiro"/"primeira" — trata gênero (º=masculino, ª=feminino;
+     `num2words` só devolve a forma masculina, então feminiza trocando "o" final por "a" em cada
+     palavra do ordinal, cobrindo compostos como "vigésima primeira").
+   - **Telefones** `(11) 98765-4321` → lido dígito a dígito ("um um nove oito sete seis..."), não
+     como um número gigante por extenso.
+   - **Fallback genérico**: qualquer número solto com separador de milhar (`.`) ou decimal (`,`)
+     sem contexto acima (ex.: "1.500 clientes") também vira extenso. Números sem separador (ex.:
+     "sala 502", "ano 2026") ficam intocados — já são lidos certo, sem ambiguidade nenhuma.
+
+   Só afeta o texto ENVIADO PRA SÍNTESE (`speech_text` em `_try_deliver_voice_reply`) — o
+   `ConversationMessage.content` continua com o texto original, formatado normalmente, pro
+   Inbox/Auditoria. Nunca lança (`try/except` no nível mais alto, cai pro texto original em
+   qualquer falha inesperada).
+
+   Testado: 34 casos novos em `test_voice_text_normalizer.py` (cada categoria + combinação de
+   múltiplos padrões na mesma mensagem + nunca lança) + 1 caso novo em `test_voice_reply.py`
+   confirmando que a síntese usa o texto normalizado mas a mensagem salva mantém o original. 2340
+   testes passando no total (10 falhas pré-existentes sem relação).
+
 ### Pendente
 
 - Itens fora de escopo (tocar áudio no Inbox, seleção de voz via UI, Meta Cloud API, Playground/Web
   Widget) seguem deliberadamente não implementados — ver seção acima.
 - Nenhum smoke test cobriu ainda o caminho "voz falha → cai pro texto" em produção real (só
   testado via mocks) — o caminho feliz (voz funciona) já foi validado ao vivo.
+- Normalização de números não cobre por extenso abreviações comuns fora de números (ex.: "apto",
+  "qtd") nem gênero de unidades de medida na concordância com o número (ex.: sempre usa "um" antes
+  da unidade, nunca "uma" — imperfeição gramatical menor, não chega a confundir a pronúncia).

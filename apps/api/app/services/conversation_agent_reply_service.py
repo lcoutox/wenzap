@@ -707,8 +707,13 @@ def _try_deliver_voice_reply(
         return False
 
     from app.services.elevenlabs_voice_service import synthesize_speech  # noqa: PLC0415
+    from app.services.voice_text_normalizer import normalize_for_speech  # noqa: PLC0415
 
-    audio_bytes = synthesize_speech(elevenlabs_key, reply_text, prompt_cfg.elevenlabs_voice_id)
+    # Normalize numbers/currency/measurements/etc. for pronunciation ONLY —
+    # the ConversationMessage.content created below still stores reply_text
+    # verbatim, so the Inbox transcript reads normally.
+    speech_text = normalize_for_speech(reply_text)
+    audio_bytes = synthesize_speech(elevenlabs_key, speech_text, prompt_cfg.elevenlabs_voice_id)
     if not audio_bytes:
         return False
 
