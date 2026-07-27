@@ -315,7 +315,7 @@ export default function AgentWorkspacePage() {
   const readonly    = isArchived || !canWrite;
 
   // Config tabs that have real save functionality (pipeline has its own save button)
-  const isSaveable = ["geral", "instrucoes", "conhecimento", "modelo", "avancado"].includes(configTab);
+  const isSaveable = ["geral", "apresentacao", "instrucoes", "conhecimento", "modelo", "avancado"].includes(configTab);
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
