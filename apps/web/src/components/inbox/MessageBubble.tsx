@@ -280,6 +280,52 @@ function AudioMessageContent({ msg }: { msg: ConversationMessage }) {
   );
 }
 
+function ImageMessageContent({ msg }: { msg: ConversationMessage }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.conversations.messages
+      .getMediaUrl(msg.conversation_id, msg.id)
+      .then((r) => { if (!cancelled) setUrl(r.url); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [msg.conversation_id, msg.id]);
+
+  const caption = msg.content.trim();
+  const hasCaption = caption.length > 0 && caption !== "[Imagem]";
+  const showImage = !!url && !failed;
+
+  return (
+    <div className="w-56 max-w-full rounded-2xl overflow-hidden bg-nb-elevated border border-nb-border text-nb-text">
+      <div className="aspect-square w-full bg-nb-bg flex items-center justify-center overflow-hidden">
+        {showImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt={hasCaption ? caption : "Imagem"}
+            className="w-full h-full object-cover"
+            onError={() => setFailed(true)}
+          />
+        ) : failed ? (
+          <div className="flex flex-col items-center gap-1.5 text-nb-muted">
+            <ImageOff className="w-6 h-6" />
+            <span className="text-[10px]">Imagem indisponível</span>
+          </div>
+        ) : (
+          <Loader2 className="w-5 h-5 animate-spin text-nb-muted" />
+        )}
+      </div>
+      {hasCaption && (
+        <div className="px-3 py-2 text-xs text-nb-secondary break-words whitespace-pre-wrap">
+          {caption}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InboundBubble({ msg, contactName }: { msg: ConversationMessage; contactName: string | null }) {
   return (
     <div className="flex items-end gap-2 max-w-[75%]">
@@ -290,9 +336,13 @@ function InboundBubble({ msg, contactName }: { msg: ConversationMessage; contact
       </div>
       <div className="flex flex-col gap-0.5">
         <span className="text-[10px] text-nb-muted px-1">{senderLabel(msg, contactName)}</span>
-        <div className="bg-nb-elevated text-nb-text rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap">
-          {msg.content_type === "audio" ? <AudioMessageContent msg={msg} /> : msg.content}
-        </div>
+        {msg.content_type === "image" ? (
+          <ImageMessageContent msg={msg} />
+        ) : (
+          <div className="bg-nb-elevated text-nb-text rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap">
+            {msg.content_type === "audio" ? <AudioMessageContent msg={msg} /> : msg.content}
+          </div>
+        )}
         <span className="text-[10px] text-nb-muted/50 px-1">{formatTimestamp(msg.created_at)}</span>
       </div>
     </div>
@@ -319,6 +369,8 @@ function OutboundBubble({
         <span className="text-[10px] text-nb-muted px-1">{senderLabel(msg, contactName)}</span>
         {catalogMedia ? (
           <CatalogMediaMessageCard delivery={catalogMedia} />
+        ) : msg.content_type === "image" ? (
+          <ImageMessageContent msg={msg} />
         ) : (
           <div className={`rounded-2xl rounded-br-sm px-4 py-2.5 text-sm break-words whitespace-pre-wrap text-white ${isAgent ? "bg-nb-primary-strong" : "bg-nb-primary"}`}>
             {msg.content_type === "audio" ? <AudioMessageContent msg={msg} /> : msg.content}
