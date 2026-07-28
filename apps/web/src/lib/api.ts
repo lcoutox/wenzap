@@ -596,19 +596,6 @@ export type CatalogRetrieval = {
   items_considered?: CatalogRetrievalItem[];
 };
 
-export type CatalogMediaDelivery = {
-  attempted?: boolean;
-  sent?: boolean;
-  item_id?: string;
-  item_name?: string;
-  media_id?: string;
-  media_url?: string;
-  caption?: string;
-  reason?: string;
-  error?: string;
-  wamid?: string;
-};
-
 export type ConversationMessage = {
   id: string;
   workspace_id: string;
@@ -624,7 +611,6 @@ export type ConversationMessage = {
     | {
         delivery?: MessageDelivery;
         catalog_retrieval?: CatalogRetrieval;
-        catalog_media_delivery?: CatalogMediaDelivery;
         [key: string]: unknown;
       }
     | null;
