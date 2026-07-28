@@ -6,6 +6,8 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 import type { CatalogCategory, CatalogItemStatus } from "@/lib/api";
+import { CatalogMetadataEditor, entriesToMetadata } from "@/components/catalog/CatalogMetadataEditor";
+import type { MetadataEntry } from "@/components/catalog/CatalogMetadataEditor";
 
 const STATUS_OPTIONS: { value: CatalogItemStatus; label: string }[] = [
   { value: "active",      label: "Ativo"        },
@@ -32,6 +34,7 @@ export default function NewCatalogItemPage() {
   const [tags, setTags]                     = useState("");
   const [isFeatured, setIsFeatured]         = useState(false);
   const [stockQuantity, setStockQuantity]   = useState("");
+  const [metadataEntries, setMetadataEntries] = useState<MetadataEntry[]>([]);
 
   useEffect(() => {
     api.catalog.categories.list().then(setCategories).catch(() => {});
@@ -56,6 +59,7 @@ export default function NewCatalogItemPage() {
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
         is_featured: isFeatured,
         stock_quantity: stockQuantity ? parseInt(stockQuantity, 10) : null,
+        metadata_json: entriesToMetadata(metadataEntries),
       });
       router.push(`/dashboard/catalog/${item.id}`);
     } catch (err) {
@@ -215,6 +219,16 @@ export default function NewCatalogItemPage() {
             placeholder="seminovo, automático, destaque (separar por vírgula)"
             className="px-3 py-2 rounded-xl bg-nb-elevated border border-nb-border text-sm text-nb-text placeholder:text-nb-muted focus:outline-none focus:ring-1 focus:ring-nb-primary"
           />
+        </div>
+
+        {/* Metadata (key/value) */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-nb-text">Atributos (chave e valor)</label>
+          <p className="text-xs text-nb-muted -mt-1">
+            Ex: estilo → fine line, tamanho → pequena. O agente usa isso pra responder perguntas
+            sobre o item.
+          </p>
+          <CatalogMetadataEditor entries={metadataEntries} onChange={setMetadataEntries} />
         </div>
 
         {/* Featured */}
