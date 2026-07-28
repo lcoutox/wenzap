@@ -164,25 +164,30 @@ def deliver_catalog_media_image(
         return None
 
     # Persist message record first (outbound, content_type=image). media_url
-    # is the real storage key — same convention as inbound image/audio.
+    # is the real storage key — same convention as inbound image/audio. The
+    # Inbox renders content_type=image messages via the generic
+    # ImageMessageContent (resolves media_url through
+    # GET .../media-url) and DeliveryBadge (reads metadata_json.delivery) —
+    # both shared with every other image/audio message, so no
+    # catalog-specific rendering fields belong here anymore.
     media_msg = ConversationMessage(
         workspace_id=workspace_id,
         conversation_id=conversation.id,
         direction="outbound",
         sender_type="agent",
         agent_id=agent_id,
-        content=f"[Imagem: {decision.caption or 'Produto do catálogo'}]",
+        content=decision.caption or "Produto do catálogo",
         content_type="image",
         media_url=decision.file_key,
         metadata_json={
+            # Bookkeeping only — read by _was_recently_sent() for the
+            # anti-spam window. Delivery status/errors live under
+            # metadata_json.delivery, set by whichever OutboundProvider
+            # handled it (or _record_delivery_failure() below).
             "catalog_media_delivery": {
-                "attempted": True,
-                "sent": False,
                 "item_id": str(decision.item_id),
                 "media_id": str(decision.media_id),
-                "caption": decision.caption,
-                "reason": decision.reason,
-            }
+            },
         },
     )
     db.add(media_msg)
@@ -197,7 +202,7 @@ def deliver_catalog_media_image(
             caption=decision.caption,
         )
     except Exception as exc:
-        _record_delivery_failure(db, media_msg, decision, exc)
+        _record_delivery_failure(db, media_msg, exc)
         return media_msg
 
     delivery_status = (media_msg.metadata_json or {}).get("delivery", {}).get("status")
@@ -247,24 +252,27 @@ def _was_recently_sent(
 def _record_delivery_failure(
     db: Session,
     media_msg: ConversationMessage,
-    decision: MediaDeliveryDecision,
     exc: Exception,
 ) -> None:
+    """
+    Fallback for when deliver_media_message() raises unexpectedly (providers
+    are designed to never raise and instead record metadata_json.delivery
+    themselves — this only covers a truly unexpected failure so DeliveryBadge
+    still has something to show instead of silently nothing).
+    """
     error_str = str(exc)[:300]
     logger.warning(
-        "catalog_media_delivery failed item_id=%s media_id=%s error=%s",
-        decision.item_id, decision.media_id, error_str,
+        "catalog_media_delivery unexpected error message_id=%s error=%s",
+        media_msg.id, error_str,
     )
+    existing = media_msg.metadata_json or {}
     media_msg.metadata_json = {
-        "catalog_media_delivery": {
-            "attempted": True,
-            "sent": False,
-            "item_id": str(decision.item_id),
-            "media_id": str(decision.media_id),
-            "caption": decision.caption,
-            "reason": decision.reason,
+        **existing,
+        "delivery": {
+            "status": "failed",
+            "channel": "whatsapp",
             "error": error_str,
             "failed_at": datetime.now(timezone.utc).isoformat(),
-        }
+        },
     }
     db.commit()

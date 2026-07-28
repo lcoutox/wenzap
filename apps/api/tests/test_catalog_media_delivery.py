@@ -403,9 +403,13 @@ class TestDeliverCatalogMediaImage:
             )
 
         assert msg is not None
-        delivery = msg.metadata_json["catalog_media_delivery"]
-        assert delivery["sent"] is False
+        delivery = msg.metadata_json["delivery"]
+        assert delivery["status"] == "failed"
         assert "Provider unavailable" in delivery["error"]
+        # Bookkeeping fields survive the failure path too (used by anti-spam).
+        catalog_meta = msg.metadata_json["catalog_media_delivery"]
+        assert catalog_meta["item_id"] == str(decision.item_id)
+        assert catalog_meta["media_id"] == str(decision.media_id)
 
     def test_provider_records_failure_without_raising(self, db: Session):
         """A provider that handles its own errors (never raises) still leaves
