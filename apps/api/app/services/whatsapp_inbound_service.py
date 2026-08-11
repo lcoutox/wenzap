@@ -238,6 +238,23 @@ def _get_or_create_conversation(
                 conversation.id,
             )
 
+        # This message just arrived through `channel_id` — that's the currently
+        # active WhatsApp channel for this contact/agent, authoritative over
+        # whatever channel the conversation was last pointed at. Without this,
+        # a conversation left open across a provider migration (e.g. Evolution
+        # -> Meta, whatsapp-official-only-prd.md) keeps routing outbound
+        # replies through the old, now-archived channel, which silently fails
+        # (wrong provider, missing config for it).
+        if channel_id is not None and conversation.channel_id != channel_id:
+            logger.info(
+                "whatsapp_inbound synced channel_id %s -> %s on existing conversation id=%s",
+                conversation.channel_id,
+                channel_id,
+                conversation.id,
+            )
+            conversation.channel_id = channel_id
+            db.flush()
+
     return conversation
 
 

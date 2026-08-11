@@ -436,6 +436,42 @@ class TestConversationCreation:
         )
         assert len(all_convs) == 2
 
+    def test_reused_conversation_channel_id_syncs_to_message_channel(
+        self, db: Session, workspace_a: Workspace
+    ):
+        """
+        whatsapp-official-only-prd.md follow-up: a conversation left open across
+        a provider migration (e.g. Evolution -> Meta) must not keep routing
+        outbound replies through the old, now-archived channel. Regression for
+        a real bug found in production: the reply was generated but silently
+        failed to send because dispatch resolved the provider from the stale
+        channel_id.
+        """
+        agent = _make_agent(db, workspace_a.id)
+        old_channel = _make_whatsapp_channel(
+            db, workspace_a.id, agent.id, phone_number_id="OLD_PHONE", provider="evolution_api"
+        )
+        old_channel.status = "archived"
+        db.commit()
+        new_channel = _make_whatsapp_channel(
+            db, workspace_a.id, agent.id, phone_number_id="NEW_PHONE", provider="meta_cloud_api"
+        )
+
+        wa_id = "5537100000005"
+        contact = _make_existing_contact(db, workspace_a.id, wa_id)
+        existing_conv = _make_existing_conversation(
+            db, workspace_a.id, contact.id, agent.id, status="open"
+        )
+        existing_conv.channel_id = old_channel.id
+        db.commit()
+
+        process_inbound_message(
+            db, _make_msg(wa_id=wa_id, phone_number_id="NEW_PHONE", wamid="wamid.MIGRATED1")
+        )
+
+        db.refresh(existing_conv)
+        assert existing_conv.channel_id == new_channel.id
+
 
 # ── Message ────────────────────────────────────────────────────────────────────
 
