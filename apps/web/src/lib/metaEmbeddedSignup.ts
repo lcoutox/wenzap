@@ -256,6 +256,18 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
     let businessId: string | null = null;
     let lastMessageOrigin: string | null = null;
     let lastMessageShape: Record<string, unknown> | null = null;
+    let settled = false;
+
+    const settledResolve: typeof resolve = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const settledReject: typeof reject = (reason) => {
+      if (settled) return;
+      settled = true;
+      reject(reason);
+    };
 
     function onMessage(event: MessageEvent) {
       // Log ALL postMessages (shape only, no raw values) for diagnostics
@@ -322,7 +334,34 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
     }
 
     window.addEventListener("message", onMessage);
-    const cleanup = () => window.removeEventListener("message", onMessage);
+
+    // Detect the user closing the Meta popup manually instead of finishing/cancelling
+    // through the SDK's own flow. FB.login's callback doesn't reliably fire in that
+    // case (browser/cookie-dependent), which used to leave the button stuck in
+    // "Aguardando Meta..." forever. Focus returning to this window is a reasonable
+    // proxy for "the popup is gone" — opening the popup blurs this window, closing
+    // it (by any means) refocuses it. A grace period lets the SDK's own callback win
+    // the race when the flow actually finished normally. Only fires while `code` is
+    // still null — once FB.login's callback has run, waitForSessionInfo()'s own
+    // 10s timeout already owns the "waiting" case below, and closing the (now
+    // background) popup mid-poll shouldn't cut that short.
+    let popupClosedTimer: ReturnType<typeof setTimeout> | null = null;
+    function onWindowFocus() {
+      if (popupClosedTimer) clearTimeout(popupClosedTimer);
+      popupClosedTimer = setTimeout(() => {
+        if (settled || code) return;
+        logSignup("embedded_signup.popup_closed_by_user", { debugId });
+        cleanup();
+        settledReject(new Error("Conexão cancelada. Tente novamente quando quiser."));
+      }, 1500);
+    }
+    window.addEventListener("focus", onWindowFocus);
+
+    const cleanup = () => {
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("focus", onWindowFocus);
+      if (popupClosedTimer) clearTimeout(popupClosedTimer);
+    };
 
     const loginOptions = {
       config_id: configId,
@@ -383,7 +422,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
             metaConfigIdPresent: !!configId,
             graphVersion,
           });
-          reject(err);
+          settledReject(err);
           return;
         }
 
@@ -415,7 +454,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
             metaConfigIdPresent: !!configId,
             graphVersion,
           });
-          reject(err);
+          settledReject(err);
           return;
         }
 
@@ -437,7 +476,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
               waba_id: wabaId,
               phone_number_id: phoneNumberId,
             });
-            resolve({
+            settledResolve({
               code: code!,
               waba_id: wabaId,
               phone_number_id: phoneNumberId,
@@ -483,7 +522,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
               metaConfigIdPresent: !!configId,
               graphVersion,
             });
-            reject(err);
+            settledReject(err);
             return;
           }
 
