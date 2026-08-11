@@ -341,10 +341,21 @@ def _mock_httpx_success(
     return _side_effect
 
 
+@contextmanager
 def _mock_meta(phone_number_id: str = "111222333", **kwargs):
-    """Shorthand: patch httpx.get with default success side_effect."""
+    """
+    Patch httpx.get (token/phone-number exchange) with the default success
+    side_effect, and httpx.post (the subscribed_apps webhook subscription
+    call fired after channel creation — meta-cloud-api-parity-prd.md) with a
+    generic success response, so exchange tests never hit the real network.
+    """
     effect = _mock_httpx_success(phone_number_id=phone_number_id, **kwargs)
-    return patch("httpx.get", side_effect=effect)
+    post_response = MagicMock()
+    post_response.raise_for_status.return_value = None
+    post_response.json.return_value = {"success": True}
+    with patch("httpx.get", side_effect=effect):
+        with patch("httpx.post", return_value=post_response) as post_mock:
+            yield post_mock
 
 
 class TestExchangeEndpoint:
@@ -384,6 +395,43 @@ class TestExchangeEndpoint:
         assert body["channel_type"] == "whatsapp"
         assert body["config"]["waba_id"] == self._WA_ID
         assert body["config"]["phone_number_id"] == self._PHONE_ID
+
+    def test_subscribes_app_to_waba_on_success(
+        self, db: Session, user_a: User, workspace_a: Workspace
+    ):
+        """meta-cloud-api-parity-prd.md — without this call the connected
+        WABA never gets inbound webhooks routed to our app."""
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                with _mock_meta(self._PHONE_ID) as post_mock:
+                    resp = self._do_exchange(client, state)
+
+        assert resp.status_code == 201
+        post_mock.assert_called_once()
+        call_args = post_mock.call_args
+        assert call_args.args[0] == f"https://graph.facebook.com/v25.0/{self._WA_ID}/subscribed_apps"
+        assert call_args.kwargs["headers"]["Authorization"] == "Bearer long_token"
+
+    def test_subscribed_apps_failure_does_not_break_channel_creation(
+        self, db: Session, user_a: User, workspace_a: Workspace
+    ):
+        """Best-effort — a failure calling subscribed_apps must not undo the
+        channel/credential that already committed."""
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                effect = _mock_httpx_success(phone_number_id=self._PHONE_ID)
+                with patch("httpx.get", side_effect=effect):
+                    with patch("httpx.post", side_effect=Exception("network down")):
+                        resp = self._do_exchange(client, state)
+
+        assert resp.status_code == 201
+        assert resp.json()["config"]["waba_id"] == self._WA_ID
 
     def test_access_token_ref_is_db(self, db: Session, user_a: User, workspace_a: Workspace):
         agent = _make_agent(db, workspace_a.id)

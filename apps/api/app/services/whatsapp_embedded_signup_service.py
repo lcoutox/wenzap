@@ -507,7 +507,37 @@ def create_or_update_whatsapp_channel(
         channel.id,
         cred.id,
     )
+
+    _subscribe_app_to_waba(waba_id=waba_id, token=long_lived_token, debug_id=debug_id)
+
     return _channel_to_out(channel)
+
+
+def _subscribe_app_to_waba(*, waba_id: str, token: str, debug_id: str = "") -> None:
+    """
+    Tell Meta to route this WABA's webhooks to our app — meta-cloud-api-
+    parity-prd.md. Without this, a channel connected via Embedded Signup may
+    never receive inbound messages automatically.
+
+    Best-effort: never raises, a failure here must not undo the channel
+    creation that already committed above — it's logged for manual
+    follow-up instead.
+    """
+    url = f"{_meta_base_url()}/{waba_id}/subscribed_apps"
+    try:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=_META_TIMEOUT,
+        )
+        response.raise_for_status()
+        logger.info(
+            "embedded_signup subscribed_apps success waba_id=%s debug_id=%s", waba_id, debug_id
+        )
+    except Exception:
+        logger.exception(
+            "embedded_signup subscribed_apps failed waba_id=%s debug_id=%s", waba_id, debug_id
+        )
 
 
 # ── Agent validation ───────────────────────────────────────────────────────────

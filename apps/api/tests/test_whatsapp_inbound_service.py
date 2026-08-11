@@ -107,6 +107,8 @@ def _make_msg(
     profile_name: str | None = "Lucas",
     timestamp: int = 1710000000,
     message_type: str = "text",
+    media_id: str | None = None,
+    media_mime_type: str | None = None,
 ) -> WhatsAppInboundMessage:
     return WhatsAppInboundMessage(
         phone_number_id=phone_number_id,
@@ -116,6 +118,8 @@ def _make_msg(
         text_body=text_body,
         contact=WhatsAppContact(wa_id=wa_id, profile_name=profile_name),
         message_type=message_type,
+        media_id=media_id,
+        media_mime_type=media_mime_type,
     )
 
 
@@ -906,11 +910,10 @@ class TestImageMessage:
         assert msg.media_url is None
         assert "media_mime_type" not in msg.metadata_json
 
-    def test_meta_channel_image_message_skips_download(self, db: Session, workspace_a: Workspace):
-        """Meta Cloud API media download is out of scope for this PRD slice —
-        the message is still persisted (content_type=image) but with no
-        media_url, since whatsapp_webhook_parser.py never emits message_type
-        ="image" yet, this only exercises the defensive provider check."""
+    def test_meta_channel_image_downloaded_and_stored(self, db: Session, workspace_a: Workspace):
+        """meta-cloud-api-parity-prd.md — Meta media download is no longer
+        skipped; the parser's media_id is passed through to
+        meta_media_service.py, mirroring the Evolution path above."""
         agent = _make_agent(db, workspace_a.id)
         _make_whatsapp_channel(
             db,
@@ -921,7 +924,8 @@ class TestImageMessage:
         )
 
         with patch(
-            "app.services.evolution_media_service.download_and_store_inbound_media"
+            "app.services.meta_media_service.download_and_store_inbound_media",
+            return_value=("conversation-media/ws/meta-img.jpg", "image/jpeg"),
         ) as mock_download:
             process_inbound_message(
                 db,
@@ -930,13 +934,54 @@ class TestImageMessage:
                     wamid="wamid.IMG004",
                     text_body="foto",
                     message_type="image",
+                    media_id="META_MEDIA_1",
+                    media_mime_type="image/jpeg",
+                ),
+            )
+
+        mock_download.assert_called_once()
+        assert mock_download.call_args.kwargs["media_id"] == "META_MEDIA_1"
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.IMG004"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "image"
+        assert msg.media_url == "conversation-media/ws/meta-img.jpg"
+
+    def test_meta_channel_missing_media_id_skips_download(
+        self, db: Session, workspace_a: Workspace
+    ):
+        """Defensive: a malformed/unexpected payload without a media_id must
+        never crash message persistence."""
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="meta-instance-nomedia",
+            provider="meta_cloud_api",
+        )
+
+        with patch(
+            "app.services.meta_media_service.download_and_store_inbound_media"
+        ) as mock_download:
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="meta-instance-nomedia",
+                    wamid="wamid.IMG005",
+                    text_body="foto",
+                    message_type="image",
+                    media_id=None,
                 ),
             )
 
         mock_download.assert_not_called()
         msg = db.scalar(
             select(ConversationMessage).where(
-                ConversationMessage.external_message_id == "wamid.IMG004"
+                ConversationMessage.external_message_id == "wamid.IMG005"
             )
         )
         assert msg is not None
@@ -1110,3 +1155,57 @@ class TestAudioMessage:
         )
         assert msg is not None
         assert "transcrição falhou" in msg.content
+
+    def test_meta_channel_audio_downloaded_and_transcribed(
+        self, db: Session, workspace_a: Workspace
+    ):
+        """meta-cloud-api-parity-prd.md — same routing fix as the image test
+        above, exercised through the audio/transcription path."""
+        from app.services.workspace_credentials_service import set_workspace_credential
+
+        set_workspace_credential(db, workspace_a.id, "groq", "gsk_test_key")
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(
+            db,
+            workspace_a.id,
+            agent.id,
+            phone_number_id="meta-audio-1",
+            provider="meta_cloud_api",
+        )
+
+        with (
+            patch(
+                "app.services.meta_media_service.download_and_store_inbound_media",
+                return_value=("conversation-media/ws/meta-voice1.ogg", "audio/ogg; codecs=opus"),
+            ) as mock_download,
+            patch("app.services.storage.factory.get_storage_provider") as mock_get_storage,
+            patch(
+                "app.services.groq_transcription_service.transcribe_audio",
+                return_value="Quero agendar uma visita",
+            ) as mock_transcribe,
+        ):
+            mock_get_storage.return_value.get_file.return_value = b"fake-audio-bytes"
+            process_inbound_message(
+                db,
+                _make_msg(
+                    phone_number_id="meta-audio-1",
+                    wamid="wamid.AUD005",
+                    text_body="",
+                    message_type="audio",
+                    media_id="META_MEDIA_AUDIO_1",
+                    media_mime_type="audio/ogg; codecs=opus",
+                ),
+            )
+
+        mock_download.assert_called_once()
+        assert mock_download.call_args.kwargs["media_id"] == "META_MEDIA_AUDIO_1"
+        mock_transcribe.assert_called_once()
+        msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.AUD005"
+            )
+        )
+        assert msg is not None
+        assert msg.content_type == "audio"
+        assert msg.content == "Quero agendar uma visita"
+        assert msg.media_url == "conversation-media/ws/meta-voice1.ogg"

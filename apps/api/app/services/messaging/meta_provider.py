@@ -46,18 +46,14 @@ class MetaOutboundProvider:
         caption: str | None = None,
     ) -> None:
         """
-        Deliver an image via Meta Graph API (link-based — Meta fetches the
-        media itself from a presigned URL, unlike Evolution's base64 upload).
-
-        Audio replies are out of scope for Meta in this PRD slice — the Meta
-        channel isn't in active production use yet (pending app approval),
-        so building/testing Meta voice-message delivery isn't a priority.
-        Logs and records a failure rather than silently doing nothing.
+        Deliver an image or audio via Meta Graph API (link-based — Meta
+        fetches the media itself from a presigned URL, unlike Evolution's
+        base64 upload). See meta-cloud-api-parity-prd.md.
         """
-        if message.content_type != "image":
+        if message.content_type not in ("image", "audio"):
             logger.warning(
                 "meta_outbound_media unsupported content_type=%s message_id=%s "
-                "(only image delivery is implemented for Meta today)",
+                "(only image/audio delivery is implemented for Meta today)",
                 message.content_type,
                 message.id,
             )
@@ -84,20 +80,30 @@ class MetaOutboundProvider:
         from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
 
         try:
-            image_url = get_storage_provider().generate_presigned_url(storage_key, expires_in=3600)
+            media_url = get_storage_provider().generate_presigned_url(storage_key, expires_in=3600)
         except Exception as exc:
             _save_meta_media_failure(message, f"presigned_url_failed:{exc}")
             db.commit()
             return
 
         try:
-            response = _call_meta_image_api(
-                phone_number_id=phone_number_id,
-                to=recipient,
-                image_url=image_url,
-                caption=caption,
-                token=token,
-            )
+            if message.content_type == "image":
+                response = _call_meta_image_api(
+                    phone_number_id=phone_number_id,
+                    to=recipient,
+                    image_url=media_url,
+                    caption=caption,
+                    token=token,
+                )
+            else:
+                # Audio has no caption concept in the Meta API — same
+                # convention Evolution already follows.
+                response = _call_meta_audio_api(
+                    phone_number_id=phone_number_id,
+                    to=recipient,
+                    audio_url=media_url,
+                    token=token,
+                )
         except Exception as exc:
             _save_meta_media_failure(message, str(exc)[:300])
             db.commit()
@@ -135,6 +141,29 @@ def _call_meta_image_api(
             "to": to,
             "type": "image",
             "image": image_payload,
+        },
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        timeout=_META_API_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _call_meta_audio_api(
+    phone_number_id: str,
+    to: str,
+    audio_url: str,
+    token: str,
+) -> dict:
+    url = f"{_META_API_BASE}/{phone_number_id}/messages"
+    response = httpx.post(
+        url,
+        json={
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "audio",
+            "audio": {"link": audio_url},
         },
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         timeout=_META_API_TIMEOUT,

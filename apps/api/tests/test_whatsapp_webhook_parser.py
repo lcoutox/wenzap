@@ -11,7 +11,12 @@ Covers:
   - contact profile_name extracted
   - contact missing → contact still returned with wa_id
   - multiple entries / changes → all messages extracted
-  - non-text message type ignored
+  - unsupported message type (e.g. document) ignored
+  - image message extracted with media_id/mime_type/caption (meta-cloud-api-parity-prd.md)
+  - image message without caption is not skipped, caption defaults to ""
+  - image message missing the "image" object is skipped
+  - audio message extracted with media_id/mime_type, no body required
+  - audio message missing the "audio" object is skipped
   - status update payload → empty list
   - payload with no messages key → empty list
   - empty payload → empty list
@@ -252,15 +257,69 @@ class TestParseInboundTextMessages:
         result = parse_inbound_text_messages(payload)
         assert len(result) == 2
 
-    def test_non_text_message_ignored(self):
+    def test_unsupported_message_type_ignored(self):
         payload = _make_text_payload()
-        payload["entry"][0]["changes"][0]["value"]["messages"][0]["type"] = "image"
+        payload["entry"][0]["changes"][0]["value"]["messages"][0]["type"] = "document"
         result = parse_inbound_text_messages(payload)
         assert result == []
 
-    def test_audio_message_ignored(self):
+    def test_image_message_extracted_with_caption(self):
         payload = _make_text_payload()
-        payload["entry"][0]["changes"][0]["value"]["messages"][0]["type"] = "audio"
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg["type"] = "image"
+        del msg["text"]
+        msg["image"] = {
+            "id": "MEDIA_ID_123",
+            "mime_type": "image/jpeg",
+            "sha256": "hash",
+            "caption": "Olha essa foto",
+        }
+        result = parse_inbound_text_messages(payload)
+        assert len(result) == 1
+        parsed = result[0]
+        assert parsed.message_type == "image"
+        assert parsed.media_id == "MEDIA_ID_123"
+        assert parsed.media_mime_type == "image/jpeg"
+        assert parsed.text_body == "Olha essa foto"
+
+    def test_image_message_without_caption_is_not_skipped(self):
+        payload = _make_text_payload()
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg["type"] = "image"
+        del msg["text"]
+        msg["image"] = {"id": "MEDIA_ID_123", "mime_type": "image/jpeg"}
+        result = parse_inbound_text_messages(payload)
+        assert len(result) == 1
+        assert result[0].text_body == ""
+        assert result[0].message_type == "image"
+
+    def test_image_message_missing_media_object_skipped(self):
+        payload = _make_text_payload()
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg["type"] = "image"
+        del msg["text"]
+        result = parse_inbound_text_messages(payload)
+        assert result == []
+
+    def test_audio_message_extracted_no_body_required(self):
+        payload = _make_text_payload()
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg["type"] = "audio"
+        del msg["text"]
+        msg["audio"] = {"id": "MEDIA_ID_456", "mime_type": "audio/ogg; codecs=opus"}
+        result = parse_inbound_text_messages(payload)
+        assert len(result) == 1
+        parsed = result[0]
+        assert parsed.message_type == "audio"
+        assert parsed.media_id == "MEDIA_ID_456"
+        assert parsed.media_mime_type == "audio/ogg; codecs=opus"
+        assert parsed.text_body == ""
+
+    def test_audio_message_missing_media_object_skipped(self):
+        payload = _make_text_payload()
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg["type"] = "audio"
+        del msg["text"]
         result = parse_inbound_text_messages(payload)
         assert result == []
 

@@ -42,10 +42,16 @@ class WhatsAppInboundMessage:
     timestamp: int | None
     text_body: str
     contact: WhatsAppContact | None
-    # "text" | "image". Defaults to "text" so every existing construction
-    # site (this Meta parser included — it never emits "image" yet) keeps
-    # working unchanged. See conversation-image-upload-prd.md.
+    # "text" | "image" | "audio". Defaults to "text" so every existing
+    # construction site keeps working unchanged. See
+    # conversation-image-upload-prd.md, whatsapp-voice-groq-elevenlabs-prd.md.
     message_type: str = "text"
+    # Meta's own media asset id (distinct from wamid) — needed to download
+    # image/audio via the Graph API. None for text and for the Evolution
+    # parser, which re-derives media by wamid instead. See
+    # meta-cloud-api-parity-prd.md.
+    media_id: str | None = None
+    media_mime_type: str | None = None
 
 
 def parse_inbound_text_messages(payload: object) -> list[WhatsAppInboundMessage]:
@@ -224,7 +230,9 @@ def _extract_text_messages(value: dict) -> list[WhatsAppInboundMessage]:
             continue
 
         msg_type = message.get("type")
-        if msg_type != "text":
+        is_image = msg_type == "image"
+        is_audio = msg_type == "audio"
+        if msg_type != "text" and not is_image and not is_audio:
             logger.info(
                 "whatsapp_parser skipping unsupported message type=%s wamid=%s",
                 msg_type,
@@ -238,11 +246,33 @@ def _extract_text_messages(value: dict) -> list[WhatsAppInboundMessage]:
             logger.info("whatsapp_parser skipping message missing id or from field")
             continue
 
-        text_block = message.get("text") or {}
-        text_body = text_block.get("body", "") if isinstance(text_block, dict) else ""
-        if not text_body:
-            logger.info("whatsapp_parser skipping text message with empty body wamid=%s", wamid)
-            continue
+        media_id: str | None = None
+        media_mime_type: str | None = None
+        text_body = ""
+
+        if is_image or is_audio:
+            media_block = message.get(msg_type) or {}
+            if not isinstance(media_block, dict) or not media_block.get("id"):
+                logger.info(
+                    "whatsapp_parser skipping %s message missing media object wamid=%s",
+                    msg_type,
+                    wamid,
+                )
+                continue
+            media_id = media_block.get("id")
+            media_mime_type = media_block.get("mime_type")
+            # Only images can carry a caption — an empty one is still valid
+            # (matches the Evolution parser). Audio never has a body.
+            if is_image:
+                text_body = media_block.get("caption") or ""
+        else:
+            text_block = message.get("text") or {}
+            text_body = text_block.get("body", "") if isinstance(text_block, dict) else ""
+            if not text_body:
+                logger.info(
+                    "whatsapp_parser skipping text message with empty body wamid=%s", wamid
+                )
+                continue
 
         timestamp_raw = message.get("timestamp")
         try:
@@ -261,6 +291,9 @@ def _extract_text_messages(value: dict) -> list[WhatsAppInboundMessage]:
                 timestamp=timestamp,
                 text_body=text_body,
                 contact=contact,
+                message_type="image" if is_image else "audio" if is_audio else "text",
+                media_id=media_id,
+                media_mime_type=media_mime_type,
             )
         )
 

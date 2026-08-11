@@ -335,33 +335,53 @@ def _download_inbound_media(
     Best-effort download of inbound media (image or audio) via the channel's
     provider.
 
-    Returns (storage_key, mime_type), or None if the provider isn't
-    Evolution API (only provider supported so far — conversation-image-
-    upload-prd.md / whatsapp-voice-groq-elevenlabs-prd.md scoped Meta Cloud
-    API's own media download as future work) or the download failed for any
-    reason. Never raises: a media download failure must not prevent the
-    text/caption/transcript message from being persisted.
+    Returns (storage_key, mime_type), or None if the provider is unknown or
+    the download failed for any reason. Never raises: a media download
+    failure must not prevent the text/caption/transcript message from being
+    persisted.
     """
     provider = (channel.config_json or {}).get("provider")
-    if provider != "evolution_api":
-        logger.info(
-            "whatsapp_inbound media download skipped provider=%s wamid=%s "
-            "(only evolution_api is supported today)",
-            provider,
-            msg.wamid,
-        )
-        return None
+    media_kind = "audio" if msg.message_type == "audio" else "image"
 
-    from app.services.evolution_media_service import (  # noqa: PLC0415
-        download_and_store_inbound_media,
-    )
     from app.services.storage.factory import get_storage_provider  # noqa: PLC0415
 
     storage = get_storage_provider()
-    media_kind = "audio" if msg.message_type == "audio" else "image"
-    return download_and_store_inbound_media(
-        db, channel, storage, wamid=msg.wamid, from_wa_id=msg.from_wa_id, media_kind=media_kind
+
+    if provider == "evolution_api":
+        from app.services.evolution_media_service import (  # noqa: PLC0415
+            download_and_store_inbound_media,
+        )
+
+        return download_and_store_inbound_media(
+            db, channel, storage, wamid=msg.wamid, from_wa_id=msg.from_wa_id, media_kind=media_kind
+        )
+
+    if provider == "meta_cloud_api":
+        if not msg.media_id:
+            logger.warning(
+                "whatsapp_inbound meta media download skipped: no media_id wamid=%s", msg.wamid
+            )
+            return None
+
+        from app.services.meta_media_service import (  # noqa: PLC0415
+            download_and_store_inbound_media as download_meta_media,
+        )
+
+        return download_meta_media(
+            db,
+            channel,
+            storage,
+            media_id=msg.media_id,
+            mime_type_hint=msg.media_mime_type,
+            media_kind=media_kind,
+        )
+
+    logger.info(
+        "whatsapp_inbound media download skipped unknown provider=%s wamid=%s",
+        provider,
+        msg.wamid,
     )
+    return None
 
 
 def _transcribe_or_placeholder(
