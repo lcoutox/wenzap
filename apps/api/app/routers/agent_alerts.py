@@ -1,7 +1,8 @@
 """Agent Alerts routes — list and manage agent failure notifications."""
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.orm import Session
 
@@ -25,7 +26,7 @@ class AgentAlertOut:
         self.id = str(alert.id)
         self.workspace_id = str(alert.workspace_id)
         self.agent_id = str(alert.agent_id)
-        self.conversation_id = str(alert.conversation_id)
+        self.conversation_id = str(alert.conversation_id) if alert.conversation_id else None
         self.error_code = alert.error_code
         self.error_message_user = alert.error_message_user
         self.error_message_admin = alert.error_message_admin
@@ -67,7 +68,7 @@ async def list_agent_alerts(
         {
             "id": str(alert.id),
             "agent_id": str(alert.agent_id),
-            "conversation_id": str(alert.conversation_id),
+            "conversation_id": str(alert.conversation_id) if alert.conversation_id else None,
             "error_code": alert.error_code,
             "error_message_user": alert.error_message_user,
             "error_message_admin": alert.error_message_admin,

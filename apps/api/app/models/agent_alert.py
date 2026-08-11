@@ -19,8 +19,11 @@ class AgentAlert(Base):
     agent_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    # Nullable: most alerts are about a specific conversation (an agent run
+    # failure), but some are workspace/channel-level (e.g. a WhatsApp
+    # integration getting disabled) with no single conversation to point at.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True
     )
     error_code: Mapped[str] = mapped_column(String(100), nullable=False)
     error_message_user: Mapped[str] = mapped_column(Text, nullable=False)

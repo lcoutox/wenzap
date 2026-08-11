@@ -26,7 +26,7 @@ import type {
   MemberRole,
   WebWidgetConfig,
 } from "@/lib/api";
-import { EvolutionQRConnect } from "@/components/agents/workspace/whatsapp/EvolutionQRConnect";
+import { EmbeddedSignupButton } from "@/components/agents/workspace/whatsapp/EmbeddedSignupButton";
 import { planAllowsChannelType } from "@/lib/plan";
 import { PlanGateBadge } from "@/components/plan/PlanGateBadge";
 
@@ -829,16 +829,18 @@ function WhatsAppConnectCard({
         <div>
           <p className="text-sm font-semibold text-nb-text">Conecte seu WhatsApp</p>
           <p className="text-xs text-nb-muted mt-0.5">
-            Permita que este agente responda mensagens recebidas pelo WhatsApp da sua empresa.
+            Permita que este agente responda mensagens recebidas pelo WhatsApp oficial da sua
+            empresa (Meta).
           </p>
         </div>
       </div>
 
       {writable ? (
         <div className="space-y-2">
-          <EvolutionQRConnect agentId={agentId} onSuccess={onEvolutionSuccess} />
+          <EmbeddedSignupButton agentId={agentId} onSuccess={onEvolutionSuccess} />
           <p className="text-[11px] text-nb-muted text-center leading-relaxed">
-            Escaneie o QR Code com o WhatsApp da empresa, como no WhatsApp Web.
+            Você será direcionado à Meta pra autorizar e escolher o número do WhatsApp Business da
+            sua empresa.
           </p>
         </div>
       ) : (

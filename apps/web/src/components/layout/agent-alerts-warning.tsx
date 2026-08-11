@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 interface AgentAlert {
   id: string;
   agent_id: string;
-  conversation_id: string;
+  conversation_id: string | null;
   error_code: string;
   error_message_user: string;
   is_read: boolean;
