@@ -58,13 +58,14 @@ SENDER_LABELS: dict[tuple[str, str], str] = {
 _FALLBACK_LABEL = "Mensagem"
 _HISTORY_HEADER = "Recent conversation history (cada linha traz a data em que foi enviada):"
 _REPLY_INSTRUCTION = (
-    "Responda à última mensagem do cliente de forma útil, clara e consistente "
-    "com as instruções do agente. Compare a data de cada linha do histórico acima "
-    "com a data de hoje (informada no system prompt) antes de tratar como válido "
-    "qualquer agendamento, prazo ou referência relativa (\"amanhã\", \"hoje\", "
-    "\"semana que vem\") mencionada em mensagens antigas — se já passou, não "
-    "repita a data antiga como se ainda fosse válida; avise o cliente e, se fizer "
-    "sentido, ofereça remarcar."
+    "Responda apenas ao que o cliente disse na última mensagem, de forma útil, clara e "
+    "consistente com as instruções do agente — não puxe assunto por conta própria nem "
+    "resuma o histórico sem ter sido perguntado. Compare a data de cada linha do "
+    "histórico acima com a data de hoje (informada no system prompt): nunca trate uma "
+    "referência relativa antiga (\"amanhã\", \"hoje\", \"semana que vem\") ou um "
+    "agendamento já passado como se ainda fosse válido. Só mencione isso se o cliente "
+    "trouxer o assunto ou se for diretamente relevante pra pergunta dele — uma saudação "
+    "simples (\"bom dia\", \"oi\") não pede um resumo de compromissos antigos."
 )
 
 # Same reference timezone used to ground the model's own "today" — see
