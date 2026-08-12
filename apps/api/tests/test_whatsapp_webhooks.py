@@ -536,3 +536,109 @@ class TestStatusUpdateEndpoint:
         # Outbound status updated
         db.refresh(outbound)
         assert outbound.metadata_json["delivery"]["status"] == "delivered"
+
+
+class TestCoexistenceFieldsWired:
+    """
+    Confirms the `history`/`smb_app_state_sync`/`smb_message_echoes` fields
+    are actually routed through the real POST endpoint end-to-end — the
+    dedicated parser/service unit coverage lives in
+    test_whatsapp_coexistence.py. whatsapp-coexistence-prd.md.
+    """
+
+    def test_history_field_creates_message(
+        self, public_webhook_client: TestClient, db: Session, workspace_a: Workspace
+    ):
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(db, workspace_a.id, agent.id, "PID_COEX_HIST")
+
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "WABA1",
+                    "changes": [
+                        {
+                            "field": "history",
+                            "value": {
+                                "metadata": {
+                                    "display_phone_number": "551190000000",
+                                    "phone_number_id": "PID_COEX_HIST",
+                                },
+                                "history": [
+                                    {
+                                        "metadata": {"phase": 1, "chunk_order": 0, "progress": 100},
+                                        "threads": [
+                                            {
+                                                "id": "5511888888888",
+                                                "messages": [
+                                                    {
+                                                        "from": "5511888888888",
+                                                        "to": "551190000000",
+                                                        "id": "wamid.ROUTERHIST1",
+                                                        "timestamp": "1700000000",
+                                                        "type": "text",
+                                                        "text": {"body": "Mensagem antiga"},
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        resp = public_webhook_client.post(VERIFY_URL, json=payload)
+        assert resp.status_code == 200
+
+        stored = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.external_message_id == "wamid.ROUTERHIST1"
+            )
+        )
+        assert stored is not None
+        assert stored.content == "Mensagem antiga"
+
+    def test_message_echo_field_pauses_ai(
+        self, public_webhook_client: TestClient, db: Session, workspace_a: Workspace
+    ):
+        from app.models.conversation import Conversation
+
+        agent = _make_agent(db, workspace_a.id)
+        _make_whatsapp_channel(db, workspace_a.id, agent.id, "PID_COEX_ECHO")
+
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "WABA1",
+                    "changes": [
+                        {
+                            "field": "smb_message_echoes",
+                            "value": {
+                                "metadata": {"phone_number_id": "PID_COEX_ECHO"},
+                                "message_echoes": [
+                                    {
+                                        "from": "551190000000",
+                                        "to": "5511666666666",
+                                        "id": "wamid.ROUTERECHO1",
+                                        "timestamp": "1700000000",
+                                        "type": "text",
+                                        "text": {"body": "Respondendo pelo celular"},
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        resp = public_webhook_client.post(VERIFY_URL, json=payload)
+        assert resp.status_code == 200
+
+        conv = db.scalar(select(Conversation).where(Conversation.workspace_id == workspace_a.id))
+        assert conv is not None
+        assert conv.ai_enabled is False

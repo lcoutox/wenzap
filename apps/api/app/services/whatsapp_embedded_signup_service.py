@@ -407,6 +407,7 @@ def create_or_update_whatsapp_channel(
     business_id: str | None,
     long_lived_token: str,
     expires_at: datetime | None,
+    is_coexistence: bool = False,
     debug_id: str = "",
 ) -> ChannelOut:
     """
@@ -429,7 +430,10 @@ def create_or_update_whatsapp_channel(
 
     config = {
         "provider": "meta_cloud_api",
-        "onboarding_type": "embedded_signup",
+        "onboarding_type": (
+            "embedded_signup_coexistence" if is_coexistence else "embedded_signup"
+        ),
+        "coexistence_enabled": is_coexistence,
         "waba_id": waba_id,
         "phone_number_id": phone_number_id,
         "display_phone_number": display_phone_number,
@@ -510,6 +514,23 @@ def create_or_update_whatsapp_channel(
 
     _subscribe_app_to_waba(waba_id=waba_id, token=long_lived_token, debug_id=debug_id)
 
+    if is_coexistence:
+        # The number is already registered on Cloud API (it came from the
+        # WhatsApp Business App) — instead, kick off history sync. Meta gives
+        # a 24h window from signup completion to do this, so it happens here
+        # inline rather than in a background job. whatsapp-coexistence-prd.md.
+        _trigger_coexistence_history_sync(
+            phone_number_id=phone_number_id, token=long_lived_token, debug_id=debug_id
+        )
+    else:
+        _register_phone_number(
+            db,
+            channel=channel,
+            phone_number_id=phone_number_id,
+            token=long_lived_token,
+            debug_id=debug_id,
+        )
+
     return _channel_to_out(channel)
 
 
@@ -537,6 +558,98 @@ def _subscribe_app_to_waba(*, waba_id: str, token: str, debug_id: str = "") -> N
     except Exception:
         logger.exception(
             "embedded_signup subscribed_apps failed waba_id=%s debug_id=%s", waba_id, debug_id
+        )
+
+
+def _register_phone_number(
+    db: Session,
+    *,
+    channel: Channel,
+    phone_number_id: str,
+    token: str,
+    debug_id: str = "",
+) -> None:
+    """
+    Register the phone number on Cloud API infrastructure — required by Meta
+    for a standard (non-coexistence) Embedded Signup connection to actually
+    send/receive messages. Without this the number can sit in `status:
+    PENDING` indefinitely (found as a real production bug —
+    whatsapp-official-only-prd.md follow-up, whatsapp-coexistence-prd.md).
+
+    A fresh 6-digit two-step-verification PIN is generated and stored as a
+    ChannelCredential (encrypted) for future reference. Best-effort: never
+    raises — a failure here (e.g. the number already has a PIN from a prior
+    connection) is logged but does not undo the channel that already
+    committed above; the number may still self-resolve to CONNECTED, as
+    observed in production.
+    """
+    pin = f"{secrets.randbelow(1_000_000):06d}"
+    url = f"{_meta_base_url()}/{phone_number_id}/register"
+    try:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            json={"messaging_product": "whatsapp", "pin": pin},
+            timeout=_META_TIMEOUT,
+        )
+        response.raise_for_status()
+        logger.info(
+            "embedded_signup register success phone_number_id=%s debug_id=%s",
+            phone_number_id,
+            debug_id,
+        )
+        create_or_update_channel_credential(
+            db,
+            workspace_id=channel.workspace_id,
+            channel_id=channel.id,
+            provider="meta_cloud_api",
+            credential_type="whatsapp_two_step_pin",
+            plain_value=pin,
+            obtained_via="embedded_signup",
+            metadata_json={"phone_number_id": phone_number_id},
+        )
+        db.commit()
+    except Exception:
+        logger.exception(
+            "embedded_signup register failed phone_number_id=%s debug_id=%s",
+            phone_number_id,
+            debug_id,
+        )
+
+
+def _trigger_coexistence_history_sync(
+    *, phone_number_id: str, token: str, debug_id: str = ""
+) -> None:
+    """
+    Request message history sync for a Coexistence connection — must happen
+    within 24h of completing Embedded Signup or the customer has to
+    disconnect and redo the flow. whatsapp-coexistence-prd.md.
+
+    Best-effort: never raises. History arrives later via the `history`
+    webhook field (whatsapp_coexistence_service.process_history_message).
+    """
+    url = f"{_meta_base_url()}/{phone_number_id}/smb_app_data"
+    try:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            json={"messaging_product": "whatsapp", "sync_type": "history"},
+            timeout=_META_TIMEOUT,
+        )
+        response.raise_for_status()
+        logger.info(
+            "embedded_signup coexistence history_sync requested phone_number_id=%s "
+            "debug_id=%s request_id=%s",
+            phone_number_id,
+            debug_id,
+            response.json().get("request_id"),
+        )
+    except Exception:
+        logger.exception(
+            "embedded_signup coexistence history_sync request failed phone_number_id=%s "
+            "debug_id=%s",
+            phone_number_id,
+            debug_id,
         )
 
 

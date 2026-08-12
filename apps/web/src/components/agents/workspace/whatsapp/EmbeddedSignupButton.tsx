@@ -63,7 +63,7 @@ export function EmbeddedSignupButton({ agentId, onSuccess }: Props) {
 
       // 3. Launch Meta popup — waits for code + WA_EMBEDDED_SIGNUP postMessage
       setStep("waiting_meta");
-      const { code, waba_id, phone_number_id, business_id } =
+      const { code, waba_id, phone_number_id, business_id, is_coexistence } =
         await runEmbeddedSignup(attemptDebugId);
 
       // 4. Exchange with backend
@@ -71,10 +71,11 @@ export function EmbeddedSignupButton({ agentId, onSuccess }: Props) {
         debugId: attemptDebugId,
         waba_id,
         phone_number_id,
+        is_coexistence,
       });
       setStep("exchanging");
       const channel = await api.channels.whatsappEmbeddedSignup.exchange(
-        { code, state, waba_id, phone_number_id, business_id },
+        { code, state, waba_id, phone_number_id, business_id, is_coexistence },
         attemptDebugId,
       );
 

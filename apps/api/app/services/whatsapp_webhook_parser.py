@@ -35,6 +35,49 @@ class WhatsAppContact:
 
 
 @dataclass
+class WhatsAppHistoryMessage:
+    """One message from a `history` webhook field batch — whatsapp-coexistence-prd.md."""
+
+    phone_number_id: str
+    wamid: str
+    from_number: str
+    to_number: str
+    thread_wa_id: str
+    timestamp: int | None
+    text_body: str
+    message_type: str
+    direction: str  # "inbound" | "outbound" — derived from from_number vs the business number
+    phase: int | None
+    chunk_order: int | None
+    progress: int | None
+
+
+@dataclass
+class WhatsAppStateSyncContact:
+    """One contact add/remove event from `smb_app_state_sync` — whatsapp-coexistence-prd.md."""
+
+    phone_number_id: str
+    action: str  # "add" | "remove"
+    contact_phone: str
+    full_name: str | None
+    first_name: str | None
+    timestamp: int | None
+
+
+@dataclass
+class WhatsAppMessageEcho:
+    """One message the business owner sent via their own app — whatsapp-coexistence-prd.md."""
+
+    phone_number_id: str
+    wamid: str
+    from_number: str
+    to_number: str
+    timestamp: int | None
+    text_body: str
+    message_type: str
+
+
+@dataclass
 class WhatsAppInboundMessage:
     phone_number_id: str
     wamid: str
@@ -199,6 +242,214 @@ def is_status_update(payload: object) -> bool:
     return False
 
 
+def parse_history_messages(payload: object) -> list[WhatsAppHistoryMessage]:
+    """
+    Extract all messages from a `history` webhook field payload — sent when a
+    business connects via WhatsApp Coexistence and shares message history.
+    whatsapp-coexistence-prd.md.
+
+    Never raises — malformed structures are skipped silently, same contract
+    as the other parsers in this module.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    results: list[WhatsAppHistoryMessage] = []
+
+    for entry in payload.get("entry", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes", []) or []:
+            if not isinstance(change, dict) or change.get("field") != "history":
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+
+            metadata = value.get("metadata") or {}
+            metadata_is_dict = isinstance(metadata, dict)
+            phone_number_id = metadata.get("phone_number_id") if metadata_is_dict else None
+            business_number = metadata.get("display_phone_number") if metadata_is_dict else None
+            if not phone_number_id:
+                continue
+
+            for batch in value.get("history", []) or []:
+                if not isinstance(batch, dict):
+                    continue
+                batch_meta = batch.get("metadata") or {}
+                batch_meta_is_dict = isinstance(batch_meta, dict)
+                phase = _safe_int(batch_meta.get("phase")) if batch_meta_is_dict else None
+                chunk_order = (
+                    _safe_int(batch_meta.get("chunk_order")) if batch_meta_is_dict else None
+                )
+                progress = (
+                    _safe_int(batch_meta.get("progress")) if batch_meta_is_dict else None
+                )
+
+                for thread in batch.get("threads", []) or []:
+                    if not isinstance(thread, dict):
+                        continue
+                    thread_wa_id = thread.get("id")
+                    if not thread_wa_id:
+                        continue
+
+                    for message in thread.get("messages", []) or []:
+                        if not isinstance(message, dict):
+                            continue
+                        wamid = message.get("id")
+                        from_number = message.get("from")
+                        to_number = message.get("to")
+                        if not wamid or not from_number or not to_number:
+                            logger.info(
+                                "whatsapp_parser skipping history message missing id/from/to"
+                            )
+                            continue
+
+                        msg_type = message.get("type") or "text"
+                        text_body = _extract_generic_text_body(message, msg_type)
+                        direction = (
+                            "outbound"
+                            if business_number and _same_number(from_number, business_number)
+                            else "inbound"
+                        )
+
+                        results.append(
+                            WhatsAppHistoryMessage(
+                                phone_number_id=phone_number_id,
+                                wamid=wamid,
+                                from_number=from_number,
+                                to_number=to_number,
+                                thread_wa_id=thread_wa_id,
+                                timestamp=_safe_int(message.get("timestamp")),
+                                text_body=text_body,
+                                message_type=msg_type,
+                                direction=direction,
+                                phase=phase,
+                                chunk_order=chunk_order,
+                                progress=progress,
+                            )
+                        )
+
+    return results
+
+
+def parse_state_sync_contacts(payload: object) -> list[WhatsAppStateSyncContact]:
+    """
+    Extract contact add/remove events from a `smb_app_state_sync` webhook
+    field payload. whatsapp-coexistence-prd.md.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    results: list[WhatsAppStateSyncContact] = []
+
+    for entry in payload.get("entry", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes", []) or []:
+            if not isinstance(change, dict) or change.get("field") != "smb_app_state_sync":
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+
+            metadata = value.get("metadata") or {}
+            phone_number_id = (
+                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
+            )
+            if not phone_number_id:
+                continue
+
+            for item in value.get("state_sync", []) or []:
+                if not isinstance(item, dict) or item.get("type") != "contact":
+                    continue
+                action = item.get("action")
+                if action not in ("add", "remove"):
+                    continue
+                contact = item.get("contact") or {}
+                if not isinstance(contact, dict):
+                    continue
+                contact_phone = contact.get("phone_number")
+                if not contact_phone:
+                    continue
+
+                item_metadata = item.get("metadata") or {}
+                timestamp = (
+                    _safe_int(item_metadata.get("timestamp"))
+                    if isinstance(item_metadata, dict)
+                    else None
+                )
+
+                results.append(
+                    WhatsAppStateSyncContact(
+                        phone_number_id=phone_number_id,
+                        action=action,
+                        contact_phone=contact_phone,
+                        full_name=contact.get("full_name"),
+                        first_name=contact.get("first_name"),
+                        timestamp=timestamp,
+                    )
+                )
+
+    return results
+
+
+def parse_message_echoes(payload: object) -> list[WhatsAppMessageEcho]:
+    """
+    Extract messages the business owner sent via their own WhatsApp Business
+    app from a `smb_message_echoes` webhook field payload.
+    whatsapp-coexistence-prd.md.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    results: list[WhatsAppMessageEcho] = []
+
+    for entry in payload.get("entry", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes", []) or []:
+            if not isinstance(change, dict) or change.get("field") != "smb_message_echoes":
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+
+            metadata = value.get("metadata") or {}
+            phone_number_id = (
+                metadata.get("phone_number_id") if isinstance(metadata, dict) else None
+            )
+            if not phone_number_id:
+                continue
+
+            for message in value.get("message_echoes", []) or []:
+                if not isinstance(message, dict):
+                    continue
+                wamid = message.get("id")
+                from_number = message.get("from")
+                to_number = message.get("to")
+                if not wamid or not from_number or not to_number:
+                    logger.info("whatsapp_parser skipping echo message missing id/from/to")
+                    continue
+
+                msg_type = message.get("type") or "text"
+                text_body = _extract_generic_text_body(message, msg_type)
+
+                results.append(
+                    WhatsAppMessageEcho(
+                        phone_number_id=phone_number_id,
+                        wamid=wamid,
+                        from_number=from_number,
+                        to_number=to_number,
+                        timestamp=_safe_int(message.get("timestamp")),
+                        text_body=text_body,
+                        message_type=msg_type,
+                    )
+                )
+
+    return results
+
+
 # ── Private helpers ────────────────────────────────────────────────────────────
 
 
@@ -298,3 +549,40 @@ def _extract_text_messages(value: dict) -> list[WhatsAppInboundMessage]:
         )
 
     return results
+
+
+def _safe_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _same_number(a: str, b: str) -> bool:
+    """Compare two phone-number-ish strings ignoring formatting (spaces, +, -)."""
+
+    def _digits(s: str) -> str:
+        return "".join(ch for ch in s if ch.isdigit())
+
+    return _digits(a) == _digits(b)
+
+
+def _extract_generic_text_body(message: dict, msg_type: str) -> str:
+    """
+    Extract a display-safe text body for a coexistence history/echo message.
+
+    Meta's docs for `history`/`smb_message_echoes` don't specify the exact
+    shape of non-text message contents (just `"<TYPE>": {<CONTENTS>}`) — to
+    avoid guessing at a shape and either crashing or silently corrupting
+    content, only "text" is fully extracted. Everything else becomes a
+    labeled placeholder so the message still shows up instead of vanishing.
+    See "Fora de escopo" in whatsapp-coexistence-prd.md.
+    """
+    if msg_type == "text":
+        text_block = message.get("text") or {}
+        if isinstance(text_block, dict):
+            return text_block.get("body", "") or ""
+        return ""
+    return f"[mensagem de {msg_type} — histórico/echo do WhatsApp Business App]"

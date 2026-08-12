@@ -41,6 +41,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, get_current_workspace
@@ -370,6 +371,7 @@ class TestExchangeEndpoint:
         waba_id: str = _WA_ID,
         phone_number_id: str = _PHONE_ID,
         code: str = "auth_code_from_meta",
+        is_coexistence: bool = False,
     ):
         return client.post(
             "/channels/whatsapp/embedded-signup/exchange",
@@ -378,6 +380,7 @@ class TestExchangeEndpoint:
                 "state": state,
                 "waba_id": waba_id,
                 "phone_number_id": phone_number_id,
+                "is_coexistence": is_coexistence,
             },
         )
 
@@ -410,10 +413,96 @@ class TestExchangeEndpoint:
                     resp = self._do_exchange(client, state)
 
         assert resp.status_code == 201
-        post_mock.assert_called_once()
-        call_args = post_mock.call_args
-        assert call_args.args[0] == f"https://graph.facebook.com/v25.0/{self._WA_ID}/subscribed_apps"
-        assert call_args.kwargs["headers"]["Authorization"] == "Bearer long_token"
+        # subscribed_apps + /register (whatsapp-coexistence-prd.md — the
+        # standard, non-coexistence flow now registers the number too).
+        assert post_mock.call_count == 2
+        subscribe_call = next(
+            c for c in post_mock.call_args_list
+            if c.args[0] == f"https://graph.facebook.com/v25.0/{self._WA_ID}/subscribed_apps"
+        )
+        assert subscribe_call.kwargs["headers"]["Authorization"] == "Bearer long_token"
+        register_call = next(
+            c for c in post_mock.call_args_list
+            if c.args[0] == f"https://graph.facebook.com/v25.0/{self._PHONE_ID}/register"
+        )
+        assert register_call.kwargs["json"]["messaging_product"] == "whatsapp"
+
+    def test_coexistence_skips_register_and_triggers_history_sync(
+        self, db: Session, user_a: User, workspace_a: Workspace
+    ):
+        """whatsapp-coexistence-prd.md — a Coexistence number is already
+        registered on Cloud API; calling /register would be wrong. Instead
+        we must request history sync via /smb_app_data."""
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                with _mock_meta(self._PHONE_ID) as post_mock:
+                    resp = self._do_exchange(client, state, is_coexistence=True)
+
+        assert resp.status_code == 201
+        assert resp.json()["config"]["onboarding_type"] == "embedded_signup_coexistence"
+        assert resp.json()["config"]["coexistence_enabled"] is True
+
+        urls_called = [c.args[0] for c in post_mock.call_args_list]
+        assert f"https://graph.facebook.com/v25.0/{self._PHONE_ID}/register" not in urls_called
+        sync_call = next(
+            c for c in post_mock.call_args_list
+            if c.args[0] == f"https://graph.facebook.com/v25.0/{self._PHONE_ID}/smb_app_data"
+        )
+        assert sync_call.kwargs["json"] == {
+            "messaging_product": "whatsapp",
+            "sync_type": "history",
+        }
+
+    def test_standard_flow_stores_two_step_pin_credential(
+        self, db: Session, user_a: User, workspace_a: Workspace
+    ):
+        from app.models.channel_credential import ChannelCredential
+
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                with _mock_meta(self._PHONE_ID):
+                    resp = self._do_exchange(client, state)
+
+        channel_id = uuid.UUID(resp.json()["id"])
+        pin_cred = db.scalar(
+            select(ChannelCredential).where(
+                ChannelCredential.channel_id == channel_id,
+                ChannelCredential.credential_type == "whatsapp_two_step_pin",
+            )
+        )
+        assert pin_cred is not None
+
+    def test_register_failure_does_not_break_channel_creation(
+        self, db: Session, user_a: User, workspace_a: Workspace
+    ):
+        """Best-effort — mirrors test_subscribed_apps_failure below, but for
+        the /register call added by whatsapp-coexistence-prd.md."""
+        agent = _make_agent(db, workspace_a.id)
+        state = _valid_state(user_a.id, workspace_a.id, agent.id)
+
+        def _post_side_effect(url, **kwargs):
+            if url.endswith("/register"):
+                raise Exception("meta down")
+            response = MagicMock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"success": True}
+            return response
+
+        with _client(db, user_a, workspace_a) as client:
+            with _patch_settings():
+                effect = _mock_httpx_success(phone_number_id=self._PHONE_ID)
+                with patch("httpx.get", side_effect=effect):
+                    with patch("httpx.post", side_effect=_post_side_effect):
+                        resp = self._do_exchange(client, state)
+
+        assert resp.status_code == 201
+        assert resp.json()["config"]["waba_id"] == self._WA_ID
 
     def test_subscribed_apps_failure_does_not_break_channel_creation(
         self, db: Session, user_a: User, workspace_a: Workspace

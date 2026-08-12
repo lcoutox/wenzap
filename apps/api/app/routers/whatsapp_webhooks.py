@@ -19,10 +19,18 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.services.whatsapp_coexistence_service import (
+    process_history_message,
+    process_message_echo,
+    process_state_sync_contact,
+)
 from app.services.whatsapp_inbound_service import process_inbound_message
 from app.services.whatsapp_status_service import process_status_update
 from app.services.whatsapp_webhook_parser import (
+    parse_history_messages,
     parse_inbound_text_messages,
+    parse_message_echoes,
+    parse_state_sync_contacts,
     parse_status_updates,
 )
 
@@ -85,6 +93,26 @@ async def whatsapp_receive(
             process_inbound_message(db, msg)
     except Exception:
         logger.exception("whatsapp_webhook inbound processing error — returning 200 anyway")
+
+    # Coexistence fields — whatsapp-coexistence-prd.md. Each gets its own
+    # try/except so one broken field never blocks the others.
+    try:
+        for history_msg in parse_history_messages(body):
+            process_history_message(db, history_msg)
+    except Exception:
+        logger.exception("whatsapp_webhook history processing error — returning 200 anyway")
+
+    try:
+        for contact_event in parse_state_sync_contacts(body):
+            process_state_sync_contact(db, contact_event)
+    except Exception:
+        logger.exception("whatsapp_webhook state_sync processing error — returning 200 anyway")
+
+    try:
+        for echo in parse_message_echoes(body):
+            process_message_echo(db, echo)
+    except Exception:
+        logger.exception("whatsapp_webhook echo processing error — returning 200 anyway")
 
     return {"status": "ok"}
 

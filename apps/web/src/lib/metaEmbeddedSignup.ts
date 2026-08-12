@@ -57,6 +57,10 @@ export interface EmbeddedSignupData {
   waba_id: string;
   phone_number_id: string;
   business_id?: string | null;
+  // True when the popup finished with FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING
+  // instead of FINISH — the number stays on the WhatsApp Business App too
+  // (Coexistence). whatsapp-coexistence-prd.md.
+  is_coexistence: boolean;
 }
 
 export interface ParsedEmbeddedSignupMessage {
@@ -254,6 +258,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
     let wabaId: string | null = null;
     let phoneNumberId: string | null = null;
     let businessId: string | null = null;
+    let isCoexistence = false;
     let lastMessageOrigin: string | null = null;
     let lastMessageShape: Record<string, unknown> | null = null;
     let settled = false;
@@ -315,18 +320,24 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
         hasBusinessId: parsed.business_id != null,
       });
 
-      // Accept FINISH or any message carrying waba_id (some SDK versions omit event field)
+      // Accept FINISH, the Coexistence variant (number stays on the WhatsApp
+      // Business App — whatsapp-coexistence-prd.md), or any message carrying
+      // waba_id (some SDK versions omit event field).
+      const isCoexistenceFinish = parsed.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
       const isFinish =
         parsed.event === "FINISH" ||
+        isCoexistenceFinish ||
         (parsed.event == null && parsed.waba_id != null);
 
       if (isFinish && parsed.waba_id && parsed.phone_number_id) {
         wabaId = parsed.waba_id;
         phoneNumberId = parsed.phone_number_id;
         businessId = parsed.business_id ?? null;
+        isCoexistence = isCoexistenceFinish;
         logSignup("embedded_signup.session_info.received", {
           debugId,
           waba_id: wabaId,
+          is_coexistence: isCoexistence,
           phone_number_id: phoneNumberId,
           has_business_id: businessId != null,
         });
@@ -481,6 +492,7 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
               waba_id: wabaId,
               phone_number_id: phoneNumberId,
               business_id: businessId,
+              is_coexistence: isCoexistence,
             });
             return;
           }

@@ -1049,7 +1049,7 @@ export type WebWidgetConfig = {
 
 export type MetaCloudApiChannelConfig = {
   provider: "meta_cloud_api";
-  onboarding_type: "manual" | "embedded_signup";
+  onboarding_type: "manual" | "embedded_signup" | "embedded_signup_coexistence";
   waba_id: string;
   phone_number_id: string;
   display_phone_number?: string | null;
@@ -1059,6 +1059,8 @@ export type MetaCloudApiChannelConfig = {
   connected_at?: string | null;
   last_webhook_at?: string | null;
   auto_reply_enabled?: boolean;
+  // Number stays on the WhatsApp Business App too — whatsapp-coexistence-prd.md.
+  coexistence_enabled?: boolean;
 };
 
 // Bridge provider (unofficial WhatsApp) — used until Meta approves the app
@@ -1624,6 +1626,7 @@ export const api = {
           waba_id: string;
           phone_number_id: string;
           business_id?: string | null;
+          is_coexistence?: boolean;
         },
         debugId?: string,
       ) =>

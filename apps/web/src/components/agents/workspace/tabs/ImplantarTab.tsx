@@ -663,8 +663,10 @@ function WhatsAppCard({
   const isPending = (cfg.status ?? "active") === "testing" && isEvolution;
   const connectionLabel =
     cfg.onboarding_type === "embedded_signup" ? "Embedded Signup"
+    : cfg.onboarding_type === "embedded_signup_coexistence" ? "Embedded Signup"
     : cfg.onboarding_type === "qr_code" ? "QR Code"
     : "Manual";
+  const isCoexistence = !isEvolution && cfg.coexistence_enabled === true;
   const [techOpen, setTechOpen] = useState(false);
 
   return (
@@ -746,6 +748,12 @@ function WhatsAppCard({
               <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Conexão</p>
               <p className="text-nb-secondary">{connectionLabel}</p>
             </div>
+            {isCoexistence && (
+              <div>
+                <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Modo</p>
+                <p className="text-nb-secondary">Coexistência (app + API)</p>
+              </div>
+            )}
             {cfg.last_webhook_at && (
               <div>
                 <p className="text-[10px] font-semibold text-nb-muted uppercase tracking-widest mb-0.5">Último webhook</p>

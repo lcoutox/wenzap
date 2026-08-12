@@ -45,6 +45,10 @@ class WhatsAppEmbeddedSignupExchangeRequest(BaseModel):
     waba_id: str = Field(min_length=1, max_length=100)
     phone_number_id: str = Field(min_length=1, max_length=100)
     business_id: str | None = Field(default=None, max_length=100)
+    # True when the popup finished with FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING
+    # instead of FINISH — the number stays on the WhatsApp Business App too.
+    # whatsapp-coexistence-prd.md.
+    is_coexistence: bool = False
 
     @field_validator("waba_id")
     @classmethod

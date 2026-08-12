@@ -216,6 +216,7 @@ def _do_exchange(
         business_id=data.business_id,
         long_lived_token=long_lived_token,
         expires_at=expires_at,
+        is_coexistence=data.is_coexistence,
         debug_id=debug_id,
     )
 
