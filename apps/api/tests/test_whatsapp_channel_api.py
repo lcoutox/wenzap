@@ -286,6 +286,35 @@ def test_patch_whatsapp_channel_with_connected_at_set_does_not_500(
     assert resp.json()["config"]["connected_at"] == "2026-07-14T00:16:31.174502Z"
 
 
+def test_patch_coexistence_whatsapp_channel_toggles_auto_reply(
+    db: Session, workspace_a: Workspace, client_a: TestClient
+):
+    """
+    Regression: toggling auto_reply_enabled on a channel connected via
+    WhatsApp Coexistence used to reject with a 422 — WhatsAppChannelConfig
+    only allowed onboarding_type in {"manual", "embedded_signup"} and had no
+    coexistence_enabled field (extra="forbid"), even though the embedded
+    signup flow itself (a different, unvalidated write path) already stored
+    both. whatsapp-coexistence-prd.md.
+    """
+    agent = _make_agent(db, workspace_a.id)
+    ch = _make_whatsapp_channel(db, workspace_a.id, agent.id, phone_number_id="777888999")
+    ch.config_json = {
+        **ch.config_json,
+        "onboarding_type": "embedded_signup_coexistence",
+        "coexistence_enabled": True,
+    }
+    db.commit()
+
+    resp = client_a.patch(f"/channels/{ch.id}", json={
+        "config": {**ch.config_json, "auto_reply_enabled": True},
+    })
+    assert resp.status_code == 200
+    assert resp.json()["config"]["auto_reply_enabled"] is True
+    assert resp.json()["config"]["onboarding_type"] == "embedded_signup_coexistence"
+    assert resp.json()["config"]["coexistence_enabled"] is True
+
+
 def test_patch_evolution_whatsapp_channel_with_connected_at_set_does_not_500(
     db: Session, workspace_a: Workspace, client_a: TestClient
 ):

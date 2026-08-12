@@ -64,7 +64,9 @@ class WhatsAppChannelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: Literal["meta_cloud_api"] = "meta_cloud_api"
-    onboarding_type: Literal["manual", "embedded_signup"] = "manual"
+    onboarding_type: Literal[
+        "manual", "embedded_signup", "embedded_signup_coexistence"
+    ] = "manual"
     waba_id: str = Field(min_length=1, max_length=100)
     phone_number_id: str = Field(min_length=1, max_length=100)
     display_phone_number: str | None = Field(default=None, max_length=50)
@@ -77,6 +79,8 @@ class WhatsAppChannelConfig(BaseModel):
     last_webhook_at: datetime | None = None
     # When true, new inbound messages will trigger an automatic AI reply.
     auto_reply_enabled: bool = False
+    # Number stays on the WhatsApp Business App too — whatsapp-coexistence-prd.md.
+    coexistence_enabled: bool = False
     # TODO: add partial index on config_json->>'phone_number_id' when volume warrants it:
     # CREATE INDEX ON channels ((config_json->>'phone_number_id')) WHERE channel_type = 'whatsapp';
 
