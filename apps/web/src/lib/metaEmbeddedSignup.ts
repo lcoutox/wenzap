@@ -380,7 +380,14 @@ export function runEmbeddedSignup(debugId: string): Promise<EmbeddedSignupData> 
       override_default_response_type: true,
       extras: {
         feature: "whatsapp_embedded_signup",
-        sessionInfoVersion: 3,
+        // Tells Meta to check whether the number being connected is already
+        // on the WhatsApp Business App and, if eligible, offer the
+        // Coexistence screen instead of treating it as a plain migration.
+        // Without this the popup never offers that path — additive, doesn't
+        // change behavior for numbers that aren't on the app.
+        // whatsapp-coexistence-prd.md.
+        featureType: "whatsapp_business_app_onboarding",
+        sessionInfoVersion: "3",
       },
     };
 

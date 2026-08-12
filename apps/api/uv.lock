@@ -894,7 +894,7 @@ wheels = [
 
 [[package]]
 name = "nexbrain-api"
-version = "0.3.39"
+version = "0.3.40"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },

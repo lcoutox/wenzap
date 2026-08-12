@@ -153,8 +153,28 @@ sem regressão.
 **Não testado / não pode ser testado sem uma conta real em coexistência**: o payload exato de
 `history`/`smb_app_state_sync`/`smb_message_echoes` foi montado a partir dos exemplos da
 documentação oficial da Meta, não de uma captura real — mesma ressalva já registrada pra todo o
-resto do Embedded Signup. **Pendência real, não uma formalidade**: a opção de coexistência
-precisa ser habilitada manualmente no App Dashboard da Meta (Facebook Login for Business →
-configuração usada no nosso Embedded Signup) — não encontrei essa ação exposta via API. Só vamos
-saber que está ativa testando com um número de verdade que já esteja no WhatsApp Business App e
-vendo se a tela do popup muda pra oferecer a opção de manter o app.
+resto do Embedded Signup.
+
+### Bug corrigido depois do primeiro teste real (2026-08-12)
+
+Primeiro teste do Lucas (número dele registrado no WhatsApp Business App, tentando vincular)
+falhou com o erro da Meta `#2655122` ("número já registrado... migre ou desconecte"). Log de
+produção confirmou que o problema era **inteiramente do lado da Meta antes de chamar nosso
+backend** (só `state` foi requisitado, `exchange` nunca aconteceu) — ou seja, o popup nunca
+ofereceu a tela de coexistência, tratou como migração padrão e recusou porque o número segue
+ativo no app.
+
+Investigando o motivo, achamos a causa real: **a implementação original nunca pedia a
+coexistência pra Meta** — só tratava a resposta (`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`) *se*
+ela viesse, mas nunca sinalizava no `FB.login()` que esse fluxo devia checar elegibilidade e
+oferecer a opção. Faltava `featureType: "whatsapp_business_app_onboarding"` no objeto `extras` da
+chamada de `FB.login()` (`metaEmbeddedSignup.ts`) — sem esse parâmetro, a Meta nunca considera o
+caminho de coexistência, não importa o que a gente trate do lado de volta. Corrigido: parâmetro
+adicionado (aditivo — não muda o comportamento pra números que não estão no WhatsApp Business
+App). Não deu pra reproduzir isso em teste automatizado (depende do SDK real da Meta), validado
+por `tsc --noEmit` e `next build` limpos.
+
+Com o parâmetro corrigido, os requisitos que restam pra um teste real funcionar são os
+documentados: WhatsApp Business App do cliente em versão ≥ 2.24.17, e o país/região do número
+precisa estar na lista de suportados pela Meta pra esse recurso (lista não confirmada — segue como
+a variável real que só se resolve testando de novo).
