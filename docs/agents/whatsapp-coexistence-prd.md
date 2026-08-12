@@ -178,3 +178,24 @@ Com o parâmetro corrigido, os requisitos que restam pra um teste real funcionar
 documentados: WhatsApp Business App do cliente em versão ≥ 2.24.17, e o país/região do número
 precisa estar na lista de suportados pela Meta pra esse recurso (lista não confirmada — segue como
 a variável real que só se resolve testando de novo).
+
+**Segundo teste — erro de business ID e resolução**: com o `featureType` corrigido, novo teste
+bateu num erro diferente da Meta (`#1690130`, "business ID inválida"), de novo inteiramente do
+lado dela (mesmo padrão de log: só `state`, sem `exchange`). Levantamos a hipótese de ser
+conflito entre o Portfólio Empresarial de teste e a conta que criou o próprio app (modelo
+Solution Provider da Meta espera cliente separado do parceiro). **Resolvido usando uma conta de
+negócio diferente da que criou o app** — conectou com sucesso (`onboarding_type:
+embedded_signup_coexistence`, `coexistence_enabled: true` gravados certos).
+
+**Terceiro bug, achado na sequência**: depois de conectar, ligar "Resposta automática da IA" (que
+faz um PATCH no canal) quebrou com 422 — `WhatsAppChannelConfig` (`schemas/channel.py`), usado só
+no caminho genérico de atualização de canal, nunca tinha sido atualizado com o novo
+`onboarding_type` nem o campo `coexistence_enabled` (`extra="forbid"` rejeitava). A conexão em si
+não passa por esse schema (grava `config_json` direto), por isso só quebrou no primeiro PATCH
+depois de conectado, não na conexão. Corrigido, teste de regressão novo em
+`test_whatsapp_channel_api.py`. Commit `fb63a09`, v0.3.41.
+
+**Status real depois desses três ciclos**: a conexão via Coexistência funciona de ponta a ponta em
+produção, confirmada com um WABA/número real (não o de teste original). Falta validar o restante
+do fluxo (webhooks de `history`/`smb_app_state_sync`/`smb_message_echoes` chegando de verdade) —
+isso só se confirma com uso real continuado, não dá pra forçar num teste único.

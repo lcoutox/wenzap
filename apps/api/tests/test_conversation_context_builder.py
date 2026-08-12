@@ -252,6 +252,31 @@ def test_history_header_present(db: Session, workspace_a: Workspace):
     assert ctx.conversation_history.startswith(_HISTORY_HEADER)
 
 
+def test_history_lines_prefixed_with_send_date(db: Session, workspace_a: Workspace):
+    """
+    Regression: without a date on each history line, the LLM has no way to
+    tell a relative-date reference ("amanhã", "hoje") made weeks ago from one
+    made just now, and confidently repeats a stale appointment as if it were
+    still upcoming — a real production incident (an old test booking kept
+    getting confirmed as "hoje" weeks after the date had passed).
+    """
+    import datetime as dt
+
+    agent = _agent(db, workspace_a)
+    conv = _conversation(db, workspace_a, agent)
+    old_msg = _message(db, workspace_a, conv, "Marcado pra amanhã às 14h.", "outbound", "agent")
+    old_msg.created_at = dt.datetime(2026, 7, 27, 18, 1, tzinfo=dt.timezone.utc)
+    db.commit()
+    trigger = _message(db, workspace_a, conv, "Bom dia!", "inbound", "customer")
+    trigger.created_at = dt.datetime(2026, 8, 12, 12, 50, tzinfo=dt.timezone.utc)
+    db.commit()
+
+    ctx = _build(db, workspace_a, conv, agent, trigger)
+
+    assert "[27/07/2026] Agente: Marcado pra amanhã às 14h." in ctx.conversation_history
+    assert "[12/08/2026] Cliente: Bom dia!" in ctx.conversation_history
+
+
 # ── History limit ─────────────────────────────────────────────────────────────
 
 def test_history_limit_respected(db: Session, workspace_a: Workspace):

@@ -19,6 +19,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,11 +56,26 @@ SENDER_LABELS: dict[tuple[str, str], str] = {
 }
 
 _FALLBACK_LABEL = "Mensagem"
-_HISTORY_HEADER = "Recent conversation history:"
+_HISTORY_HEADER = "Recent conversation history (cada linha traz a data em que foi enviada):"
 _REPLY_INSTRUCTION = (
     "Responda à última mensagem do cliente de forma útil, clara e consistente "
-    "com as instruções do agente."
+    "com as instruções do agente. Compare a data de cada linha do histórico acima "
+    "com a data de hoje (informada no system prompt) antes de tratar como válido "
+    "qualquer agendamento, prazo ou referência relativa (\"amanhã\", \"hoje\", "
+    "\"semana que vem\") mencionada em mensagens antigas — se já passou, não "
+    "repita a data antiga como se ainda fosse válida; avise o cliente e, se fizer "
+    "sentido, ofereça remarcar."
 )
+
+# Same reference timezone used to ground the model's own "today" — see
+# agent_context_builder._current_datetime_block. Without dates on each
+# history line, the model has no way to tell a relative-date reference
+# ("amanhã", "hoje") made weeks ago from one made just now, and will
+# confidently repeat a stale appointment as if it were still upcoming.
+# Found via a real production incident: an old test booking kept getting
+# confirmed as "hoje" weeks after the actual date had passed.
+_BR_TZ = ZoneInfo("America/Sao_Paulo")
+_UTC_TZ = ZoneInfo("UTC")
 
 
 @dataclass
@@ -334,6 +350,9 @@ def _format_history(messages: list[ConversationMessage]) -> str:
     """
     Format a list of messages into the history block sent to the LLM.
 
+    Each line is prefixed with the date (DD/MM/YYYY, horário de Brasília) the
+    message was sent — see the module-level note on _BR_TZ for why.
+
     Returns an empty string when there are no messages.
     """
     if not messages:
@@ -344,7 +363,11 @@ def _format_history(messages: list[ConversationMessage]) -> str:
         label = SENDER_LABELS.get((msg.direction, msg.sender_type), _FALLBACK_LABEL)
         content = msg.content.strip()
         if content:
-            lines.append(f"{label}: {content}")
+            created_at = msg.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=_UTC_TZ)
+            date_str = created_at.astimezone(_BR_TZ).strftime("%d/%m/%Y")
+            lines.append(f"[{date_str}] {label}: {content}")
 
     return "\n".join(lines)
 

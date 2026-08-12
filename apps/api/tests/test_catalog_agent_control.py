@@ -13,6 +13,7 @@ Covers:
 """
 
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -142,6 +143,7 @@ class TestConversationContextBuilderCatalogGuard:
             direction="inbound",
             sender_type="customer",
             content="Quais planos vocês oferecem?",
+            created_at=datetime.now(timezone.utc),
         )
 
         with patch(
@@ -186,6 +188,7 @@ class TestConversationContextBuilderCatalogGuard:
             direction="inbound",
             sender_type="customer",
             content="Quais planos vocês oferecem?",
+            created_at=datetime.now(timezone.utc),
         )
 
         fake_result = CatalogRetrievalResult(retrieval_attempted=True)
